@@ -203,10 +203,19 @@ class Schema {
   }
 
   private async setVersion(version: number): Promise<void> {
-    await this.db.executeSql(
-      'INSERT INTO schema_version (version, updated_at) VALUES (?, ?)',
-      [version, Date.now()]
-    );
+    try {
+      await this.db.executeSql(
+        'DELETE FROM schema_version WHERE version = ?',
+        [version]
+      );
+      await this.db.executeSql(
+        'INSERT INTO schema_version (version, updated_at) VALUES (?, ?)',
+        [version, Date.now()]
+      );
+    } catch (error) {
+      console.error('Error setting schema version:', error);
+      throw error;
+    }
   }
 }
 
