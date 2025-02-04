@@ -1,39 +1,127 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
+// app/_layout.tsx
+import React, { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
-
+import { NavigationContainer } from '@react-navigation/native';
+import { AppearanceProvider } from '@/contexts/AppearanceContext';
+import { WorkoutProvider } from '@/contexts/WorkoutContext';
+import { schema } from '@/utils/db/schema';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import * as ExpoSplashScreen from 'expo-splash-screen';
+import SplashScreen from '@/components/SplashScreen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// Prevent auto-hide of splash screen
+ExpoSplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+function RootLayoutNav() {
+  const { colors } = useColorScheme();
+  const [isReady, setIsReady] = React.useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    async function initializeApp() {
+      try {
+        await schema.createTables();
+        await schema.migrate();
+      } catch (error) {
+        console.error('Error initializing database:', error);
+      } finally {
+        setIsReady(true);
+      }
     }
-  }, [loaded]);
+    
+    initializeApp();
+  }, []);
 
-  if (!loaded) {
+  const onSplashAnimationComplete = async () => {
+    setShowSplash(false);
+    await ExpoSplashScreen.hideAsync();
+  };
+
+  if (!isReady) {
     return null;
   }
 
+  if (showSplash) {
+    return <SplashScreen onAnimationComplete={onSplashAnimationComplete} />;
+  }
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <Stack
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
+        headerTintColor: colors.text,
+        contentStyle: {
+          backgroundColor: colors.background,
+        },
+      }}
+    >
+      <Stack.Screen 
+        name="(tabs)" 
+        options={{ headerShown: false }} 
+      />
+      <Stack.Screen
+        name="(workout)/new-exercise"
+        options={{
+          headerShown: false,
+          presentation: Platform.select({
+            ios: 'modal',
+            android: 'card',
+            default: 'transparentModal'
+          }),
+          animation: Platform.select({
+            ios: 'slide_from_bottom',
+            default: 'none'
+          })
+        }}
+      />
+      <Stack.Screen
+        name="(workout)/add-exercises"
+        options={{
+          headerShown: false,
+          presentation: Platform.select({
+            ios: 'modal',
+            android: 'card',
+            default: 'transparentModal'
+          }),
+          animation: Platform.select({
+            ios: 'slide_from_bottom',
+            default: 'none'
+          })
+        }}
+      />
+      <Stack.Screen
+        name="(workout)/create-template"
+        options={{
+          headerShown: false,
+          presentation: Platform.select({
+            ios: 'modal',
+            android: 'card',
+            default: 'transparentModal'
+          }),
+          animation: Platform.select({
+            ios: 'slide_from_bottom',
+            default: 'none'
+          })
+        }}
+      />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <AppearanceProvider>
+          <WorkoutProvider>
+            <RootLayoutNav />
+          </WorkoutProvider>
+        </AppearanceProvider>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

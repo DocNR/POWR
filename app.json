@@ -5,9 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "powr",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "assets": [
+      "assets/fonts",
+      "assets/images",
+      "assets/videos"
+    ],
     "ios": {
       "supportsTablet": true
     },
@@ -22,6 +27,9 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "dependencies": {
+      "react-native-pager-view": "6.2.0"
+    },
     "plugins": [
       "expo-router",
       [
@@ -32,7 +40,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
