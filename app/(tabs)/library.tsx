@@ -187,6 +187,12 @@ export default function LibraryScreen() {
     }
   };
 
+  const handleDeleteContent = useCallback((deletedContent: LibraryContent) => {
+    setContent(prevContent => 
+      prevContent.filter(item => item.id !== deletedContent.id)
+    );
+  }, []);
+
   const handleTabPress = useCallback((index: number) => {
     pagerRef.current?.setPage(index);
     setActiveSection(index);
@@ -235,13 +241,14 @@ export default function LibraryScreen() {
           onPageSelected={handlePageSelected}
         >
           <View key="my-library" style={styles.pageContainer}>
-            <MyLibrary
-              savedContent={filteredContent}
-              onContentPress={handleContentPress}
-              onFavoritePress={handleFavoritePress}
-              isLoading={isLoading}
-              isVisible
-            />
+          <MyLibrary
+            savedContent={filteredContent}
+            onContentPress={handleContentPress}
+            onFavoritePress={handleFavoritePress}
+            onDeleteContent={handleDeleteContent}
+            isLoading={isLoading}
+            isVisible={activeSection === 0}
+          />
           </View>
 
           <View key="programs" style={styles.pageContainer}>

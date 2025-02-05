@@ -4,6 +4,7 @@ import { View, FlatList, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { LibraryContent } from '@/types/exercise';
+import { libraryService } from '@/services/LibraryService';
 import LibraryContentCard from '@/components/library/LibraryContentCard';
 import { spacing } from '@/styles/sharedStyles';
 import { ThemedText } from '@/components/ThemedText';
@@ -12,15 +13,16 @@ interface MyLibraryProps {
   savedContent: LibraryContent[];
   onContentPress: (content: LibraryContent) => void;
   onFavoritePress: (content: LibraryContent) => Promise<void>;
+  onDeleteContent?: (content: LibraryContent) => void;
   isLoading?: boolean;
   isVisible?: boolean;
 }
 
-// components/library/MyLibrary.tsx
 export default function MyLibrary({ 
   savedContent, 
   onContentPress, 
   onFavoritePress,
+  onDeleteContent,
   isVisible = true
 }: MyLibraryProps) {
   const { colors } = useColorScheme();
@@ -29,6 +31,18 @@ export default function MyLibrary({
   if (!isVisible) {
     return null;
   }
+
+  const handleDelete = async (content: LibraryContent) => {
+    try {
+      if (content.type === 'exercise') {
+        await libraryService.deleteExercise(content.id);
+        onDeleteContent?.(content);
+      }
+    } catch (error) {
+      console.error('Error deleting content:', error);
+      throw error;
+    }
+  };
 
   // Separate exercises and workouts
   const exercises = savedContent.filter(content => content.type === 'exercise');
@@ -49,6 +63,7 @@ export default function MyLibrary({
               content={item}
               onPress={() => onContentPress(item)}
               onFavoritePress={() => onFavoritePress(item)}
+              onDelete={item.type === 'exercise' ? () => handleDelete(item) : undefined}
             />
           )}
           keyExtractor={item => item.id}
@@ -113,8 +128,5 @@ const styles = StyleSheet.create({
   emptyStateText: {
     textAlign: 'center',
     maxWidth: '80%',
-  },
-  hidden: {
-    display: 'none',
   },
 });

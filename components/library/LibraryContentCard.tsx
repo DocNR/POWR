@@ -1,16 +1,20 @@
 // components/library/LibraryContentCard.tsx
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { LibraryContent } from '@/types/exercise';
 import { spacing } from '@/styles/sharedStyles';
 import { ThemedText } from '@/components/ThemedText';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { RectButton } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 
 export interface LibraryContentCardProps {
   content: LibraryContent;
   onPress: () => void;
   onFavoritePress: () => void;
+  onDelete?: () => Promise<void>;
   isVerified?: boolean;
 }
 
@@ -18,67 +22,132 @@ export default function LibraryContentCard({
   content, 
   onPress, 
   onFavoritePress,
+  onDelete,
   isVerified
 }: LibraryContentCardProps) {
   const { colors } = useColorScheme();
+  const swipeableRef = React.useRef<Swipeable>(null);
+
+  const handleDelete = async () => {
+    try {
+      // Play haptic feedback
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      // Show confirmation alert
+      Alert.alert(
+        'Delete Exercise',
+        'Are you sure you want to delete this exercise?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              swipeableRef.current?.close();
+            },
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                if (onDelete) {
+                  await onDelete();
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+              } catch (error) {
+                console.error('Error deleting exercise:', error);
+                Alert.alert('Error', 'Failed to delete exercise');
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              }
+            },
+          },
+        ],
+        { cancelable: true }
+      );
+    } catch (error) {
+      console.error('Error handling delete:', error);
+    }
+  };
+
+  const renderRightActions = () => {
+    if (!onDelete) return null;
+
+    return (
+      <RectButton
+        style={[styles.deleteAction, { backgroundColor: colors.error }]}
+        onPress={handleDelete}
+      >
+        <Feather name="trash-2" size={24} color="white" />
+        <ThemedText style={[styles.deleteText, { color: 'white' }]}>
+          Delete
+        </ThemedText>
+      </RectButton>
+    );
+  };
 
   return (
-    <TouchableOpacity 
-      style={[styles.container, { backgroundColor: colors.cardBg }]}
-      onPress={onPress}
-      activeOpacity={0.7}
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      friction={2}
+      enableTrackpadTwoFingerGesture
+      rightThreshold={40}
     >
-      <View style={styles.header}>
-        <View style={styles.titleContainer}>
-          <ThemedText type="subtitle">
-            {content.title}
+      <RectButton
+        style={[styles.container, { backgroundColor: colors.cardBg }]}
+        onPress={onPress}
+      >
+        <View style={styles.header}>
+          <View style={styles.titleContainer}>
+            <ThemedText type="subtitle">
+              {content.title}
+            </ThemedText>
+            {isVerified && (
+              <View style={styles.verifiedBadge}>
+                <Feather name="check-circle" size={16} color={colors.primary} />
+                <ThemedText style={[styles.verifiedText, { color: colors.primary }]}>
+                  POW Verified
+                </ThemedText>
+              </View>
+            )}
+          </View>
+          <RectButton 
+            onPress={onFavoritePress}
+            style={styles.favoriteButton}
+          >
+            <Feather 
+              name="star"
+              size={24} 
+              color={colors.textSecondary}
+            />
+          </RectButton>
+        </View>
+
+        {content.description && (
+          <ThemedText 
+            style={styles.description}
+            numberOfLines={2}
+          >
+            {content.description}
           </ThemedText>
-          {isVerified && (
-            <View style={styles.verifiedBadge}>
-              <Feather name="check-circle" size={16} color={colors.primary} />
-              <ThemedText style={[styles.verifiedText, { color: colors.primary }]}>
-                POW Verified
-              </ThemedText>
-            </View>
-          )}
-        </View>
-        <TouchableOpacity 
-          onPress={onFavoritePress}
-          style={styles.favoriteButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Feather 
-            name="star"
-            size={24} 
-            color={colors.textSecondary}
-          />
-        </TouchableOpacity>
-      </View>
+        )}
 
-      {content.description && (
-        <ThemedText 
-          style={styles.description}
-          numberOfLines={2}
-        >
-          {content.description}
-        </ThemedText>
-      )}
-
-      <View style={styles.footer}>
-        <View style={styles.tags}>
-          {content.tags.map(tag => (
-            <View 
-              key={tag}
-              style={[styles.tag, { backgroundColor: colors.primary + '20' }]}
-            >
-              <ThemedText style={[styles.tagText, { color: colors.primary }]}>
-                {tag}
-              </ThemedText>
-            </View>
-          ))}
+        <View style={styles.footer}>
+          <View style={styles.tags}>
+            {content.tags.map(tag => (
+              <View 
+                key={tag}
+                style={[styles.tag, { backgroundColor: colors.primary + '20' }]}
+              >
+                <ThemedText style={[styles.tagText, { color: colors.primary }]}>
+                  {tag}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </RectButton>
+    </Swipeable>
   );
 }
 
@@ -135,5 +204,17 @@ const styles = StyleSheet.create({
   verifiedText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  deleteAction: {
+    flex: 1,
+    backgroundColor: 'red',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+  },
+  deleteText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

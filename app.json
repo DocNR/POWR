@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "powr-rebuild",
-    "slug": "powr-rebuild",
+    "name": "POWR",
+    "slug": "POWR",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

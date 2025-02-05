@@ -8,9 +8,12 @@ import {
   LibraryContent
 } from '@/types/exercise';
 import { WorkoutTemplate } from '@/types/workout';
+import { StorageSource } from '@/types/shared';
+import { SQLiteError } from '@/types/sqlite';
 
 class LibraryService {
   private db: DbService;
+  private readonly DEBUG = __DEV__;
 
   constructor() {
     this.db = new DbService('powr.db');
@@ -20,13 +23,22 @@ class LibraryService {
     const id = generateId();
     const timestamp = Date.now();
 
+    if (this.DEBUG) {
+      console.log('Creating exercise with payload:', {
+        id,
+        timestamp,
+        exercise,
+      });
+    }
+
     try {
       await this.db.withTransaction(async () => {
-        // Insert main exercise data
-        await this.db.executeWrite(
+        // 1. First insert main exercise data
+        const mainResult = await this.db.executeWrite(
           `INSERT INTO exercises (
-            id, title, type, category, equipment, description, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, title, type, category, equipment, description, 
+            created_at, updated_at, source
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             id,
             exercise.title,
@@ -35,35 +47,22 @@ class LibraryService {
             exercise.equipment || null,
             exercise.description || null,
             timestamp,
-            timestamp
+            timestamp,
+            'local'
           ]
         );
 
-        // Insert instructions if provided
-        if (exercise.instructions?.length) {
-          for (const [index, instruction] of exercise.instructions.entries()) {
-            await this.db.executeWrite(
-              `INSERT INTO exercise_instructions (
-                exercise_id, instruction, display_order
-              ) VALUES (?, ?, ?)`,
-              [id, instruction, index]
-            );
-          }
+        if (this.DEBUG) {
+          console.log('Main exercise insert result:', mainResult);
         }
 
-        // Insert tags if provided
-        if (exercise.tags?.length) {
-          for (const tag of exercise.tags) {
-            await this.db.executeWrite(
-              `INSERT INTO exercise_tags (exercise_id, tag) VALUES (?, ?)`,
-              [id, tag]
-            );
-          }
+        if (!mainResult.rowsAffected) {
+          throw new Error('Main exercise insert failed');
         }
 
-        // Insert format settings if provided
+        // 2. Insert format settings if provided
         if (exercise.format) {
-          await this.db.executeWrite(
+          const formatResult = await this.db.executeWrite(
             `INSERT INTO exercise_format (
               exercise_id, format_json, units_json
             ) VALUES (?, ?, ?)`,
@@ -73,12 +72,86 @@ class LibraryService {
               JSON.stringify(exercise.format_units || {})
             ]
           );
+
+          if (this.DEBUG) {
+            console.log('Format insert result:', formatResult);
+          }
+        }
+
+        // 3. Insert tags if provided
+        if (exercise.tags?.length) {
+          for (const tag of exercise.tags) {
+            const tagResult = await this.db.executeWrite(
+              `INSERT INTO exercise_tags (exercise_id, tag) VALUES (?, ?)`,
+              [id, tag]
+            );
+
+            if (this.DEBUG) {
+              console.log('Tag insert result:', tagResult);
+            }
+          }
+        }
+
+        // 4. Insert instructions if provided
+        if (exercise.instructions?.length) {
+          for (const [index, instruction] of exercise.instructions.entries()) {
+            const instructionResult = await this.db.executeWrite(
+              `INSERT INTO exercise_instructions (
+                exercise_id, instruction, display_order
+              ) VALUES (?, ?, ?)`,
+              [id, instruction, index]
+            );
+
+            if (this.DEBUG) {
+              console.log('Instruction insert result:', instructionResult);
+            }
+          }
         }
       });
 
+      if (this.DEBUG) {
+        console.log('Exercise successfully created with ID:', id);
+      }
+
       return id;
+    } catch (err) {
+      if (this.DEBUG) {
+        // Type check the error
+        if (err instanceof Error) {
+          const sqlError = err as SQLiteError;
+          console.error('Detailed error in addExercise:', {
+            message: err.message,
+            sql: 'sql' in sqlError ? sqlError.sql : undefined,
+            params: 'params' in sqlError ? sqlError.params : undefined,
+            code: 'code' in sqlError ? sqlError.code : undefined
+          });
+        } else {
+          console.error('Unknown error in addExercise:', err);
+        }
+      }
+      throw new Error(err instanceof Error ? err.message : 'Failed to insert exercise');
+    }
+  }
+
+  async deleteExercise(id: string): Promise<void> {
+    try {
+      if (this.DEBUG) {
+        console.log('Deleting exercise:', id);
+      }
+  
+      await this.db.withTransaction(async () => {
+        // Delete from main exercise table
+        const result = await this.db.executeWrite(
+          'DELETE FROM exercises WHERE id = ?',
+          [id]
+        );
+  
+        if (!result.rowsAffected) {
+          throw new Error('Exercise not found');
+        }
+      });
     } catch (error) {
-      console.error('Error adding exercise:', error);
+      console.error('Error deleting exercise:', error);
       throw error;
     }
   }
@@ -118,7 +191,7 @@ class LibraryService {
         created_at: row.created_at,
         updated_at: row.updated_at,
         availability: {
-          source: ['local']
+          source: ['local' as StorageSource]
         }
       };
     } catch (error) {
@@ -163,7 +236,7 @@ class LibraryService {
           created_at: row.created_at,
           updated_at: row.updated_at,
           availability: {
-            source: ['local']
+            source: ['local' as StorageSource]
           }
         };
       });
@@ -177,7 +250,7 @@ class LibraryService {
     try {
       // First get exercises
       const exercises = await this.getExercises();
-      const exerciseContent = exercises.map(exercise => ({
+      const exerciseContent: LibraryContent[] = exercises.map(exercise => ({
         id: exercise.id,
         title: exercise.title,
         type: 'exercise' as const,
@@ -188,7 +261,7 @@ class LibraryService {
         tags: exercise.tags,
         created_at: exercise.created_at,
         availability: {
-          source: ['local']
+          source: ['local' as StorageSource]
         }
       }));
 
@@ -251,7 +324,8 @@ class LibraryService {
         title: templateRow.title,
         type: templateRow.type,
         category: templateRow.category,
-        description: templateRow.description,
+        description: templateRow.description || '',
+        notes: templateRow.notes || '', // Added missing notes field
         author: templateRow.author_name ? {
           name: templateRow.author_name,
           pubkey: templateRow.author_pubkey
@@ -265,7 +339,9 @@ class LibraryService {
         isPublic: Boolean(templateRow.is_public),
         created_at: templateRow.created_at,
         metadata: templateRow.metadata_json ? JSON.parse(templateRow.metadata_json) : undefined,
-        availability: JSON.parse(templateRow.availability_json)
+        availability: {
+          source: ['local' as StorageSource]
+        }
       };
     } catch (error) {
       console.error('Error getting template:', error);
@@ -275,8 +351,8 @@ class LibraryService {
 
   private async getTemplateExercises(templateId: string): Promise<Array<{
     exercise: BaseExercise;
-    targetSets?: number;
-    targetReps?: number;
+    targetSets: number;
+    targetReps: number;
     notes?: string;
   }>> {
     try {
@@ -294,6 +370,11 @@ class LibraryService {
           const row = result.rows.item(i);
           const exercise = await this.getExercise(row.exercise_id);
           if (!exercise) throw new Error(`Exercise ${row.exercise_id} not found`);
+          
+          // Ensure required fields are present
+          if (typeof row.target_sets !== 'number' || typeof row.target_reps !== 'number') {
+            throw new Error(`Missing required target sets/reps for exercise ${row.exercise_id}`);
+          }
           
           return {
             exercise,

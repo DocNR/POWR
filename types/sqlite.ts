@@ -3,7 +3,6 @@
 export interface SQLiteRow {
   [key: string]: any;
 }
-
 export interface SQLiteResult<T = SQLiteRow> {
   rows: {
     _array: T[];
@@ -16,6 +15,7 @@ export interface SQLiteResult<T = SQLiteRow> {
 
 export interface SQLiteError extends Error {
   code?: number;
+  message: string;
 }
 
 export interface SQLiteStatement {

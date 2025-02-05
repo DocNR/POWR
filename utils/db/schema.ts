@@ -69,6 +69,7 @@ class Schema {
             type TEXT NOT NULL CHECK(type IN ('strength', 'circuit', 'emom', 'amrap')),
             category TEXT NOT NULL CHECK(category IN ('Full Body', 'Custom', 'Push/Pull/Legs', 'Upper/Lower', 'Cardio', 'CrossFit', 'Strength')),
             description TEXT,
+            notes TEXT,
             author_name TEXT,
             author_pubkey TEXT,
             rounds INTEGER,

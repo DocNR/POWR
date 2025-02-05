@@ -10,6 +10,8 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import SplashScreen from '@/components/SplashScreen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 
 // Prevent auto-hide of splash screen
 ExpoSplashScreen.preventAutoHideAsync();
@@ -114,14 +116,16 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <AppearanceProvider>
-          <WorkoutProvider>
-            <RootLayoutNav />
-          </WorkoutProvider>
-        </AppearanceProvider>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <AppearanceProvider>
+            <WorkoutProvider>
+              <RootLayoutNav />
+            </WorkoutProvider>
+          </AppearanceProvider>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
