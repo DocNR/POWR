@@ -117,77 +117,108 @@ class Schema {
   }
 
   async migrate(): Promise<void> {
-    const currentVersion = await this.getCurrentVersion();
-    
-    if (currentVersion < SCHEMA_VERSION) {
-      if (currentVersion < 1) {
-        await this.createTables();
-        await this.setVersion(1);
-      }
+    try {
+      const currentVersion = await this.getCurrentVersion();
       
-      // Migration to version 2 - Add format table
-      if (currentVersion < 2) {
-        await this.db.executeWrite(`
-          CREATE TABLE IF NOT EXISTS exercise_format (
-            exercise_id TEXT PRIMARY KEY,
-            format_json TEXT NOT NULL,
-            units_json TEXT,
-            FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
-          );
-        `);
-        await this.setVersion(2);
-      }
-
-      // Migration to version 3 - Add template tables
-      if (currentVersion < 3) {
-        await this.db.executeWriteMany([
-          {
-            sql: `CREATE TABLE IF NOT EXISTS templates (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              type TEXT NOT NULL CHECK(type IN ('strength', 'circuit', 'emom', 'amrap')),
-              category TEXT NOT NULL CHECK(category IN ('Full Body', 'Custom', 'Push/Pull/Legs', 'Upper/Lower', 'Cardio', 'CrossFit', 'Strength')),
-              description TEXT,
-              author_name TEXT,
-              author_pubkey TEXT,
-              rounds INTEGER,
-              duration INTEGER,
-              interval_time INTEGER,
-              rest_between_rounds INTEGER,
-              is_public BOOLEAN NOT NULL DEFAULT 0,
-              created_at INTEGER NOT NULL,
-              updated_at INTEGER NOT NULL,
-              metadata_json TEXT,
-              availability_json TEXT NOT NULL,
-              source TEXT NOT NULL DEFAULT 'local'
-            );`
-          },
-          {
-            sql: `CREATE TABLE IF NOT EXISTS template_exercises (
-              template_id TEXT NOT NULL,
-              exercise_id TEXT NOT NULL,
-              target_sets INTEGER,
-              target_reps INTEGER,
-              target_weight REAL,
-              target_rpe INTEGER CHECK(target_rpe BETWEEN 0 AND 10),
-              notes TEXT,
-              display_order INTEGER NOT NULL,
-              FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE,
-              FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
-              PRIMARY KEY(template_id, exercise_id, display_order)
-            );`
-          },
-          {
-            sql: `CREATE TABLE IF NOT EXISTS template_tags (
-              template_id TEXT NOT NULL,
-              tag TEXT NOT NULL,
-              FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE,
-              UNIQUE(template_id, tag)
-            );`
+      console.log('Current database version:', currentVersion);
+      console.log('Target database version:', SCHEMA_VERSION);
+      
+      if (currentVersion < SCHEMA_VERSION) {
+        console.log('Starting database migration...');
+        
+        // Initial migration
+        if (currentVersion < 1) {
+          console.log('Running migration to version 1...');
+          await this.createTables();
+          await this.setVersion(1);
+        }
+        
+        // Migration to version 2 - Add format table
+        if (currentVersion < 2) {
+          console.log('Running migration to version 2...');
+          try {
+            await this.db.executeWrite(`
+              CREATE TABLE IF NOT EXISTS exercise_format (
+                exercise_id TEXT PRIMARY KEY,
+                format_json TEXT NOT NULL,
+                units_json TEXT,
+                FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+              );
+            `);
+            await this.setVersion(2);
+            console.log('Migration to version 2 completed');
+          } catch (error) {
+            console.error('Error in version 2 migration:', error);
+            throw error;
           }
-        ]);
-        await this.setVersion(3);
+        }
+  
+        // Migration to version 3 - Add template tables
+        if (currentVersion < 3) {
+          console.log('Running migration to version 3...');
+          try {
+            await this.db.executeWriteMany([
+              {
+                sql: `CREATE TABLE IF NOT EXISTS templates (
+                  id TEXT PRIMARY KEY,
+                  title TEXT NOT NULL,
+                  type TEXT NOT NULL CHECK(type IN ('strength', 'circuit', 'emom', 'amrap')),
+                  category TEXT NOT NULL CHECK(category IN ('Full Body', 'Custom', 'Push/Pull/Legs', 'Upper/Lower', 'Cardio', 'CrossFit', 'Strength')),
+                  description TEXT,
+                  notes TEXT,
+                  author_name TEXT,
+                  author_pubkey TEXT,
+                  rounds INTEGER,
+                  duration INTEGER,
+                  interval_time INTEGER,
+                  rest_between_rounds INTEGER,
+                  is_public BOOLEAN NOT NULL DEFAULT 0,
+                  created_at INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  metadata_json TEXT,
+                  availability_json TEXT NOT NULL,
+                  source TEXT NOT NULL DEFAULT 'local'
+                )`
+              },
+              {
+                sql: `CREATE TABLE IF NOT EXISTS template_exercises (
+                  template_id TEXT NOT NULL,
+                  exercise_id TEXT NOT NULL,
+                  target_sets INTEGER,
+                  target_reps INTEGER,
+                  target_weight REAL,
+                  target_rpe INTEGER CHECK(target_rpe BETWEEN 0 AND 10),
+                  notes TEXT,
+                  display_order INTEGER NOT NULL,
+                  FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE,
+                  FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
+                  PRIMARY KEY(template_id, exercise_id, display_order)
+                )`
+              },
+              {
+                sql: `CREATE TABLE IF NOT EXISTS template_tags (
+                  template_id TEXT NOT NULL,
+                  tag TEXT NOT NULL,
+                  FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE,
+                  UNIQUE(template_id, tag)
+                )`
+              }
+            ]);
+            await this.setVersion(3);
+            console.log('Migration to version 3 completed');
+          } catch (error) {
+            console.error('Error in version 3 migration:', error);
+            throw error;
+          }
+        }
+  
+        console.log('All migrations completed successfully');
+      } else {
+        console.log('Database is up to date');
       }
+    } catch (error) {
+      console.error('Migration failed:', error);
+      throw error;
     }
   }
 

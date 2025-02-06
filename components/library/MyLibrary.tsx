@@ -1,6 +1,6 @@
 // components/library/MyLibrary.tsx
 import React from 'react';
-import { View, FlatList, StyleSheet, Platform } from 'react-native';
+import { View, FlatList, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { LibraryContent } from '@/types/exercise';
@@ -23,13 +23,30 @@ export default function MyLibrary({
   onContentPress, 
   onFavoritePress,
   onDeleteContent,
+  isLoading = false,
   isVisible = true
 }: MyLibraryProps) {
   const { colors } = useColorScheme();
 
+  console.log('MyLibrary render:', {
+    contentLength: savedContent.length,
+    isVisible,
+    isLoading
+  });
+
   // Don't render anything if not visible
   if (!isVisible) {
+    console.log('MyLibrary not visible, returning null');
     return null;
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   const handleDelete = async (content: LibraryContent) => {
@@ -47,6 +64,12 @@ export default function MyLibrary({
   // Separate exercises and workouts
   const exercises = savedContent.filter(content => content.type === 'exercise');
   const workouts = savedContent.filter(content => content.type === 'workout');
+
+  console.log('Content breakdown:', {
+    total: savedContent.length,
+    exercises: exercises.length,
+    workouts: workouts.length
+  });
 
   const renderSection = (title: string, items: LibraryContent[]) => {
     if (items.length === 0) return null;
@@ -66,7 +89,7 @@ export default function MyLibrary({
               onDelete={item.type === 'exercise' ? () => handleDelete(item) : undefined}
             />
           )}
-          keyExtractor={item => item.id}
+          keyExtractor={(item, index) => `${title}-${item.id}-${index}`}
           scrollEnabled={false}
         />
       </View>
@@ -128,5 +151,10 @@ const styles = StyleSheet.create({
   emptyStateText: {
     textAlign: 'center',
     maxWidth: '80%',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

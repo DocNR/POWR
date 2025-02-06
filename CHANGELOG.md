@@ -4,6 +4,58 @@ All notable changes to the POWR project will be documented in this file.
 
 ## [Unreleased]
 
+# Changelog
+
+All notable changes to the POWR project will be documented in this file.
+
+## [Unreleased]
+
+### 2024-02-05
+#### Added
+- Basic exercise template creation functionality
+  - Added input validation for required fields
+  - Implemented schema-compliant field constraints
+  - Added native picker components for standardized inputs
+- Enhanced error handling in database operations
+  - Added detailed SQLite error logging
+  - Improved transaction management
+  - Added proper error types and propagation
+
+#### Changed
+- Updated NewExerciseScreen with constrained inputs
+  - Added dropdowns for equipment selection
+  - Added movement pattern selection
+  - Added difficulty selection
+  - Added exercise type selection
+- Improved DbService with better error handling
+  - Added proper SQLite error types
+  - Enhanced transaction rollback handling
+  - Added detailed debug logging
+
+#### Technical Details
+1. Database Schema Enforcement:
+   - Added CHECK constraints for equipment types
+   - Added CHECK constraints for exercise types
+   - Added CHECK constraints for categories
+   - Proper handling of foreign key constraints
+
+2. Input Validation:
+   - Equipment options: bodyweight, barbell, dumbbell, kettlebell, machine, cable, other
+   - Exercise types: strength, cardio, bodyweight
+   - Categories: Push, Pull, Legs, Core
+   - Difficulty levels: beginner, intermediate, advanced
+   - Movement patterns: push, pull, squat, hinge, carry, rotation
+
+3. Error Handling:
+   - Added SQLite error type definitions
+   - Improved error propagation in LibraryService
+   - Added transaction rollback on constraint violations
+
+#### Migration Notes
+- Exercise creation now enforces schema constraints
+- Input validation prevents invalid data entry
+- Enhanced error messages provide better debugging information
+
 ### 2024-02-04
 
 #### Added

@@ -10,6 +10,7 @@ import {
 import { WorkoutTemplate } from '@/types/workout';
 import { StorageSource } from '@/types/shared';
 import { SQLiteError } from '@/types/sqlite';
+import { schema } from '@/utils/db/schema';
 
 class LibraryService {
   private db: DbService;
@@ -22,15 +23,18 @@ class LibraryService {
   async addExercise(exercise: Omit<BaseExercise, 'id' | 'created_at' | 'availability'>): Promise<string> {
     const id = generateId();
     const timestamp = Date.now();
-
+  
+    // Deduplicate tags
+    const uniqueTags = Array.from(new Set(exercise.tags));
+  
     if (this.DEBUG) {
       console.log('Creating exercise with payload:', {
         id,
         timestamp,
-        exercise,
+        exercise: { ...exercise, tags: uniqueTags },
       });
     }
-
+  
     try {
       await this.db.withTransaction(async () => {
         // 1. First insert main exercise data
@@ -79,19 +83,19 @@ class LibraryService {
         }
 
         // 3. Insert tags if provided
-        if (exercise.tags?.length) {
-          for (const tag of exercise.tags) {
+        if (uniqueTags?.length) {
+          for (const tag of uniqueTags) {
             const tagResult = await this.db.executeWrite(
               `INSERT INTO exercise_tags (exercise_id, tag) VALUES (?, ?)`,
               [id, tag]
             );
-
+  
             if (this.DEBUG) {
               console.log('Tag insert result:', tagResult);
             }
           }
         }
-
+      
         // 4. Insert instructions if provided
         if (exercise.instructions?.length) {
           for (const [index, instruction] of exercise.instructions.entries()) {
@@ -217,8 +221,16 @@ class LibraryService {
         GROUP BY e.id
         ORDER BY e.title
       `;
-
+  
       const result = await this.db.executeSql(query, category ? [category] : []);
+      
+      // Add this logging
+      console.log(`Found ${result.rows.length} exercises in database:`, 
+        Array.from({ length: result.rows.length }, (_, i) => ({
+          id: result.rows.item(i).id,
+          title: result.rows.item(i).title
+        }))
+      );
 
       return Array.from({ length: result.rows.length }, (_, i) => {
         const row = result.rows.item(i);
@@ -295,7 +307,15 @@ class LibraryService {
         };
       });
 
-      return [...exerciseContent, ...templateContent];
+      const allContent = [...exerciseContent, ...templateContent];
+    
+      // Ensure no duplicates by ID
+      const uniqueContent = Array.from(
+        new Map(allContent.map(item => [item.id, item])).values()
+      );
+  
+      return uniqueContent;
+  
     } catch (error) {
       console.error('Error getting templates:', error);
       throw error;
@@ -345,6 +365,49 @@ class LibraryService {
       };
     } catch (error) {
       console.error('Error getting template:', error);
+      throw error;
+    }
+  }
+
+  async clearDatabase(): Promise<void> {
+    if (this.DEBUG) {
+      console.log('Clearing database...');
+    }
+    
+    try {
+      // Disable foreign key constraints
+      await this.db.executeWrite('PRAGMA foreign_keys = OFF;');
+  
+      // Drop all tables
+      const dropQueries = [
+        'DROP TABLE IF EXISTS template_tags',
+        'DROP TABLE IF EXISTS template_exercises',
+        'DROP TABLE IF EXISTS exercise_tags',
+        'DROP TABLE IF EXISTS exercise_instructions',
+        'DROP TABLE IF EXISTS exercise_format',
+        'DROP TABLE IF EXISTS templates',
+        'DROP TABLE IF EXISTS exercises',
+        'DROP TABLE IF EXISTS schema_version'
+      ];
+  
+      for (const query of dropQueries) {
+        if (this.DEBUG) {
+          console.log('Executing:', query);
+        }
+        await this.db.executeWrite(query);
+      }
+  
+      // Re-enable foreign key constraints
+      await this.db.executeWrite('PRAGMA foreign_keys = ON;');
+  
+      // Recreate schema using the schema utility
+      await schema.migrate();
+  
+      if (this.DEBUG) {
+        console.log('Database cleared and reinitialized successfully');
+      }
+    } catch (error) {
+      console.error('Error clearing database:', error);
       throw error;
     }
   }

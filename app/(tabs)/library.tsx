@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Plus } from 'lucide-react-native';
 import { ThemedText } from '@/components/ThemedText';
 import TabLayout from '@/components/TabLayout';
@@ -71,16 +72,20 @@ export default function LibraryScreen() {
   const defaultSection = TABS.find(tab => tab.key === currentSection) ?? TABS[0];
   const [activeSection, setActiveSection] = useState<number>(defaultSection.index);
 
-  // Load library content
+  // load library content
   const loadContent = useCallback(async () => {
     if (mounted) {
+      console.log('Starting content load');
       setIsLoading(true);
       try {
         const [exercises, templates] = await Promise.all([
           libraryService.getExercises(),
           libraryService.getTemplates()
         ]);
-
+  
+        console.log('Loaded exercises:', exercises.length);
+        console.log('Loaded templates:', templates.length);
+  
         const exerciseContent: LibraryContent[] = exercises.map(exercise => ({
           id: exercise.id,
           title: exercise.title,
@@ -95,8 +100,15 @@ export default function LibraryScreen() {
             source: ['local']
           }
         }));
-
-        setContent([...exerciseContent, ...templates]);
+  
+        const newContent = [...exerciseContent, ...templates];
+        console.log('Setting new content:', newContent.length);
+        setContent(newContent);
+        
+        // Force a re-filter of content
+        setFilteredContent(newContent.filter(item => {
+          // ... your existing filter logic ...
+        }));
       } catch (error) {
         console.error('Error loading library content:', error);
       } finally {
@@ -105,11 +117,28 @@ export default function LibraryScreen() {
     }
   }, [mounted]);
 
-  useEffect(() => {
-    loadContent();
-  }, [loadContent]);
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Library screen focused, checking mount state:', mounted);
+      if (mounted) {
+        console.log('Loading content due to screen focus');
+        loadContent();
+      }
+      return () => {
+        console.log('Library screen unfocused');
+      };
+    }, [mounted, loadContent])
+  );
 
   useEffect(() => {
+    console.log('Initial content load');
+    if (mounted) {
+      loadContent();
+    }
+  }, [mounted]); 
+
+  useEffect(() => {
+    console.log('Filtering content:', content.length);
     const filtered = content.filter(item => {
       if (searchQuery) {
         const searchLower = searchQuery.toLowerCase();
@@ -140,6 +169,7 @@ export default function LibraryScreen() {
       return true;
     });
 
+    console.log('Filtered content length:', filtered.length);
     setFilteredContent(filtered);
   }, [content, searchQuery, filterOptions]);
 
@@ -176,7 +206,7 @@ export default function LibraryScreen() {
     }
   };
 
-  const handleAddContent = (type: 'exercise' | 'template') => {
+  const handleAddContent = useCallback((type: 'exercise' | 'template') => {
     setShowAddContent(false);
     if (type === 'exercise') {
       router.push('/(workout)/new-exercise' as const);
@@ -185,7 +215,27 @@ export default function LibraryScreen() {
         pathname: '/(workout)/create-template' as const,
       });
     }
-  };
+  }, []);
+
+  // Then enhance the useFocusEffect to be more robust
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Library screen focused, checking mount state:', mounted);
+      const loadIfMounted = async () => {
+        if (mounted) {
+          console.log('Loading content due to screen focus');
+          await loadContent();
+          console.log('Content load complete');
+        }
+      };
+
+      loadIfMounted();
+      
+      return () => {
+        console.log('Library screen unfocused');
+      };
+    }, [mounted, loadContent])
+  );
 
   const handleDeleteContent = useCallback((deletedContent: LibraryContent) => {
     setContent(prevContent => 
@@ -232,6 +282,19 @@ export default function LibraryScreen() {
             onChangeText={setSearchQuery}
             onFilterPress={() => setShowFilters(true)}
           />
+          <TouchableOpacity 
+            style={[styles.clearButton, { backgroundColor: colors.error }]}
+            onPress={async () => {
+              try {
+                await libraryService.clearDatabase();
+                await loadContent();
+              } catch (error) {
+                console.error('Error clearing database:', error);
+              }
+            }}
+          >
+            <ThemedText style={{ color: '#FFFFFF' }}>Clear Database</ThemedText>
+          </TouchableOpacity>
         </View>
 
         <Pager
@@ -241,14 +304,14 @@ export default function LibraryScreen() {
           onPageSelected={handlePageSelected}
         >
           <View key="my-library" style={styles.pageContainer}>
-          <MyLibrary
-            savedContent={filteredContent}
-            onContentPress={handleContentPress}
-            onFavoritePress={handleFavoritePress}
-            onDeleteContent={handleDeleteContent}
-            isLoading={isLoading}
-            isVisible={activeSection === 0}
-          />
+            <MyLibrary
+              savedContent={filteredContent}
+              onContentPress={handleContentPress}
+              onFavoritePress={handleFavoritePress}
+              onDeleteContent={handleDeleteContent}
+              isLoading={isLoading}
+              isVisible={activeSection === 0}
+            />
           </View>
 
           <View key="programs" style={styles.pageContainer}>
@@ -353,5 +416,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     paddingHorizontal: spacing.small,
+  },
+  clearButton: {
+    marginTop: spacing.small,
+    padding: spacing.small,
+    borderRadius: 8,
+    alignItems: 'center',
   },
 });

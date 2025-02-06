@@ -27,12 +27,12 @@ export default function TabLayout() {
           marginBottom: Platform.OS === 'ios' ? 0 : 4,
         },
       }}>
-      <Tabs.Screen
-        name="index"
+            <Tabs.Screen
+        name="profile"
         options={{
-          title: 'Workout',
+          title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Dumbbell size={size} color={color} />
+            <User size={size} color={color} />
           ),
         }}
       />
@@ -42,6 +42,15 @@ export default function TabLayout() {
           title: 'Library',
           tabBarIcon: ({ color, size }) => (
             <Library size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Workout',
+          tabBarIcon: ({ color, size }) => (
+            <Dumbbell size={size} color={color} />
           ),
         }}
       />
@@ -63,15 +72,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <User size={size} color={color} />
-          ),
-        }}
-      />
     </Tabs>
-  );
+);
 }

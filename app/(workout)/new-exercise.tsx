@@ -73,12 +73,19 @@ export default function NewExerciseScreen() {
     try {
       setError(null);
       setIsSubmitting(true);
-
+  
       if (!title.trim()) {
         setError('Exercise name is required');
         return;
       }
-
+  
+      // Create unique tags array
+      const tags = Array.from(new Set([
+        difficulty,
+        movementPattern,
+        category.toLowerCase()
+      ]));
+  
       const exerciseTemplate = {
         title: title.trim(),
         type: exerciseType,
@@ -86,11 +93,7 @@ export default function NewExerciseScreen() {
         equipment,
         difficulty,
         description: instructions.trim(),
-        tags: [
-          difficulty,
-          movementPattern,
-          category.toLowerCase()
-        ],
+        tags,  // Now using deduplicated tags
         format: {
           weight: true,
           reps: true,
