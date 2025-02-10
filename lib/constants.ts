@@ -1,3 +1,4 @@
+// lib/constants.ts
 export const NAV_THEME = {
   light: {
     background: 'hsl(0 0% 100%)', // background
@@ -16,3 +17,9 @@ export const NAV_THEME = {
     text: 'hsl(0 0% 98%)', // foreground
   },
 };
+
+export const CUSTOM_COLORS = {
+  purple: '#8B5CF6',
+  purplePressed: '#7C3AED', // Slightly darker for pressed state
+  orange: '#F97316'
+} as const;

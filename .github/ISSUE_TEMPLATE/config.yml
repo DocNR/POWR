@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: POWR Community Discussions
+    url: https://github.com/yourusername/powr/discussions
+    about: Please ask and answer questions here.
+  - name: POWR Documentation
+    url: https://github.com/yourusername/powr/tree/main/docs
+    about: Check out our documentation for guides and troubleshooting.

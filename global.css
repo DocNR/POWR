@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    /* Light mode colors remain unchanged */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
@@ -26,24 +27,39 @@
   }
 
   .dark:root {
+    /* Darkest - Main background */
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+
+    /* Slightly lighter - Cards and popovers */
+    --card: 240 10% 5.9%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 240 10% 5.9%;
     --popover-foreground: 0 0% 98%;
+
+    /* Contrast colors */
     --primary: 0 0% 98%;
     --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
+
+    /* Sheet background - Darker than before */
+    --secondary: 240 3.7% 13%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
+
+    /* Interactive elements - Lighter than secondary */
+    --muted: 240 3.7% 18%;
     --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+
+    /* Accents and highlights */
+    --accent: 240 3.7% 18%;
     --accent-foreground: 0 0% 98%;
+
+    /* Destructive actions */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+
+    /* Interactive elements and borders */
+    --border: 240 3.7% 25%;
+    --input: 240 3.7% 25%;
     --ring: 240 4.9% 83.9%;
   }
 }
