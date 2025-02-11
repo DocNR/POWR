@@ -1,12 +1,14 @@
-# POWR Database Architecture Diagrams
+# POWR Database Architecture
 
 ## 1. Entity Relationship Diagram
 
-This diagram shows the core database structure and relationships between tables. The design supports both raw Nostr event storage and processed data for efficient querying.
+This diagram shows the core database structure and relationships between tables. The design supports both local-first operations with performance optimizations and Nostr protocol integration.
 
 Key Features:
 - Raw Nostr event storage in `nostr_events`
 - Processed exercise data in `exercise_definitions`
+- Media content storage in `exercise_media`
+- Cache management in `cache_metadata`
 - Dependency tracking in `incomplete_templates`
 - Efficient tag indexing in `event_tags`
 
@@ -15,6 +17,9 @@ erDiagram
     nostr_events ||--o{ event_tags : contains
     nostr_events ||--o| exercise_definitions : processes
     nostr_events ||--o| incomplete_templates : tracks
+    exercise_definitions ||--o{ exercise_media : stores
+    exercise_definitions ||--o{ cache_metadata : tracks
+    
     nostr_events {
         string id PK
         string pubkey
@@ -23,12 +28,14 @@ erDiagram
         number created_at
         number received_at
     }
+    
     event_tags {
         string event_id FK
         string name
         string value
         number index
     }
+    
     exercise_definitions {
         string event_id FK
         string title
@@ -36,6 +43,23 @@ erDiagram
         string format
         string format_units
     }
+    
+    exercise_media {
+        string exercise_id FK
+        string media_type
+        blob content
+        blob thumbnail
+        number created_at
+    }
+    
+    cache_metadata {
+        string content_id PK
+        string content_type
+        number last_accessed
+        number access_count
+        number priority
+    }
+    
     incomplete_templates {
         string template_id FK
         number missing_exercise_count
@@ -45,180 +69,206 @@ erDiagram
 
 ## 2. Event Processing Flow
 
-This diagram illustrates how different types of Nostr events (Exercise Definitions, Workout Templates, and Workout Records) are processed, validated, and stored.
+This diagram illustrates how both local and Nostr events are processed, validated, and stored. The system handles Exercise Definitions (33401), Workout Templates (33402), and Workout Records (33403).
 
 Key Features:
-- Event type differentiation
-- Validation process
+- Support for both local and Nostr events
+- Unified validation process
+- Media content handling
+- Cache management
 - Dependency checking
-- Storage paths for complete/incomplete data
+- Storage optimization
 
 ```mermaid
 flowchart TB
     subgraph Input
-        A[New Nostr Event] --> B{Event Type}
+        A[New Event] --> B{Source}
+        B -->|Local| C[Local Creation]
+        B -->|Nostr| D[Nostr Event]
+        C --> E{Event Type}
+        D --> E
     end
     
-    B -->|kind 33401| C[Exercise Definition]
-    B -->|kind 33402| D[Workout Template]
-    B -->|kind 33403| E[Workout Record]
+    E -->|kind 33401| F[Exercise Definition]
+    E -->|kind 33402| G[Workout Template]
+    E -->|kind 33403| H[Workout Record]
     
     subgraph Processing
-        C --> F[Validate Event]
-        D --> F
-        E --> F
+        F --> I[Validate Event]
+        G --> I
+        H --> I
         
-        F --> G{Valid?}
-        G -->|No| H[Reject Event]
-        G -->|Yes| I[Store Raw Event]
+        I --> J{Valid?}
+        J -->|No| K[Reject Event]
+        J -->|Yes| L[Store Raw Event]
         
-        I --> J[Process Event]
-        J --> K{Dependencies?}
+        L --> M[Process Event]
+        M --> N{Has Media?}
         
-        K -->|Missing| L[Store as Incomplete]
-        K -->|Complete| M[Store Processed Data]
+        N -->|Yes| O[Process Media]
+        N -->|No| P{Dependencies?}
+        O --> P
         
-        L --> N[Queue Missing Events]
+        P -->|Missing| Q[Store as Incomplete]
+        P -->|Complete| R[Store Processed Data]
+        
+        Q --> S[Queue Missing Events]
+        R --> T[Update Cache]
     end
     
     subgraph Storage
-        M --> O[(NostrEvents)]
-        M --> P[(ProcessedData)]
-        L --> Q[(IncompleteQueue)]
+        R --> U[(NostrEvents)]
+        R --> V[(ProcessedData)]
+        O --> W[(MediaStore)]
+        T --> X[(Cache)]
+        Q --> Y[(IncompleteQueue)]
     end
 ```
 
 ## 3. Query and Cache Flow
 
-This sequence diagram shows how data is retrieved, utilizing the LRU cache for performance and handling template dependencies.
+This sequence diagram shows how data is retrieved, using a performance-optimized approach with LRU caching, efficient media handling, and template dependency resolution.
 
 Key Features:
-- Cache hit/miss handling
+- Smart cache management
+- Media streaming
 - Template dependency resolution
-- Efficient data retrieval paths
-- Incomplete template handling
-- Solid line with arrow (->>) means "makes a request to"
-- Dashed line (-->) means "returns data to"
+- Query optimization
+- Priority-based caching
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
+    participant UI as UI Layer
     participant Cache as LRU Cache
+    participant Media as Media Store
     participant DB as SQLite
-    participant Q as Query Builder
+    participant Query as Query Builder
     
-    C->>Q: Client asks Query Builder for templates
-    Q->>Cache: Query Builder first checks if data is in cache
+    UI->>Query: Request Content
+    Query->>Cache: Check Cache
     
     alt Cache Hit
-        Cache-->>C: Quickly Returns Data found in Cache
-    else Cache Miss: Data not in cache, must query DB
-        Q->>DB: Query Database
-        DB-->>Q: Raw Results
-        Q->>Q: Process Raw Data
-        Q->>Cache: Store in Cache
-        Q-->>C: Return Results
+        Cache-->>UI: Return Cached Data
+        
+        opt Has Media References
+            UI->>Media: Request Media
+            Media-->>UI: Stream Media
+        end
+        
+    else Cache Miss
+        Query->>DB: Query Database
+        DB-->>Query: Raw Results
+        
+        opt Has Media
+            Query->>Media: Load Media
+            Media-->>Query: Media Content
+        end
+        
+        Query->>Query: Process Results
+        Query->>Cache: Update Cache
+        Query-->>UI: Return Results
     end
     
-    Note over C,DB: Template Dependency Resolution
+    Note over Query,DB: Template Resolution
     
-    C->>Q: Template Request
-    Q->>DB: Fetch Template
-    DB-->>Q: Template Data
-    Q->>DB: Check Dependencies
-    
-    alt Missing Dependencies
-        DB-->>Q: Missing Exercises
-        Q->>C: Return Incomplete
-    else Complete
-        DB-->>Q: All Dependencies
-        Q->>C: Return Complete Template
+    opt Template Dependencies
+        Query->>DB: Check Dependencies
+        alt Missing Dependencies
+            DB-->>Query: Missing References
+            Query-->>UI: Return Incomplete
+        else Complete
+            DB-->>Query: All Dependencies
+            Query-->>UI: Return Complete
+        end
     end
 ```
-The second part shows template dependency resolution:
-- Template request process
-- Dependency checking
-- Different responses based on whether all exercises exist
-The key learning points:
-- Cache is checked first to improve performance
-- Database is only queried if necessary
-- Results are cached for future use
-- Dependencies are verified before returning complete templates
 
 ## 4. Component Architecture
 
-This diagram shows the overall application architecture, including service layers and future Nostr integration points.
+This diagram shows the application architecture, focusing on the interaction between local-first operations and Nostr integration.
 
 Key Features:
-- Clear layer separation
-- Service interactions
-- Cache management
-- Future Nostr integration points
+- Local-first prioritization
+- Efficient service layers
+- Clear data boundaries
+- Performance optimization
+- NDK integration points
 
 ```mermaid
 graph TB
     subgraph UI Layer
-        A[Library Screen]
-        B[Exercise Form]
-        C[Template Form]
+        A[Views]
+        B[Forms]
+        C[Media Display]
     end
     
     subgraph Service Layer
         D[Library Service]
         E[Event Processor]
         F[Cache Manager]
+        G[Media Service]
     end
     
-    subgraph Data Layer
-        G[(SQLite)]
-        H[Query Builder]
-        I[Event Validators]
+    subgraph Storage Layer
+        H[(SQLite)]
+        I[Media Store]
+        J[Event Store]
+        K[Query Builder]
     end
     
-    subgraph Future Nostr
-        J[Relay Manager]
-        K[Event Publisher]
-        L[Sync Manager]
+    subgraph NDK Layer
+        L[Relay Manager]
+        M[Event Publisher]
+        N[Sync Manager]
     end
     
     A --> D
     B --> D
-    C --> D
+    C --> G
     
     D --> E
     D --> F
     
-    E --> I
-    E --> G
-    
-    F --> G
+    E --> H
+    E --> J
     F --> H
+    G --> I
     
-    H --> G
-    
-    D -.-> J
-    D -.-> K
     D -.-> L
+    D -.-> M
+    
+    H --> K
+    K --> F
 ```
 
 ## Implementation Notes
 
-These diagrams represent the core architecture of POWR's database implementation. Key considerations:
+These diagrams represent POWR's database implementation with a focus on local-first performance while maintaining Nostr compatibility.
 
-1. **Data Flow**
-   - All Nostr events are stored in raw form
-   - Processed data is stored separately for efficiency
-   - Cache layer improves read performance
-   - Dependency tracking ensures data integrity
+1. **Local-First Design**
+   - SQLite as primary storage
+   - Efficient caching layer
+   - Optimized media handling
+   - Smart query patterns
+   - Background processing
 
-2. **Scalability**
-   - Modular design allows for future expansion
-   - Clear separation of concerns
-   - Efficient query patterns
-   - Prepared for Nostr integration
+2. **Nostr Integration**
+   - Raw event preservation
+   - NDK compatibility
+   - Event validation
+   - Dependency tracking
+   - Sync management
 
-3. **Performance**
-   - LRU caching for frequent queries
-   - Optimized indexes for common operations
-   - Efficient dependency resolution
-   - Batch processing capability
+3. **Performance Features**
+   - LRU caching with priorities
+   - Media optimization
+   - Query optimization
+   - Batch processing
+   - Background sync
+
+4. **Data Integrity**
+   - Transaction management
+   - Dependency tracking
+   - Event validation
+   - Error handling
+   - Recovery procedures

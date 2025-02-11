@@ -1,216 +1,237 @@
-# POWR Database Implementation Design Document
+# POWR Database Implementation PRD
 
 ## Problem Statement
-Implement a SQLite database that supports local-first fitness tracking while enabling seamless Nostr protocol integration. The system must handle exercise definitions (NIP-33401), workout templates (NIP-33402), and workout records (NIP-33403) while managing event dependencies, caching, and efficient querying.
+Implement a local-first SQLite database that efficiently handles single-user fitness tracking while enabling seamless Nostr protocol integration through NDK. The system must handle exercise definitions (NIP-33401), workout templates (NIP-33402), and workout records (NIP-33403) while optimizing local performance and maintaining decentralized sync capabilities.
 
-## Requirements
+## Core Requirements
 
-### Functional Requirements
-- Store and process Nostr events (33401, 33402, 33403)
-- Handle incomplete workout templates with missing exercise references
-- Support both local and Nostr-sourced content
-- Enable efficient content querying and filtering
-- Track template completeness and dependencies
-- Manage event replacements and updates
+### 1. Local-First Database
+- SQLite database optimized for single-user access
+- Efficient schema for workout tracking
+- Media content storage for exercise demos
+- Strong data consistency
+- Performant query patterns
 
-### Non-Functional Requirements
-- Query response time < 100ms
-- Support offline-first operations
-- Handle concurrent write operations safely
-- Efficient storage for device constraints
-- Maintain data integrity with event dependencies
+### 2. Nostr Integration
+- NDK-compatible event handling
+- Raw event storage with validation
+- Template dependency management
+- Tag-based indexing
+- Event replacements and updates
 
-## Design Decisions
-
-### 1. Event Storage Strategy
-Store both raw Nostr events and processed data:
-- Raw events for perfect relay replication
-- Processed data for efficient querying
-- Separate incomplete template tracking
-- Tag indexing for fast lookups
-
-Rationale:
-- Maintains Nostr protocol compliance
-- Enables efficient local operations
-- Supports dependency tracking
-- Facilitates sync operations
-
-### 2. Dependency Management
-Track missing exercise references:
-- Store incomplete templates
-- Track missing dependencies
-- Enable background fetching
-- Allow filtering by completeness
-
-Rationale:
-- Better user experience
-- Data integrity
-- Eventual consistency
-- Clear status tracking
+### 3. Performance Features
+- LRU cache for frequent content
+- Blob storage for media
+- Query optimization
+- Background sync
+- Efficient indexing
 
 ## Technical Design
 
 ### Core Schema
+```sql
+-- Version tracking - keeps track of the database versioin
+CREATE TABLE schema_version (
+  version INTEGER PRIMARY KEY,
+  updated_at INTEGER NOT NULL
+);
+
+-- Raw Nostr Events (NDK Compatible)
+CREATE TABLE nostr_events (
+  id TEXT PRIMARY KEY,              -- 32-bytes hex
+  pubkey TEXT NOT NULL,             -- 32-bytes hex
+  kind INTEGER NOT NULL,            -- 33401 | 33402 | 33403
+  created_at INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  sig TEXT,                         -- 64-bytes hex
+  raw_event TEXT NOT NULL,          -- Full JSON
+  received_at INTEGER NOT NULL
+);
+
+-- Tag Indexing
+CREATE TABLE event_tags (
+  event_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  value TEXT NOT NULL,
+  index_num INTEGER NOT NULL,
+  FOREIGN KEY(event_id) REFERENCES nostr_events(id)
+);
+
+-- Processed Exercise Data
+CREATE TABLE exercises (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('strength', 'cardio', 'bodyweight')),
+  category TEXT NOT NULL,
+  equipment TEXT,
+  description TEXT,
+  created_at INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'local'
+);
+
+-- Exercise Media
+CREATE TABLE exercise_media (
+  exercise_id TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  content BLOB NOT NULL,
+  thumbnail BLOB,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY(exercise_id) REFERENCES exercises(id)
+);
+
+-- Template Tracking
+CREATE TABLE templates (
+  id TEXT PRIMARY KEY,
+  nostr_event_id TEXT,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT,
+  created_at INTEGER NOT NULL,
+  is_complete BOOLEAN NOT NULL DEFAULT 0,
+  FOREIGN KEY(nostr_event_id) REFERENCES nostr_events(id)
+);
+
+-- Cache Management
+CREATE TABLE cache_metadata (
+  content_id TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL,
+  last_accessed INTEGER NOT NULL,
+  access_count INTEGER NOT NULL,
+  cache_priority INTEGER NOT NULL
+);
+```
+
+### Event Processing
+This section shows how the app handles data coming from the Nostr network. The EventProcessor class handles:
+- Validating incoming events
+- Storing the raw data
+- Processing different types of events (exercises, templates, workouts)
+- Updating search indexes
 ```typescript
-interface DatabaseSchema {
-  // Raw Nostr event storage
-  nostr_events: {
-    id: string;            // 32-bytes hex
-    pubkey: string;        // 32-bytes hex
-    kind: number;          // 33401 | 33402 | 33403
-    raw_event: string;     // Full JSON event
-    created_at: number;    // Unix timestamp
-    received_at: number;   // Local timestamp
-  };
+interface NostrEvent {
+  id: string;        // 32-bytes hex
+  pubkey: string;    // 32-bytes hex 
+  created_at: number;
+  kind: number;      // 33401 | 33402 | 33403  
+  tags: string[][];
+  content: string;
+  sig?: string;      // 64-bytes hex
+}
 
-  // Processed exercise definitions
-  exercise_definitions: {
-    event_id: string;      // Reference to nostr_events
-    title: string;
-    equipment: string;
-    format: string;        // JSON stringified
-    format_units: string;  // JSON stringified
-  };
+class EventProcessor {
+  async processIncomingEvent(event: NostrEvent) {
+    await this.validateEvent(event);
+    await this.storeRawEvent(event);
+    await this.processEventByKind(event);
+    await this.updateIndices(event);
+  }
 
-  // Template dependency tracking
-  incomplete_templates: {
-    template_id: string;   // Reference to nostr_events
-    missing_exercise_count: number;
-    missing_exercises: string;  // JSON stringified
-  };
-
-  // Tag indexing
-  event_tags: {
-    event_id: string;      // Reference to nostr_events
-    name: string;          // Tag name
-    value: string;         // Tag value
-    index: number;         // Position in tag array
-  };
+  private async processEventByKind(event: NostrEvent) {
+    switch(event.kind) {
+      case 33401: return this.processExerciseTemplate(event);
+      case 33402: return this.processWorkoutTemplate(event);
+      case 33403: return this.processWorkoutRecord(event);
+    }
+  }
 }
 ```
 
-### Event Validators
+### Cache Implementation
 ```typescript
-interface EventValidator {
-  validateEvent(event: NostrEvent): ValidationResult;
-  processEvent(event: NostrEvent): ProcessedEvent;
+interface CacheConfig {
+  maxSize: number;
+  exerciseLimit: number;
+  templateLimit: number;
+  mediaLimit: number;
+  pruneThreshold: number;
 }
 
-class ExerciseDefinitionValidator implements EventValidator {
-  // Implementation for kind 33401
-}
+class CacheManager {
+  private cache: LRUCache<string, CacheEntry>;
+  
+  async get<T>(key: string): Promise<T | null> {
+    const cached = this.cache.get(key);
+    if (cached) {
+      await this.updateAccessMetrics(key);
+      return cached.data as T;
+    }
+    return null;
+  }
 
-class WorkoutTemplateValidator implements EventValidator {
-  // Implementation for kind 33402
+  async set(key: string, value: any): Promise<void> {
+    await this.ensureCacheSpace();
+    this.cache.set(key, {
+      data: value,
+      lastAccessed: Date.now(),
+      accessCount: 0
+    });
+  }
 }
 ```
 
 ## Implementation Plan
 
-### Phase 1: Core Event Handling
+### Phase 1: Core Infrastructure (Week 1-2)
 1. Basic schema implementation
-2. Event validation and processing
-3. Tag indexing system
-4. Basic CRUD operations
+2. NDK event processor setup
+3. CRUD operations
+4. Media storage system
 
-### Phase 2: Template Dependencies
-1. Incomplete template tracking
-2. Missing exercise handling
-3. Background fetching system
-4. Template status management
+### Phase 2: Nostr Integration (Week 2-3)
+1. Raw event storage
+2. Event validation
+3. Tag indexing
+4. Template dependencies
 
-### Phase 3: Query Optimization
-1. Implement efficient indexes
-2. Query caching system
-3. Common query patterns
-4. Performance monitoring
+### Phase 3: Performance Layer (Week 3-4)
+1. Cache implementation
+2. Query optimization
+3. Index tuning
+4. Media optimization
+
+### Phase 4: Sync & Polish (Week 4-5)
+1. NDK sync integration
+2. Background operations
+3. Performance tuning
+4. Error handling
 
 ## Testing Strategy
 
 ### Unit Tests
 - Event validation
 - Data processing
-- CRUD operations
-- Tag indexing
+- Cache operations
+- Media handling
 
 ### Integration Tests
-- Template dependency handling
-- Event synchronization
-- Cache operations
+- NDK compatibility
+- Sync operations
+- Template dependencies
 - Query performance
 
 ### Performance Tests
 - Query response times
-- Write operation latency
-- Cache efficiency
-- Storage utilization
-
-## Security Considerations
-- Event signature validation
-- Input sanitization
-- Access control
-- Data integrity
+- Cache effectiveness
+- Media load times
+- Storage efficiency
 
 ## Future Considerations
 
 ### Potential Enhancements
-- Advanced caching strategies
-- Relay management
-- Batch operations
+- Advanced sync strategies
+- Predictive caching
+- Enhanced search
 - Compression options
 
 ### Known Limitations
-- SQLite concurrent access
-- Dependency completeness
-- Cache memory constraints
+- SQLite constraints
+- Local storage limits
 - Initial sync performance
-
-## Dependencies
-
-### Runtime Dependencies
-- expo-sqlite
-- @react-native-async-storage/async-storage
-
-### Development Dependencies
-- Jest for testing
-- SQLite tooling
-- TypeScript
-
-## Query Examples
-
-### Template Queries
-```typescript
-// Get templates by author
-async getTemplatesByPubkey(
-  pubkey: string,
-  options: {
-    includeIncomplete?: boolean;
-    limit?: number;
-    since?: number;
-  }
-): Promise<ProcessedTemplate[]>
-
-// Get template with exercises
-async getTemplateWithExercises(
-  templateId: string
-): Promise<CompleteTemplate>
-```
-
-### Exercise Queries
-```typescript
-// Search exercises
-async searchExercises(
-  params: SearchParams
-): Promise<ProcessedExerciseDefinition[]>
-
-// Get exercise history
-async getExerciseHistory(
-  exerciseId: string
-): Promise<ExerciseHistory[]>
-```
+- Cache memory bounds
 
 ## References
 - NDK SQLite Implementation
-- Nostr NIP-01 Specification
-- POWR Exercise NIP Draft
-- POWR Library Tab PRD
+- Nostr NIPs (01, 33401-33403)
+- SQLite Performance Guide
+- LRU Cache Patterns
