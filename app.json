@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "rnr-test",
-    "slug": "rnr-test",
+    "name": "powr",
+    "slug": "powr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
