@@ -1,0 +1,62 @@
+name: Project Task
+description: Create a new development task for POWR
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Create a new development task for the POWR project.
+        Please provide clear implementation details and acceptance criteria.
+
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the system does this task affect?
+      placeholder: e.g., Database, UI, API
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation-details
+    attributes:
+      label: Implementation Details
+      description: Technical details of what needs to be implemented
+      placeholder: |
+        Please describe:
+        - Files/components to create or modify
+        - Key functions/methods needed
+        - Data structures involved
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: What needs to be completed for this task to be done?
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+        - [ ] Tests added
+        - [ ] Documentation updated
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity
+      description: How complex is this task?
+      options:
+        - Small (few hours)
+        - Medium (1-2 days)
+        - Large (3+ days)
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, dependencies, or considerations
