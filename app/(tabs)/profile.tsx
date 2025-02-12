@@ -7,10 +7,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import Header from '@/components/Header';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const PLACEHOLDER_IMAGE = 'https://github.com/shadcn.png'; // Placeholder profile image
+const PLACEHOLDER_IMAGE = 'https://github.com/shadcn.png';
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <View className="flex-1">
       <Header 
@@ -20,7 +23,6 @@ export default function ProfileScreen() {
             variant="ghost" 
             size="icon"
             onPress={() => {
-              // TODO: Navigate to settings
               console.log('Open settings');
             }}
           >
@@ -29,7 +31,12 @@ export default function ProfileScreen() {
         }
       />
       
-      <ScrollView className="flex-1">
+      <ScrollView 
+        className="flex-1"
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 20
+        }}
+      >
         {/* Profile Header Section */}
         <View className="items-center pt-6 pb-8">
           <Avatar className="w-24 h-24 mb-4" alt="Profile picture">
@@ -64,7 +71,6 @@ export default function ProfileScreen() {
             variant="outline" 
             className="mb-2"
             onPress={() => {
-              // TODO: Navigate to edit profile
               console.log('Edit profile');
             }}
           >
@@ -75,7 +81,6 @@ export default function ProfileScreen() {
             variant="outline"
             className="mb-2"
             onPress={() => {
-              // TODO: Navigate to account settings
               console.log('Account settings');
             }}
           >
@@ -86,14 +91,12 @@ export default function ProfileScreen() {
             variant="outline"
             className="mb-2"
             onPress={() => {
-              // TODO: Navigate to preferences
               console.log('Preferences');
             }}
           >
             <Text>Preferences</Text>
           </Button>
         </View>
-
       </ScrollView>
     </View>
   );

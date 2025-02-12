@@ -24,7 +24,7 @@ const buttonVariants = cva(
         secondary: 'bg-secondary web:hover:opacity-80 active:opacity-80',
         ghost: 'web:hover:bg-accent web:hover:text-accent-foreground active:bg-accent',
         link: 'web:underline-offset-4 web:hover:underline web:focus:underline',
-        purple: 'bg-[#8B5CF6] web:hover:bg-[#7C3AED] active:bg-[#7C3AED]', // Added purple variant
+        purple: 'bg-[hsl(var(--purple))] text-white hover:bg-[hsl(var(--purple-pressed))]',
       },
       size: {
         default: 'h-10 px-4 py-2 native:h-12 native:px-5 native:py-3',

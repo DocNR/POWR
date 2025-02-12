@@ -2,26 +2,27 @@
 import React from 'react';
 import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
-import { useTheme } from '@react-navigation/native';  // Change this import
+import { useTheme } from '@react-navigation/native';
 import { Dumbbell, Library, Users, History, User } from 'lucide-react-native';
-import { CUSTOM_COLORS } from '@/lib/constants';
+import { convertHSLValues } from '@/lib/theme';
 
 export default function TabLayout() {
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
+  const { purple, mutedForeground } = convertHSLValues(dark ? 'dark' : 'light');
   
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: colors.background,
           borderTopColor: colors.border,
           borderTopWidth: Platform.OS === 'ios' ? 0.5 : 1,
           elevation: 0,
           shadowOpacity: 0,
         },
-        tabBarActiveTintColor: CUSTOM_COLORS.purple,
-        tabBarInactiveTintColor: colors.text, // Changed this from colors.background
+        tabBarActiveTintColor: purple,
+        tabBarInactiveTintColor: mutedForeground,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 12,

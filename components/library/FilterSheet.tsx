@@ -74,6 +74,13 @@ export function FilterSheet({
 }: FilterSheetProps) {
   const [localOptions, setLocalOptions] = React.useState(options);
 
+  const handleReset = () => {
+    const resetOptions = { equipment: [], tags: [], source: [] };
+    setLocalOptions(resetOptions);
+    // Immediately apply reset
+    onApplyFilters(resetOptions);
+  };
+
   const toggleFilter = (
     category: keyof FilterOptions,
     value: string | SourceType
@@ -88,9 +95,6 @@ export function FilterSheet({
 
   return (
     <Sheet isOpen={isOpen} onClose={onClose}>
-      <SheetHeader>
-        <SheetTitle>Filter Exercises</SheetTitle>
-      </SheetHeader>
       <SheetContent>
         <View className="gap-4">
           <Accordion type="single" collapsible>
@@ -102,7 +106,7 @@ export function FilterSheet({
             <Button
               variant="outline"
               className="flex-1"
-              onPress={() => setLocalOptions({ equipment: [], tags: [], source: [] })}
+              onPress={handleReset}
             >
               <Text>Reset</Text>
             </Button>

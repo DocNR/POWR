@@ -1,25 +1,30 @@
 // lib/constants.ts
-export const NAV_THEME = {
+import type { NavigationThemeColors } from './theme';
+
+export const NAV_THEME: {
+  light: NavigationThemeColors;
+  dark: NavigationThemeColors;
+} = {
   light: {
-    background: 'hsl(0 0% 100%)', // background
-    border: 'hsl(240 5.9% 90%)', // border
-    card: 'hsl(0 0% 100%)', // card
-    notification: 'hsl(0 84.2% 60.2%)', // destructive
-    primary: 'hsl(240 5.9% 10%)', // primary
-    text: 'hsl(240 10% 3.9%)', // foreground
+    background: 'hsl(0, 0%, 100%)',
+    border: 'hsl(240, 5.9%, 90%)',
+    card: 'hsl(0, 0%, 100%)',
+    notification: 'hsl(0, 84.2%, 60.2%)',
+    primary: 'hsl(261, 90%, 66%)',
+    text: 'hsl(240, 10%, 3.9%)',
+    tabActive: 'hsl(261, 90%, 66%)',
+    tabInactive: 'hsl(240, 3.8%, 46.1%)',
+    tabIndicator: 'hsl(261, 90%, 66%)',
   },
   dark: {
-    background: 'hsl(240 10% 3.9%)', // background
-    border: 'hsl(240 3.7% 15.9%)', // border
-    card: 'hsl(240 10% 3.9%)', // card
-    notification: 'hsl(0 72% 51%)', // destructive
-    primary: 'hsl(0 0% 98%)', // primary
-    text: 'hsl(0 0% 98%)', // foreground
+    background: 'hsl(240, 10%, 3.9%)',
+    border: 'hsl(240, 3.7%, 15.9%)',
+    card: 'hsl(240, 10%, 3.9%)',
+    notification: 'hsl(0, 72%, 51%)',
+    primary: 'hsl(261, 90%, 66%)',
+    text: 'hsl(0, 0%, 98%)',
+    tabActive: 'hsl(261, 90%, 66%)',
+    tabInactive: 'hsl(240, 5%, 64.9%)',
+    tabIndicator: 'hsl(261, 90%, 66%)',
   },
 };
-
-export const CUSTOM_COLORS = {
-  purple: '#8B5CF6',
-  purplePressed: '#7C3AED', // Slightly darker for pressed state
-  orange: '#F97316'
-} as const;

@@ -24,6 +24,8 @@
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
+    --purple: 261 90% 66%;
+    --purple-pressed: 262 84% 58%;
   }
 
   .dark:root {
