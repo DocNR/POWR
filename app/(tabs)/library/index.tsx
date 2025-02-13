@@ -49,8 +49,10 @@ export default function LibraryScreen() {
           tabBarIndicatorStyle: {
             backgroundColor: colors.text,
           },
-          tabBarStyle: { backgroundColor: colors.card }
-        }}
+          tabBarStyle: { backgroundColor: colors.card },
+          swipeEnabled: true,         // Enable swipe navigation
+          animationEnabled: true,     // Enable animations when swiping
+          lazy: true                 }}
       >
         <Tab.Screen 
           name="exercises" 
