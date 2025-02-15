@@ -3,26 +3,25 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
-import { Dumbbell, Library, Users, History, User } from 'lucide-react-native';
-import { convertHSLValues } from '@/lib/theme';
+import { Dumbbell, Library, Users, History, User, } from 'lucide-react-native';
+import type { CustomTheme } from '@/lib/theme';
 
 export default function TabLayout() {
-  const { colors, dark } = useTheme();
-  const { purple, mutedForeground } = convertHSLValues(dark ? 'dark' : 'light');
+  const theme = useTheme() as CustomTheme;
   
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
+          backgroundColor: theme.colors.background,
+          borderTopColor: theme.colors.border,
           borderTopWidth: Platform.OS === 'ios' ? 0.5 : 1,
           elevation: 0,
           shadowOpacity: 0,
         },
-        tabBarActiveTintColor: purple,
-        tabBarInactiveTintColor: mutedForeground,
+        tabBarActiveTintColor: theme.colors.tabActive,
+        tabBarInactiveTintColor: theme.colors.tabInactive,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 12,

@@ -1,8 +1,8 @@
 // lib/theme.ts
-import { Theme } from '@react-navigation/native';
+import type { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { ColorSchemeName } from 'react-native';
 
-// Update the interface for our navigation theme colors
+// Define our colors type based on the built-in theme types
 export interface NavigationThemeColors {
   primary: string;
   background: string;
@@ -15,79 +15,30 @@ export interface NavigationThemeColors {
   tabIndicator: string;
 }
 
-// Original ThemeColors interface remains the same
-export interface ThemeColors {
-  background: string;
-  foreground: string;
-  card: string;
-  'card-foreground': string;
-  popover: string;
-  'popover-foreground': string;
-  primary: string;
-  'primary-foreground': string;
-  secondary: string;
-  'secondary-foreground': string;
-  muted: string;
-  'muted-foreground': string;
-  accent: string;
-  'accent-foreground': string;
-  destructive: string;
-  'destructive-foreground': string;
-  border: string;
-  input: string;
-  ring: string;
-  purple: string;
-  'purple-pressed': string;
+// Define our custom theme type using the existing theme types
+export interface CustomTheme {
+  dark: boolean;
+  colors: NavigationThemeColors;
 }
 
-// Export the color conversion function
-export function convertHSLValues(colorScheme: 'light' | 'dark') {
-    const purple = colorScheme === 'light' 
-      ? 'hsl(261, 90%, 66%)'
-      : 'hsl(261, 90%, 66%)';
-    const mutedForeground = colorScheme === 'light' 
-      ? 'hsl(240, 3.8%, 46.1%)'
-      : 'hsl(240, 5%, 64.9%)';
+export function getNavigationTheme(scheme: ColorSchemeName): CustomTheme {
+  const colorScheme = scheme ?? 'light';
+  const isDark = colorScheme === 'dark';
   
-    return {
-      purple,
-      mutedForeground,
-    };
-  }
-  
-  export function getNavigationTheme(scheme: ColorSchemeName): Theme {
-    const colorScheme = scheme ?? 'light';
-    const { purple, mutedForeground } = convertHSLValues(colorScheme as 'light' | 'dark');
-    
-    const theme: Theme = {
-      dark: colorScheme === 'dark',
-      colors: {
-        primary: purple,
-        background: colorScheme === 'dark' ? 'hsl(240, 10%, 3.9%)' : 'hsl(0, 0%, 100%)',
-        card: colorScheme === 'dark' ? 'hsl(240, 10%, 5.9%)' : 'hsl(0, 0%, 100%)',
-        text: colorScheme === 'dark' ? 'hsl(0, 0%, 98%)' : 'hsl(240, 10%, 3.9%)',
-        border: colorScheme === 'dark' ? 'hsl(240, 3.7%, 15.9%)' : 'hsl(240, 5.9%, 90%)',
-        notification: colorScheme === 'dark' ? 'hsl(0, 72%, 51%)' : 'hsl(0, 84.2%, 60.2%)',
-      },
-      fonts: {
-        regular: {
-          fontFamily: 'System',
-          fontWeight: '400',
-        },
-        medium: {
-          fontFamily: 'System',
-          fontWeight: '500',
-        },
-        bold: {
-          fontFamily: 'System',
-          fontWeight: '700',
-        },
-        heavy: {
-          fontFamily: 'System',
-          fontWeight: '900',
-        },
-      },
-    };
-  
-    return theme;
-  }
+  const theme: CustomTheme = {
+    dark: isDark,
+    colors: {
+      primary: 'hsl(261, 90%, 66%)',
+      background: isDark ? 'hsl(240, 10%, 3.9%)' : 'hsl(0, 0%, 100%)',
+      card: isDark ? 'hsl(240, 10%, 5.9%)' : 'hsl(0, 0%, 100%)',
+      text: isDark ? 'hsl(0, 0%, 98%)' : 'hsl(240, 10%, 3.9%)',
+      border: isDark ? 'hsl(240, 3.7%, 15.9%)' : 'hsl(240, 5.9%, 90%)',
+      notification: isDark ? 'hsl(0, 72%, 51%)' : 'hsl(0, 84.2%, 60.2%)',
+      tabActive: isDark ? '#FFFFFF' : '#000000',
+      tabInactive: isDark ? '#A3A3A3' : '#737373',
+      tabIndicator: 'hsl(261, 90%, 66%)',
+    }
+  };
+
+  return theme;
+}

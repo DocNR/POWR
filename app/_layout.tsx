@@ -1,6 +1,6 @@
 // app/_layout.tsx
 import '@/global.css';
-import { DarkTheme, DefaultTheme, Theme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
@@ -10,12 +10,14 @@ import { useColorScheme } from '@/lib/useColorScheme';
 import { PortalHost } from '@rn-primitives/portal';
 import { setAndroidNavigationBar } from '@/lib/android-navigation-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import type { ExtendedTheme } from '@react-navigation/native';
 
-const LIGHT_THEME: Theme = {
+const LIGHT_THEME: ExtendedTheme = {
   ...DefaultTheme,
   colors: NAV_THEME.light,
 };
-const DARK_THEME: Theme = {
+
+const DARK_THEME: ExtendedTheme = {
   ...DarkTheme,
   colors: NAV_THEME.dark,
 };

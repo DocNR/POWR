@@ -12,8 +12,8 @@ export const NAV_THEME: {
     notification: 'hsl(0, 84.2%, 60.2%)',
     primary: 'hsl(261, 90%, 66%)',
     text: 'hsl(240, 10%, 3.9%)',
-    tabActive: 'hsl(261, 90%, 66%)',
-    tabInactive: 'hsl(240, 3.8%, 46.1%)',
+    tabActive: '#000000',
+    tabInactive: '#737373',
     tabIndicator: 'hsl(261, 90%, 66%)',
   },
   dark: {
@@ -23,8 +23,8 @@ export const NAV_THEME: {
     notification: 'hsl(0, 72%, 51%)',
     primary: 'hsl(261, 90%, 66%)',
     text: 'hsl(0, 0%, 98%)',
-    tabActive: 'hsl(261, 90%, 66%)',
-    tabInactive: 'hsl(240, 5%, 64.9%)',
+    tabActive: '#FFFFFF',
+    tabInactive: '#A3A3A3',
     tabIndicator: 'hsl(261, 90%, 66%)',
   },
 };
