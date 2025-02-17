@@ -7,6 +7,8 @@ import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NewExerciseSheet } from '@/components/library/NewExerciseSheet';
 import { Dumbbell } from 'lucide-react-native';
 import { Exercise } from '@/types/library';
+import { generateId } from '@/utils/ids';
+import DatabaseDebug from '@/components/DatabaseDebug';  // Add this import
 
 const initialExercises: Exercise[] = [
   {
@@ -45,7 +47,7 @@ export default function ExercisesScreen() {
   const handleAddExercise = (exerciseData: Omit<Exercise, 'id' | 'source'>) => {
     const newExercise: Exercise = {
       ...exerciseData,
-      id: crypto.randomUUID(),
+      id: generateId(),
       source: 'local',
     };
     setExercises(prev => [...prev, newExercise]);
@@ -65,6 +67,7 @@ export default function ExercisesScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {__DEV__ && <DatabaseDebug />}  {/* Only show in development */}
       <ScrollView className="flex-1">
         {/* Recent Exercises Section */}
         <View className="py-4">

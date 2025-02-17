@@ -1,5 +1,6 @@
 // types/exercise.ts - handles everything about individual exercises
-import { NostrEventKind } from './events';
+/* import { NostrEventKind } from './events';
+ */
 import { SyncableContent } from './shared';
 
 // Exercise classification types

@@ -7,7 +7,7 @@ import {
   Modal as RNModal
 } from 'react-native';
 import { CloseButton } from './CloseButton';
-import type { SheetProps } from './sheet.types';
+import type { SheetProps } from './Sheet.types';
 
 // Re-export components
 export { SheetContent, SheetHeader, SheetTitle } from './Sheet.native';

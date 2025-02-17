@@ -5,25 +5,20 @@ interface TemplateExercise {
     targetReps: number;
   }
 
-export type TemplateType = 'strength' | 'circuit' | 'emom' | 'amrap';
-
-export type TemplateCategory = 
-  | 'Full Body' 
-  | 'Custom' 
-  | 'Push/Pull/Legs' 
-  | 'Upper/Lower' 
-  | 'Cardio' 
-  | 'CrossFit' 
-  | 'Strength'
-  | 'Conditioning';
-export type ContentSource = 'local' | 'powr' | 'nostr';
-
-export interface Template {
+  export type TemplateType = 'strength' | 'circuit' | 'emom' | 'amrap';
+  export type TemplateCategory = 'Full Body' | 'Custom' | 'Push/Pull/Legs' | 'Upper/Lower' | 'Conditioning'; 
+  export type ContentSource = 'local' | 'powr' | 'nostr';
+  
+  export interface Template {
     id: string;
     title: string;
-    type: TemplateType;  // 'strength' | 'circuit' | 'emom' | 'amrap'
+    type: TemplateType;
     category: TemplateCategory;
-    exercises: TemplateExercise[];
+    exercises: Array<{
+      title: string;
+      targetSets: number;
+      targetReps: number;
+    }>;
     description?: string;
     tags: string[];
     source: ContentSource;
