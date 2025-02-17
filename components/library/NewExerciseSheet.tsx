@@ -1,13 +1,14 @@
 // components/library/NewExerciseSheet.tsx
 import React from 'react';
-import { View } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { generateId } from '@/utils/ids';
 import { BaseExercise, ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
 import { StorageSource } from '@/types/shared';
+import { Textarea } from '@/components/ui/textarea';
+import { generateId } from '@/utils/ids';
 
 interface NewExerciseSheetProps {
   isOpen: boolean;
@@ -93,87 +94,93 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
         <SheetTitle>New Exercise</SheetTitle>
       </SheetHeader>
       <SheetContent>
-        <View className="gap-4">
-          <View>
-            <Text className="text-base font-medium mb-2">Exercise Name</Text>
-            <Input
-              value={formData.title}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
-              placeholder="e.g., Barbell Back Squat"
-            />
-          </View>
-
-          <View>
-            <Text className="text-base font-medium mb-2">Type</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {EXERCISE_TYPES.map((type) => (
-                <Button
-                  key={type}
-                  variant={formData.type === type ? 'purple' : 'outline'}
-                  onPress={() => setFormData(prev => ({ ...prev, type }))}
-                >
-                  <Text className={formData.type === type ? 'text-white' : ''}>
-                    {type}
-                  </Text>
-                </Button>
-              ))}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          className="flex-1"
+        >
+          <ScrollView className="gap-4">
+            <View>
+              <Text className="text-base font-medium mb-2">Exercise Name</Text>
+              <Input
+                value={formData.title}
+                onChangeText={(text: string) => setFormData(prev => ({ ...prev, title: text }))}
+                placeholder="e.g., Barbell Back Squat"
+              />
             </View>
-          </View>
 
-          <View>
-            <Text className="text-base font-medium mb-2">Category</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {CATEGORIES.map((category) => (
-                <Button
-                  key={category}
-                  variant={formData.category === category ? 'purple' : 'outline'}
-                  onPress={() => setFormData(prev => ({ ...prev, category }))}
-                >
-                  <Text className={formData.category === category ? 'text-white' : ''}>
-                    {category}
-                  </Text>
-                </Button>
-              ))}
+            <View>
+              <Text className="text-base font-medium mb-2">Type</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {EXERCISE_TYPES.map((type) => (
+                  <Button
+                    key={type}
+                    variant={formData.type === type ? 'purple' : 'outline'}
+                    onPress={() => setFormData(prev => ({ ...prev, type }))}
+                  >
+                    <Text className={formData.type === type ? 'text-white' : ''}>
+                      {type}
+                    </Text>
+                  </Button>
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View>
-            <Text className="text-base font-medium mb-2">Equipment</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {EQUIPMENT_OPTIONS.map((eq) => (
-                <Button
-                  key={eq}
-                  variant={formData.equipment === eq ? 'purple' : 'outline'}
-                  onPress={() => setFormData(prev => ({ ...prev, equipment: eq }))}
-                >
-                  <Text className={formData.equipment === eq ? 'text-white' : ''}>
-                    {eq}
-                  </Text>
-                </Button>
-              ))}
+            <View>
+              <Text className="text-base font-medium mb-2">Category</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {CATEGORIES.map((category) => (
+                  <Button
+                    key={category}
+                    variant={formData.category === category ? 'purple' : 'outline'}
+                    onPress={() => setFormData(prev => ({ ...prev, category }))}
+                  >
+                    <Text className={formData.category === category ? 'text-white' : ''}>
+                      {category}
+                    </Text>
+                  </Button>
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View>
-            <Text className="text-base font-medium mb-2">Description</Text>
-            <Input
-              value={formData.description}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
-              placeholder="Exercise description..."
-              multiline
-              numberOfLines={4}
-            />
-          </View>
+            <View>
+              <Text className="text-base font-medium mb-2">Equipment</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {EQUIPMENT_OPTIONS.map((eq) => (
+                  <Button
+                    key={eq}
+                    variant={formData.equipment === eq ? 'purple' : 'outline'}
+                    onPress={() => setFormData(prev => ({ ...prev, equipment: eq }))}
+                  >
+                    <Text className={formData.equipment === eq ? 'text-white' : ''}>
+                      {eq}
+                    </Text>
+                  </Button>
+                ))}
+              </View>
+            </View>
 
-          <Button 
-            className="mt-4"
-            variant='purple'
-            onPress={handleSubmit}
-            disabled={!formData.title || !formData.equipment}
-          >
-            <Text className="text-white font-semibold">Create Exercise</Text>
-          </Button>
-        </View>
+            <View>
+              <Text className="text-base font-medium mb-2">Description</Text>
+              <Textarea
+                value={formData.description}
+                onChangeText={(text: string) => setFormData(prev => ({ ...prev, description: text }))}
+                placeholder="Exercise description..."
+                numberOfLines={6}
+                className="min-h-[120px]"
+                style={{ maxHeight: 200 }}
+              />
+            </View>
+
+            <Button 
+              className="mt-4"
+              variant='purple'
+              onPress={handleSubmit}
+              disabled={!formData.title || !formData.equipment}
+            >
+              <Text className="text-white font-semibold">Create Exercise</Text>
+            </Button>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SheetContent>
     </Sheet>
   );

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Alphabetical quick scroll in exercise library
+  - Dynamic letter highlighting for available sections
+  - Smooth scrolling to selected sections
+  - Sticky section headers for better navigation
 - Basic exercise template creation functionality
   - Input validation for required fields
   - Schema-compliant field constraints
@@ -18,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added proper error types and propagation
 
 ### Changed
+- Improved exercise library interface
+  - Removed "Recent Exercises" section for cleaner UI
+  - Added alphabetical section organization
+  - Enhanced keyboard handling for input fields
+  - Increased description text area size
 - Updated NewExerciseScreen with constrained inputs
   - Added dropdowns for equipment selection
   - Added movement pattern selection
@@ -27,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added proper SQLite error types
   - Enhanced transaction rollback handling
   - Added detailed debug logging
+
+### Fixed
+- Exercise deletion functionality
+- Keyboard overlap issues in exercise creation form
+- SQLite transaction handling for exercise operations
 
 ### Technical Details
 1. Database Schema Enforcement:

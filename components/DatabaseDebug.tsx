@@ -150,7 +150,7 @@ export default function DatabaseDebug() {
 
   return (
     <View className="p-4 mb-4">
-      <Card>
+      <Card className="mt-4">  {/* Add mt-4 to create spacing */}
         <CardHeader>
           <CardTitle>
             <Text className="text-xl font-semibold">Database Status</Text>

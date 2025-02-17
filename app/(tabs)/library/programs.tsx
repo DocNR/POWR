@@ -4,14 +4,20 @@ import { View, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2 } from 'lucide-react-native';
+import { AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2, Code } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
 import { SQLTransaction, SQLResultSet, SQLError } from '@/lib/db/types';
 import { schema } from '@/lib/db/schema';
+import { Platform } from 'react-native';
 
 interface TableInfo {
   name: string;
+}
+
+interface TableSchema {
+  name: string;
+  sql: string;
 }
 
 interface SchemaVersion {
@@ -41,7 +47,7 @@ export default function ProgramsScreen() {
     initialized: false,
     tables: [],
   });
-
+  const [schemas, setSchemas] = useState<TableSchema[]>([]);
   const [testResults, setTestResults] = useState<{
     success: boolean;
     message: string;
@@ -49,7 +55,19 @@ export default function ProgramsScreen() {
 
   useEffect(() => {
     checkDatabase();
+    inspectDatabase();
   }, []);
+
+  const inspectDatabase = async () => {
+    try {
+      const result = await db.getAllAsync<TableSchema>(
+        "SELECT name, sql FROM sqlite_master WHERE type='table'"
+      );
+      setSchemas(result);
+    } catch (error) {
+      console.error('Error inspecting database:', error);
+    }
+  };
 
   const checkDatabase = async () => {
     try {
@@ -99,6 +117,7 @@ export default function ProgramsScreen() {
       
       // Refresh database status
       checkDatabase();
+      inspectDatabase();
     } catch (error) {
       console.error('Error resetting database:', error);
       setTestResults({
@@ -186,6 +205,35 @@ export default function ProgramsScreen() {
       <View className="py-4 space-y-4">
         <Text className="text-lg font-semibold text-center mb-4">Database Debug Panel</Text>
         
+        {/* Schema Inspector Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex-row items-center gap-2">
+              <Code size={20} className="text-foreground" />
+              <Text className="text-lg font-semibold">Database Schema ({Platform.OS})</Text>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <View className="space-y-4">
+              {schemas.map((table) => (
+                <View key={table.name} className="space-y-2">
+                  <Text className="font-semibold">{table.name}</Text>
+                  <Text className="text-muted-foreground text-sm">
+                    {table.sql}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Button 
+              className="mt-4"
+              onPress={inspectDatabase}
+            >
+              <Text className="text-primary-foreground">Refresh Schema</Text>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Status Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex-row items-center gap-2">
@@ -215,6 +263,7 @@ export default function ProgramsScreen() {
           </CardContent>
         </Card>
 
+        {/* Operations Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex-row items-center gap-2">
