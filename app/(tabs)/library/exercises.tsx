@@ -1,90 +1,82 @@
 // app/(tabs)/library/exercises.tsx
-import React, { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, ScrollView, SectionList } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { ExerciseCard } from '@/components/exercises/ExerciseCard';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NewExerciseSheet } from '@/components/library/NewExerciseSheet';
 import { Dumbbell } from 'lucide-react-native';
-import { Exercise } from '@/types/library';
-import { generateId } from '@/utils/ids';
-import DatabaseDebug from '@/components/DatabaseDebug';  // Add this import
-
-const initialExercises: Exercise[] = [
-  {
-    id: '1',
-    title: 'Barbell Back Squat',
-    category: 'Legs',
-    equipment: 'barbell',
-    tags: ['compound', 'strength'],
-    source: 'local',
-    description: 'A compound exercise that primarily targets the quadriceps, hamstrings, and glutes.',
-  },
-  {
-    id: '2',
-    title: 'Pull-ups',
-    category: 'Pull',
-    equipment: 'bodyweight',
-    tags: ['upper-body', 'compound'],
-    source: 'local',
-    description: 'An upper body pulling exercise that targets the latissimus dorsi and biceps.',
-  },
-  {
-    id: '3',
-    title: 'Bench Press',
-    category: 'Push',
-    equipment: 'barbell',
-    tags: ['push', 'strength'],
-    source: 'nostr',
-    description: 'A compound pushing exercise that targets the chest, shoulders, and triceps.',
-  },
-];
+import { Exercise, BaseExercise } from '@/types/exercise';
+import { useSQLiteContext } from 'expo-sqlite';
+import { ExerciseService } from '@/lib/db/services/ExerciseService';
 
 export default function ExercisesScreen() {
-  const [exercises, setExercises] = useState<Exercise[]>(initialExercises);
+  const db = useSQLiteContext();
+  const exerciseService = React.useMemo(() => new ExerciseService(db), [db]);
+  
+  const [exercises, setExercises] = useState<Exercise[]>([]);
   const [showNewExercise, setShowNewExercise] = useState(false);
 
-  const handleAddExercise = (exerciseData: Omit<Exercise, 'id' | 'source'>) => {
-    const newExercise: Exercise = {
-      ...exerciseData,
-      id: generateId(),
-      source: 'local',
-    };
-    setExercises(prev => [...prev, newExercise]);
-    setShowNewExercise(false);
+  useEffect(() => {
+    loadExercises();
+  }, []);
+
+  const loadExercises = async () => {
+    try {
+      const loadedExercises = await exerciseService.getAllExercises();
+      setExercises(loadedExercises);
+    } catch (error) {
+      console.error('Error loading exercises:', error);
+    }
   };
 
-  // Get recent exercises
-  const recentExercises = exercises.slice(0, 2);
+  const handleAddExercise = async (exerciseData: BaseExercise) => {
+    try {
+      await exerciseService.createExercise({
+        ...exerciseData,
+        created_at: Date.now(),
+        source: 'local'
+      });
+      await loadExercises();
+      setShowNewExercise(false);
+    } catch (error) {
+      console.error('Error adding exercise:', error);
+    }
+  };
 
-  const handleDelete = (id: string) => {
-    setExercises(current => current.filter(ex => ex.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      await exerciseService.deleteExercise(id);
+      await loadExercises();
+    } catch (error) {
+      console.error('Error deleting exercise:', error);
+    }
   };
 
   const handleExercisePress = (exerciseId: string) => {
     console.log('Selected exercise:', exerciseId);
   };
 
+  const alphabet = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
   return (
     <View className="flex-1 bg-background">
-      {__DEV__ && <DatabaseDebug />}  {/* Only show in development */}
-      <ScrollView className="flex-1">
-        {/* Recent Exercises Section */}
-        <View className="py-4">
-          <Text className="text-lg font-semibold mb-4 px-4">Recent Exercises</Text>
-          <View className="gap-3">
-            {recentExercises.map(exercise => (
-              <ExerciseCard
-                key={exercise.id}
-                {...exercise}
-                onPress={() => handleExercisePress(exercise.id)}
-                onDelete={() => handleDelete(exercise.id)}
-              />
-            ))}
-          </View>
-        </View>
+      <View className="absolute right-0 top-0 bottom-0 w-6 z-10 justify-center bg-transparent">
+        {alphabet.map((letter) => (
+          <Text 
+            key={letter}
+            className="text-xs text-muted-foreground text-center"
+            onPress={() => {
+              // TODO: Implement scroll to section
+              console.log('Scroll to:', letter);
+            }}
+          >
+            {letter}
+          </Text>
+        ))}
+      </View>
 
-        {/* All Exercises Section */}
+      <ScrollView className="flex-1 mr-6">
         <View className="py-4">
           <Text className="text-lg font-semibold mb-4 px-4">All Exercises</Text>
           <View className="gap-3">

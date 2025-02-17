@@ -15,6 +15,15 @@ export type Equipment =
   | 'cable' 
   | 'other';
 
+  export interface Exercise extends BaseExercise {
+    source: 'local' | 'powr' | 'nostr';
+    usageCount?: number;
+    lastUsed?: Date;
+    format_json?: string;  // For database storage
+    format_units_json?: string;  // For database storage
+    nostr_event_id?: string;  // For Nostr integration
+  }
+
 // Base library content interface
 export interface LibraryContent extends SyncableContent {
   title: string;
@@ -26,7 +35,7 @@ export interface LibraryContent extends SyncableContent {
   };
   category?: ExerciseCategory;
   equipment?: Equipment;
-  source: 'local' | 'pow' | 'nostr';
+  source: 'local' | 'powr' | 'nostr';
   tags: string[];
   isPublic?: boolean;
 }

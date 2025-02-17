@@ -52,18 +52,8 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
   const handleSubmit = () => {
     if (!formData.title || !formData.equipment) return;
     
-    // Cast to any as a temporary workaround for the TypeScript error
     const exercise = {
-      // BaseExercise properties
-      title: formData.title,
-      type: formData.type,
-      category: formData.category,
-      equipment: formData.equipment,
-      description: formData.description,
-      tags: formData.tags,
-      format: formData.format,
-      format_units: formData.format_units,
-      // SyncableContent properties
+      ...formData,
       id: generateId('local'),
       created_at: Date.now(),
       availability: {

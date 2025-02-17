@@ -2,7 +2,7 @@
 /**
  * Available storage sources for content
  */
-export type StorageSource = 'local' | 'backup' | 'nostr';
+export type StorageSource = 'local' | 'powr' | 'nostr';
 
 /**
  * Nostr sync metadata

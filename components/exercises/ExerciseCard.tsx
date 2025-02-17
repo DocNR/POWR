@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Exercise } from '@/types/library';
+import { Exercise } from '@/types/exercise';
 
 interface ExerciseCardProps extends Exercise {
   onPress: () => void;
@@ -48,23 +48,17 @@ export function ExerciseCard({
   const [showSheet, setShowSheet] = React.useState(false);
   const [showDeleteAlert, setShowDeleteAlert] = React.useState(false);
 
-  const handleDeletePress = () => {
-    setShowDeleteAlert(true);
-  };
-
   const handleConfirmDelete = () => {
     onDelete(id);
     setShowDeleteAlert(false);
-  };
-
-  const handleCardPress = () => {
-    setShowSheet(true);
-    onPress();
+    if (showSheet) {
+      setShowSheet(false); // Close detail sheet if open
+    }
   };
 
   return (
     <>
-      <TouchableOpacity onPress={handleCardPress} activeOpacity={0.7}>
+      <TouchableOpacity onPress={() => setShowSheet(true)} activeOpacity={0.7}>
         <Card className="mx-4">
           <CardContent className="p-4">
             <View className="flex-row justify-between items-start">
@@ -143,8 +137,8 @@ export function ExerciseCard({
                       <Trash2 
                         size={20} 
                         color={Platform.select({
-                          ios: undefined, // Let className handle it
-                          android: '#8B5CF6' // Explicit color for Android
+                          ios: undefined,
+                          android: '#dc2626'
                         })}
                         className="text-destructive" 
                       />
@@ -175,7 +169,6 @@ export function ExerciseCard({
         </Card>
       </TouchableOpacity>
 
-      {/* Bottom sheet section */}
       <Sheet isOpen={showSheet} onClose={() => setShowSheet(false)}>
         <SheetHeader>
           <SheetTitle>

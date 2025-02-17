@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
+import { SQLTransaction, SQLResultSet, SQLError } from '@/lib/db/types';
 
 interface TableInfo {
   name: string;
@@ -13,6 +14,20 @@ interface TableInfo {
 
 interface SchemaVersion {
   version: number;
+}
+
+interface ExerciseRow {
+  id: string;
+  title: string;
+  type: string;
+  category: string;
+  equipment: string | null;
+  description: string | null;
+  created_at: number;
+  updated_at: number;
+  source: string;
+  format_json: string;
+  format_units_json: string;
 }
 
 export default function DatabaseDebug() {
@@ -52,6 +67,7 @@ export default function DatabaseDebug() {
         tables: tables.map(t => t.name),
       });
     } catch (error) {
+      console.error('Error checking database:', error);
       setDbStatus(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -78,17 +94,17 @@ export default function DatabaseDebug() {
           reps: "count" as const
         }
       };
-
+  
+      const timestamp = Date.now();
+      
+      // Insert exercise using withTransactionAsync
       await db.withTransactionAsync(async () => {
-        const timestamp = Date.now();
-        
         // Insert exercise
         await db.runAsync(
           `INSERT INTO exercises (
             id, title, type, category, equipment, description,
-            created_at, updated_at, source,
-            format_json, format_units_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            format_json, format_units_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             'test-1',
             testExercise.title,
@@ -96,14 +112,13 @@ export default function DatabaseDebug() {
             testExercise.category,
             testExercise.equipment || null,
             testExercise.description || null,
-            timestamp,
-            timestamp,
-            'local',
             JSON.stringify(testExercise.format),
-            JSON.stringify(testExercise.format_units)
+            JSON.stringify(testExercise.format_units),
+            timestamp,
+            timestamp
           ]
         );
-
+  
         // Insert tags
         for (const tag of testExercise.tags) {
           await db.runAsync(
@@ -112,18 +127,20 @@ export default function DatabaseDebug() {
           );
         }
       });
-
+  
       // Verify insert
-      const result = await db.getFirstAsync(
-        "SELECT * FROM exercises WHERE id = ?", 
+      const result = await db.getFirstAsync<ExerciseRow>(
+        "SELECT * FROM exercises WHERE id = ?",
         ['test-1']
       );
-
+  
       setTestResults({
         success: true,
         message: `Successfully inserted and verified test exercise: ${JSON.stringify(result, null, 2)}`
       });
+  
     } catch (error) {
+      console.error('Test insert error:', error);
       setTestResults({
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error occurred'
