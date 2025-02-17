@@ -2,12 +2,11 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3; // Incrementing version for new tables
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
     try {
-      // First check if the table exists
       const tableExists = await db.getFirstAsync<{ count: number }>(
         `SELECT count(*) as count FROM sqlite_master 
          WHERE type='table' AND name='schema_version'`
@@ -26,7 +25,7 @@ class Schema {
       return version?.version ?? 0;
     } catch (error) {
       console.log('[Schema] Error getting version:', error);
-      return 0; // If table doesn't exist yet
+      return 0;
     }
   }
 
@@ -43,7 +42,7 @@ class Schema {
         );
       `);
 
-      if (currentVersion === 0) {
+      if (currentVersion < 1) {
         console.log('[Schema] Performing fresh install');
         
         // Drop existing tables if they exist
@@ -79,7 +78,6 @@ class Schema {
           CREATE INDEX idx_exercise_tags ON exercise_tags(tag);
         `);
 
-        // Set initial version
         await db.runAsync(
           'INSERT INTO schema_version (version, updated_at) VALUES (?, ?)',
           [1, Date.now()]
@@ -88,7 +86,7 @@ class Schema {
         console.log('[Schema] Base tables created successfully');
       }
 
-      // Update to version 2 if needed
+      // Update to version 2 if needed - Nostr support
       if (currentVersion < 2) {
         console.log('[Schema] Upgrading to version 2');
         
@@ -116,7 +114,7 @@ class Schema {
           CREATE INDEX IF NOT EXISTS idx_event_tags ON event_tags(name, value);
         `);
 
-        // Add Nostr reference to exercises if not exists
+        // Add Nostr reference to exercises
         try {
           await db.execAsync(`ALTER TABLE exercises ADD COLUMN nostr_event_id TEXT REFERENCES nostr_events(id)`);
         } catch (e) {
@@ -129,6 +127,41 @@ class Schema {
         );
         
         console.log('[Schema] Version 2 upgrade completed');
+      }
+
+      // Update to version 3 if needed - Event Cache
+      if (currentVersion < 3) {
+        console.log('[Schema] Upgrading to version 3');
+
+        // Create cache metadata table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS cache_metadata (
+            content_id TEXT PRIMARY KEY,
+            content_type TEXT NOT NULL,
+            last_accessed INTEGER NOT NULL,
+            access_count INTEGER NOT NULL DEFAULT 0,
+            cache_priority INTEGER NOT NULL DEFAULT 0
+          );
+        `);
+
+        // Create media cache table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS exercise_media (
+            exercise_id TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            content BLOB NOT NULL,
+            thumbnail BLOB,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+          );
+        `);
+
+        await db.runAsync(
+          'INSERT INTO schema_version (version, updated_at) VALUES (?, ?)',
+          [3, Date.now()]
+        );
+        
+        console.log('[Schema] Version 3 upgrade completed');
       }
 
       // Verify final schema

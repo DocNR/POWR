@@ -43,12 +43,15 @@ export class ExerciseService {
   }
 
   // Update createExercise to handle all required fields
-  async createExercise(exercise: Omit<Exercise, 'id' | 'availability'>): Promise<string> {
+  async createExercise(
+    exercise: Omit<Exercise, 'id' | 'availability'>, 
+    inTransaction: boolean = false
+  ): Promise<string> {
     const id = generateId();
     const timestamp = Date.now();
-
+  
     try {
-      await this.db.withTransactionAsync(async () => {
+      const runQueries = async () => {
         await this.db.runAsync(
           `INSERT INTO exercises (
             id, title, type, category, equipment, description,
@@ -68,7 +71,7 @@ export class ExerciseService {
             exercise.source || 'local'
           ]
         );
-
+  
         if (exercise.tags?.length) {
           for (const tag of exercise.tags) {
             await this.db.runAsync(
@@ -77,8 +80,14 @@ export class ExerciseService {
             );
           }
         }
-      });
-
+      };
+  
+      if (inTransaction) {
+        await runQueries();
+      } else {
+        await this.db.withTransactionAsync(runQueries);
+      }
+  
       return id;
     } catch (error) {
       console.error('Error creating exercise:', error);

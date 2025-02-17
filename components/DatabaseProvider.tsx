@@ -1,7 +1,25 @@
+// components/DatabaseProvider.tsx
 import React from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
-import { SQLiteProvider, openDatabaseSync } from 'expo-sqlite';
+import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
 import { schema } from '@/lib/db/schema';
+import { ExerciseService } from '@/lib/db/services/ExerciseService';
+import { EventCache } from '@/lib/db/services/EventCache';
+import { DevSeederService } from '@/lib/db/services/DevSeederService';
+import { logDatabaseInfo } from '@/lib/db/debug';
+
+// Create context for services
+interface DatabaseServicesContextValue {
+  exerciseService: ExerciseService | null;
+  eventCache: EventCache | null;
+  devSeeder: DevSeederService | null;
+}
+
+const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue>({
+  exerciseService: null,
+  eventCache: null,
+  devSeeder: null,
+});
 
 interface DatabaseProviderProps {
   children: React.ReactNode;
@@ -10,6 +28,11 @@ interface DatabaseProviderProps {
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [isReady, setIsReady] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [services, setServices] = React.useState<DatabaseServicesContextValue>({
+    exerciseService: null,
+    eventCache: null,
+    devSeeder: null,
+  });
 
   React.useEffect(() => {
     async function initDatabase() {
@@ -19,6 +42,26 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         
         console.log('[DB] Creating schema...');
         await schema.createTables(db);
+
+        // Initialize services
+        console.log('[DB] Initializing services...');
+        const eventCache = new EventCache(db);
+        const exerciseService = new ExerciseService(db);
+        const devSeeder = new DevSeederService(db, exerciseService, eventCache);
+
+        // Set services
+        setServices({
+          exerciseService,
+          eventCache,
+          devSeeder,
+        });
+
+        // Seed development database
+        if (__DEV__) {
+          console.log('[DB] Seeding development database...');
+          await devSeeder.seedDatabase();
+          await logDatabaseInfo();
+        }
         
         console.log('[DB] Database initialized successfully');
         setIsReady(true);
@@ -51,7 +94,34 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
 
   return (
     <SQLiteProvider databaseName="powr.db">
-      {children}
+      <DatabaseServicesContext.Provider value={services}>
+        {children}
+      </DatabaseServicesContext.Provider>
     </SQLiteProvider>
   );
+}
+
+// Hooks for accessing services
+export function useExerciseService() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.exerciseService) {
+    throw new Error('Exercise service not initialized');
+  }
+  return context.exerciseService;
+}
+
+export function useEventCache() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.eventCache) {
+    throw new Error('Event cache not initialized');
+  }
+  return context.eventCache;
+}
+
+export function useDevSeeder() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.devSeeder) {
+    throw new Error('Dev seeder not initialized');
+  }
+  return context.devSeeder;
 }

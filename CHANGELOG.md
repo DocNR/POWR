@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- SQLite database implementation with development seeding
+  - Successfully integrated SQLite with proper transaction handling
+  - Added mock exercise library with 10 initial exercises
+  - Implemented development database seeder
+  - Added debug logging for database operations
+- Event caching system for future Nostr integration
+  - Added EventCache service for Nostr event handling
+  - Implemented proper transaction management
+  - Added cache metadata tracking
+- Database schema improvements
+  - Added nostr_events and event_tags tables
+  - Added cache_metadata table for performance optimization
+  - Added exercise_media table for future media support
 - Alphabetical quick scroll in exercise library
   - Dynamic letter highlighting for available sections
   - Smooth scrolling to selected sections
@@ -40,7 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Exercise deletion functionality
 - Keyboard overlap issues in exercise creation form
-- SQLite transaction handling for exercise operations
+- SQLite transaction nesting issues
+- TypeScript parameter typing in database services
+- Null value handling in database operations
+- Development seeding duplicate prevention
 
 ### Technical Details
 1. Database Schema Enforcement:
@@ -60,6 +76,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Added SQLite error type definitions
    - Improved error propagation in LibraryService
    - Added transaction rollback on constraint violations
+
+4. Database Services:
+   - Added EventCache service for Nostr events
+   - Improved ExerciseService with transaction awareness
+   - Added DevSeederService for development data
+   - Enhanced error handling and logging
 
 ### Migration Notes
 - Exercise creation now enforces schema constraints
