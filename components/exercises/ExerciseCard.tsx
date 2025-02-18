@@ -1,113 +1,82 @@
 // components/exercises/ExerciseCard.tsx
-import React from 'react';
-import { View, TouchableOpacity, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Star } from 'lucide-react-native';
-import { 
-  Sheet, 
-  SheetContent, 
-  SheetHeader, 
-  SheetTitle 
-} from '@/components/ui/sheet';
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Trash2, Star, Info } from 'lucide-react-native';
 import { Exercise } from '@/types/exercise';
 
 interface ExerciseCardProps extends Exercise {
   onPress: () => void;
-  onDelete: (id: string) => void;
+  onDelete: () => void;
   onFavorite?: () => void;
 }
 
 export function ExerciseCard({
   id,
   title,
+  type,
   category,
   equipment,
   description,
   tags = [],
-  source = 'local',
-  usageCount,
-  lastUsed,
+  source,
+  instructions = [],
   onPress,
   onDelete,
   onFavorite
 }: ExerciseCardProps) {
-  const [showSheet, setShowSheet] = React.useState(false);
-  const [showDeleteAlert, setShowDeleteAlert] = React.useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
 
-  const handleConfirmDelete = () => {
-    onDelete(id);
+  const handleDelete = () => {
+    onDelete();
     setShowDeleteAlert(false);
-    if (showSheet) {
-      setShowSheet(false); // Close detail sheet if open
-    }
   };
 
   return (
     <>
-      <TouchableOpacity onPress={() => setShowSheet(true)} activeOpacity={0.7}>
-        <Card className="mx-4">
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        <Card>
           <CardContent className="p-4">
             <View className="flex-row justify-between items-start">
               <View className="flex-1">
-                <View className="flex-row items-center gap-2 mb-1">
-                  <Text className="text-lg font-semibold text-card-foreground">
-                    {title}
-                  </Text>
-                  <Badge 
-                    variant={source === 'local' ? 'outline' : 'secondary'}
-                    className="text-xs"
-                  >
+                {/* Title and Source Badge */}
+                <View className="flex-row items-center gap-2 mb-2">
+                  <Text className="text-lg font-semibold text-foreground">{title}</Text>
+                  <Badge variant={source === 'local' ? 'outline' : 'secondary'} className="capitalize">
                     <Text>{source}</Text>
                   </Badge>
                 </View>
-                
-                <Text className="text-sm text-muted-foreground">
-                  {category}
-                </Text>
-                {equipment && (
-                  <Text className="text-sm text-muted-foreground mt-0.5">
-                    {equipment}
-                  </Text>
-                )}
+
+                {/* Category & Equipment */}
+                <View className="flex-row flex-wrap gap-2 mb-2">
+                  <Badge variant="outline">
+                    <Text>{category}</Text>
+                  </Badge>
+                  {equipment && (
+                    <Badge variant="outline">
+                      <Text>{equipment}</Text>
+                    </Badge>
+                  )}
+                </View>
+
+                {/* Description Preview */}
                 {description && (
-                  <Text className="text-sm text-muted-foreground mt-2 native:pr-12">
+                  <Text className="text-sm text-muted-foreground mb-2 native:pr-12" numberOfLines={2}>
                     {description}
                   </Text>
                 )}
-                
-                {(usageCount || lastUsed) && (
-                  <View className="flex-row gap-4 mt-2">
-                    {usageCount && (
-                      <Text className="text-xs text-muted-foreground">
-                        Used {usageCount} times
-                      </Text>
-                    )}
-                    {lastUsed && (
-                      <Text className="text-xs text-muted-foreground">
-                        Last used: {lastUsed.toLocaleDateString()}
-                      </Text>
-                    )}
-                  </View>
-                )}
 
+                {/* Tags */}
                 {tags.length > 0 && (
-                  <View className="flex-row flex-wrap gap-2 mt-2">
+                  <View className="flex-row flex-wrap gap-1">
                     {tags.map(tag => (
-                      <Badge key={tag} variant="outline" className="text-xs">
+                      <Badge key={tag} variant="secondary" className="text-xs">
                         <Text>{tag}</Text>
                       </Badge>
                     ))}
@@ -115,52 +84,46 @@ export function ExerciseCard({
                 )}
               </View>
 
-              <View className="flex-row gap-1 native:absolute native:right-0 native:top-0 native:p-2">
+              {/* Action Buttons */}
+              <View className="flex-row gap-1">
                 {onFavorite && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onPress={onFavorite}
-                    className="native:h-10 native:w-10"
-                  >
-                    <Star className="text-muted-foreground" size={20} />
+                  <Button variant="ghost" size="icon" onPress={onFavorite} className="h-9 w-9">
+                    <Star className="text-muted-foreground" size={18} />
                   </Button>
                 )}
-                
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onPress={() => setShowDetails(true)}
+                  className="h-9 w-9"
+                >
+                  <Info className="text-muted-foreground" size={18} />
+                </Button>
                 <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
                   <AlertDialogTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      className="native:h-10 native:w-10 native:bg-muted/50 items-center justify-center"
-                    >
-                      <Trash2 
-                        size={20} 
-                        color={Platform.select({
-                          ios: undefined,
-                          android: '#dc2626'
-                        })}
-                        className="text-destructive" 
-                      />
+                    <Button variant="ghost" size="icon" className="h-9 w-9">
+                      <Trash2 className="text-destructive" size={18} />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        <Text>Delete Exercise</Text>
-                      </AlertDialogTitle>
+                      <AlertDialogTitle>Delete Exercise</AlertDialogTitle>
                       <AlertDialogDescription>
-                        <Text>Are you sure you want to delete {title}? This action cannot be undone.</Text>
+                        Are you sure you want to delete {title}? This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>
-                        <Text>Cancel</Text>
+                    <View className="flex-row justify-end gap-3 mt-4">
+                      <AlertDialogCancel asChild>
+                        <Button variant="outline">
+                          <Text>Cancel</Text>
+                        </Button>
                       </AlertDialogCancel>
-                      <AlertDialogAction onPress={handleConfirmDelete}>
-                        <Text>Delete</Text>
+                      <AlertDialogAction asChild>
+                        <Button variant="destructive" onPress={handleDelete}>
+                          <Text className="text-white">Delete</Text>
+                        </Button>
                       </AlertDialogAction>
-                    </AlertDialogFooter>
+                    </View>
                   </AlertDialogContent>
                 </AlertDialog>
               </View>
@@ -169,43 +132,43 @@ export function ExerciseCard({
         </Card>
       </TouchableOpacity>
 
-      <Sheet isOpen={showSheet} onClose={() => setShowSheet(false)}>
+      {/* Details Sheet */}
+      <Sheet isOpen={showDetails} onClose={() => setShowDetails(false)}>
         <SheetHeader>
-          <SheetTitle>
-            <Text className="text-xl font-bold">{title}</Text>
-          </SheetTitle>
+          <SheetTitle>{title}</SheetTitle>
         </SheetHeader>
         <SheetContent>
           <View className="gap-6">
             {description && (
               <View>
                 <Text className="text-base font-semibold mb-2">Description</Text>
-                <Text className="text-base leading-relaxed">{description}</Text>
+                <Text className="text-base">{description}</Text>
               </View>
             )}
+
             <View>
               <Text className="text-base font-semibold mb-2">Details</Text>
               <View className="gap-2">
+                <Text className="text-base">Type: {type}</Text>
                 <Text className="text-base">Category: {category}</Text>
                 {equipment && <Text className="text-base">Equipment: {equipment}</Text>}
                 <Text className="text-base">Source: {source}</Text>
               </View>
             </View>
-            {(usageCount || lastUsed) && (
+
+            {instructions.length > 0 && (
               <View>
-                <Text className="text-base font-semibold mb-2">Statistics</Text>
+                <Text className="text-base font-semibold mb-2">Instructions</Text>
                 <View className="gap-2">
-                  {usageCount && (
-                    <Text className="text-base">Used {usageCount} times</Text>
-                  )}
-                  {lastUsed && (
-                    <Text className="text-base">
-                      Last used: {lastUsed.toLocaleDateString()}
+                  {instructions.map((instruction, index) => (
+                    <Text key={index} className="text-base">
+                      {index + 1}. {instruction}
                     </Text>
-                  )}
+                  ))}
                 </View>
               </View>
             )}
+
             {tags.length > 0 && (
               <View>
                 <Text className="text-base font-semibold mb-2">Tags</Text>

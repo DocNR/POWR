@@ -5,7 +5,7 @@ import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { BaseExercise, ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
+import { BaseExercise, ExerciseType, ExerciseCategory, Equipment, Exercise } from '@/types/exercise';
 import { StorageSource } from '@/types/shared';
 import { Textarea } from '@/components/ui/textarea';
 import { generateId } from '@/utils/ids';
@@ -13,7 +13,7 @@ import { generateId } from '@/utils/ids';
 interface NewExerciseSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (exercise: BaseExercise) => void;
+  onSubmit: (exercise: Omit<Exercise, 'id'>) => void; // Changed from BaseExercise
 }
 
 const EXERCISE_TYPES: ExerciseType[] = ['strength', 'cardio', 'bodyweight'];
@@ -53,16 +53,27 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
   const handleSubmit = () => {
     if (!formData.title || !formData.equipment) return;
     
-    const exercise = {
-      ...formData,
-      id: generateId('local'),
+    // Transform the form data into an Exercise type
+    const exerciseData: Omit<Exercise, 'id'> = {
+      title: formData.title,
+      type: formData.type,
+      category: formData.category,
+      equipment: formData.equipment,
+      description: formData.description,
+      tags: formData.tags,
+      format: formData.format,
+      format_units: formData.format_units,
+      // Add required Exercise fields
+      source: 'local',
       created_at: Date.now(),
       availability: {
-        source: ['local' as StorageSource]
-      }
-    } as BaseExercise;
-
-    onSubmit(exercise);
+        source: ['local']
+      },
+      format_json: JSON.stringify(formData.format),
+      format_units_json: JSON.stringify(formData.format_units)
+    };
+  
+    onSubmit(exerciseData);
     onClose();
     
     // Reset form

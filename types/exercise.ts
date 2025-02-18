@@ -1,7 +1,7 @@
 // types/exercise.ts - handles everything about individual exercises
 /* import { NostrEventKind } from './events';
  */
-import { SyncableContent } from './shared';
+import { SyncableContent, StorageSource } from './shared';
 
 // Exercise classification types
 export type ExerciseType = 'strength' | 'cardio' | 'bodyweight';
