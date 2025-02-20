@@ -18,7 +18,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Template } from '@/types/library';
+import { Template, TemplateExerciseDisplay } from '@/types/templates';
 
 interface TemplateCardProps {
   template: Template;
@@ -47,9 +47,11 @@ export function TemplateCard({
     description,
     tags = [],
     source,
-    lastUsed,
+    metadata,
     isFavorite
   } = template;
+
+  const lastUsed = metadata?.lastUsed ? new Date(metadata.lastUsed) : undefined;
 
   const handleConfirmDelete = () => {
     onDelete(id);
@@ -95,7 +97,7 @@ export function TemplateCard({
                       Exercises:
                     </Text>
                     <View className="gap-1">
-                      {exercises.slice(0, 3).map((exercise, index) => (
+                      {exercises.slice(0, 3).map((exercise: TemplateExerciseDisplay, index: number) => (
                         <Text key={index} className="text-sm text-muted-foreground">
                           • {exercise.title} ({exercise.targetSets}×{exercise.targetReps})
                         </Text>
@@ -117,7 +119,7 @@ export function TemplateCard({
 
                 {tags.length > 0 && (
                   <View className="flex-row flex-wrap gap-2 mt-2">
-                    {tags.map(tag => (
+                    {tags.map((tag: string) => (
                       <Badge key={tag} variant="outline" className="text-xs">
                         <Text>{tag}</Text>
                       </Badge>
@@ -216,12 +218,15 @@ export function TemplateCard({
                 <Text className="text-base">Type: {type}</Text>
                 <Text className="text-base">Category: {category}</Text>
                 <Text className="text-base">Source: {source}</Text>
+                {metadata?.useCount && (
+                  <Text className="text-base">Times Used: {metadata.useCount}</Text>
+                )}
               </View>
             </View>
             <View>
               <Text className="text-base font-semibold mb-2">Exercises</Text>
               <View className="gap-2">
-                {exercises.map((exercise, index) => (
+                {exercises.map((exercise: TemplateExerciseDisplay, index: number) => (
                   <Text key={index} className="text-base">
                     {exercise.title} ({exercise.targetSets}×{exercise.targetReps})
                   </Text>
@@ -232,7 +237,7 @@ export function TemplateCard({
               <View>
                 <Text className="text-base font-semibold mb-2">Tags</Text>
                 <View className="flex-row flex-wrap gap-2">
-                  {tags.map(tag => (
+                  {tags.map((tag: string) => (
                     <Badge key={tag} variant="secondary">
                       <Text>{tag}</Text>
                     </Badge>

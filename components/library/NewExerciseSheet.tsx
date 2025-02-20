@@ -1,19 +1,25 @@
 // components/library/NewExerciseSheet.tsx
-import React from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { BaseExercise, ExerciseType, ExerciseCategory, Equipment, Exercise } from '@/types/exercise';
-import { StorageSource } from '@/types/shared';
-import { Textarea } from '@/components/ui/textarea';
 import { generateId } from '@/utils/ids';
+import { 
+  BaseExercise, 
+  ExerciseType, 
+  ExerciseCategory, 
+  Equipment,
+  ExerciseFormat,
+  ExerciseFormatUnits
+} from '@/types/exercise';
+import { StorageSource } from '@/types/shared';
 
 interface NewExerciseSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (exercise: Omit<Exercise, 'id'>) => void; // Changed from BaseExercise
+  onSubmit: (exercise: BaseExercise) => void;
 }
 
 const EXERCISE_TYPES: ExerciseType[] = ['strength', 'cardio', 'bodyweight'];
@@ -29,7 +35,7 @@ const EQUIPMENT_OPTIONS: Equipment[] = [
 ];
 
 export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheetProps) {
-  const [formData, setFormData] = React.useState({
+  const [formData, setFormData] = useState({
     title: '',
     type: 'strength' as ExerciseType,
     category: 'Push' as ExerciseCategory,
@@ -41,40 +47,39 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
       reps: true,
       rpe: true,
       set_type: true
-    },
+    } as ExerciseFormat,
     format_units: {
-      weight: 'kg' as const,
-      reps: 'count' as const,
-      rpe: '0-10' as const,
-      set_type: 'warmup|normal|drop|failure' as const
-    }
+      weight: 'kg',
+      reps: 'count',
+      rpe: '0-10',
+      set_type: 'warmup|normal|drop|failure'
+    } as ExerciseFormatUnits
   });
 
   const handleSubmit = () => {
     if (!formData.title || !formData.equipment) return;
     
-    // Transform the form data into an Exercise type
-    const exerciseData: Omit<Exercise, 'id'> = {
+    const timestamp = Date.now();
+    
+    // Create BaseExercise
+    const exercise: BaseExercise = {
+      id: generateId(),
       title: formData.title,
       type: formData.type,
       category: formData.category,
       equipment: formData.equipment,
       description: formData.description,
-      tags: formData.tags,
+      tags: formData.tags.length ? formData.tags : [formData.category.toLowerCase()],
       format: formData.format,
       format_units: formData.format_units,
-      // Add required Exercise fields
-      source: 'local',
-      created_at: Date.now(),
+      created_at: timestamp,
       availability: {
-        source: ['local']
-      },
-      format_json: JSON.stringify(formData.format),
-      format_units_json: JSON.stringify(formData.format_units)
+        source: ['local' as StorageSource],
+        lastSynced: undefined
+      }
     };
-  
-    onSubmit(exerciseData);
-    onClose();
+
+    onSubmit(exercise);
     
     // Reset form
     setFormData({
@@ -97,6 +102,8 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
         set_type: 'warmup|normal|drop|failure'
       }
     });
+    
+    onClose();
   };
 
   return (
@@ -105,17 +112,15 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
         <SheetTitle>New Exercise</SheetTitle>
       </SheetHeader>
       <SheetContent>
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
-        >
-          <ScrollView className="gap-4">
+        <ScrollView className="flex-1">
+          <View className="gap-4 py-4">
             <View>
               <Text className="text-base font-medium mb-2">Exercise Name</Text>
               <Input
                 value={formData.title}
-                onChangeText={(text: string) => setFormData(prev => ({ ...prev, title: text }))}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
                 placeholder="e.g., Barbell Back Squat"
+                className="text-foreground"
               />
             </View>
 
@@ -125,10 +130,10 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
                 {EXERCISE_TYPES.map((type) => (
                   <Button
                     key={type}
-                    variant={formData.type === type ? 'purple' : 'outline'}
+                    variant={formData.type === type ? 'default' : 'outline'}
                     onPress={() => setFormData(prev => ({ ...prev, type }))}
                   >
-                    <Text className={formData.type === type ? 'text-white' : ''}>
+                    <Text className={formData.type === type ? 'text-primary-foreground' : ''}>
                       {type}
                     </Text>
                   </Button>
@@ -142,10 +147,10 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
                 {CATEGORIES.map((category) => (
                   <Button
                     key={category}
-                    variant={formData.category === category ? 'purple' : 'outline'}
+                    variant={formData.category === category ? 'default' : 'outline'}
                     onPress={() => setFormData(prev => ({ ...prev, category }))}
                   >
-                    <Text className={formData.category === category ? 'text-white' : ''}>
+                    <Text className={formData.category === category ? 'text-primary-foreground' : ''}>
                       {category}
                     </Text>
                   </Button>
@@ -159,10 +164,10 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
                 {EQUIPMENT_OPTIONS.map((eq) => (
                   <Button
                     key={eq}
-                    variant={formData.equipment === eq ? 'purple' : 'outline'}
+                    variant={formData.equipment === eq ? 'default' : 'outline'}
                     onPress={() => setFormData(prev => ({ ...prev, equipment: eq }))}
                   >
-                    <Text className={formData.equipment === eq ? 'text-white' : ''}>
+                    <Text className={formData.equipment === eq ? 'text-primary-foreground' : ''}>
                       {eq}
                     </Text>
                   </Button>
@@ -172,26 +177,25 @@ export function NewExerciseSheet({ isOpen, onClose, onSubmit }: NewExerciseSheet
 
             <View>
               <Text className="text-base font-medium mb-2">Description</Text>
-              <Textarea
+              <Input
                 value={formData.description}
-                onChangeText={(text: string) => setFormData(prev => ({ ...prev, description: text }))}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
                 placeholder="Exercise description..."
-                numberOfLines={6}
-                className="min-h-[120px]"
-                style={{ maxHeight: 200 }}
+                multiline
+                numberOfLines={4}
               />
             </View>
 
             <Button 
               className="mt-4"
-              variant='purple'
+              variant='default'
               onPress={handleSubmit}
               disabled={!formData.title || !formData.equipment}
             >
-              <Text className="text-white font-semibold">Create Exercise</Text>
+              <Text className="text-primary-foreground font-semibold">Create Exercise</Text>
             </Button>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          </View>
+        </ScrollView>
       </SheetContent>
     </Sheet>
   );

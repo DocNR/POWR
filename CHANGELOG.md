@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Detailed SQLite error logging
   - Improved transaction management
   - Added proper error types and propagation
+- Template management features
+  - Basic template creation interface
+  - Favorite template functionality
+  - Template categories and filtering
+  - Quick-start template actions
 
 ### Changed
 - Improved exercise library interface
@@ -49,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added proper SQLite error types
   - Enhanced transaction rollback handling
   - Added detailed debug logging
+- Updated type system for better data handling
+  - Consolidated exercise and template types
+  - Added proper type guards
+  - Improved type safety in components
+- Enhanced template display UI
+  - Added category pills for filtering
+  - Improved spacing and layout
+  - Better visual hierarchy for favorites
 
 ### Fixed
 - Exercise deletion functionality
@@ -57,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TypeScript parameter typing in database services
 - Null value handling in database operations
 - Development seeding duplicate prevention
+- Template category spacing issues
+- Exercise list rendering on iOS
+- Database reset and reseeding behavior
 
 ### Technical Details
 1. Database Schema Enforcement:
@@ -87,6 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exercise creation now enforces schema constraints
 - Input validation prevents invalid data entry
 - Enhanced error messages provide better debugging information
+- Template management requires updated type definitions
 
 ## [0.1.0] - 2024-02-09
 

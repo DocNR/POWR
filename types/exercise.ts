@@ -1,11 +1,14 @@
-// types/exercise.ts - handles everything about individual exercises
-/* import { NostrEventKind } from './events';
- */
-import { SyncableContent, StorageSource } from './shared';
+// types/exercise.ts
+import { SyncableContent } from './shared';
 
-// Exercise classification types
+/**
+ * Core Exercise Classifications
+ * These types define the fundamental ways we categorize exercises
+ */
 export type ExerciseType = 'strength' | 'cardio' | 'bodyweight';
+
 export type ExerciseCategory = 'Push' | 'Pull' | 'Legs' | 'Core';
+
 export type Equipment = 
   | 'bodyweight' 
   | 'barbell' 
@@ -15,32 +18,28 @@ export type Equipment =
   | 'cable' 
   | 'other';
 
-  export interface Exercise extends BaseExercise {
-    source: 'local' | 'powr' | 'nostr';
-    usageCount?: number;
-    lastUsed?: Date;
-    format_json?: string;  // For database storage
-    format_units_json?: string;  // For database storage
-    nostr_event_id?: string;  // For Nostr integration
-  }
-
-// Base library content interface
-export interface LibraryContent extends SyncableContent {
-  title: string;
-  type: 'exercise' | 'workout' | 'program';
-  description?: string;
-  author?: {
-    name: string;
-    pubkey?: string;
-  };
-  category?: ExerciseCategory;
-  equipment?: Equipment;
-  source: 'local' | 'powr' | 'nostr';
-  tags: string[];
-  isPublic?: boolean;
+/**
+ * Exercise Format Configuration
+ * Defines how an exercise should be tracked and measured
+ */
+export interface ExerciseFormat {
+  weight?: boolean;
+  reps?: boolean;
+  rpe?: boolean;
+  set_type?: boolean;
 }
 
-// Basic exercise definition
+export interface ExerciseFormatUnits {
+  weight?: 'kg' | 'lbs';
+  reps?: 'count';
+  rpe?: '0-10';
+  set_type?: 'warmup|normal|drop|failure';
+}
+
+/**
+ * Base Exercise Definition
+ * Contains the core properties that define an exercise
+ */
 export interface BaseExercise extends SyncableContent {
   title: string;
   type: ExerciseType;
@@ -49,21 +48,24 @@ export interface BaseExercise extends SyncableContent {
   description?: string;
   instructions?: string[];
   tags: string[];
-  format?: {
-    weight?: boolean;
-    reps?: boolean;
-    rpe?: boolean;
-    set_type?: boolean;
-  };
-  format_units?: {
-    weight?: 'kg' | 'lbs';
-    reps?: 'count';
-    rpe?: '0-10';
-    set_type?: 'warmup|normal|drop|failure';
-  };
+  format?: ExerciseFormat;
+  format_units?: ExerciseFormatUnits;
 }
 
-// Set types and formats
+/**
+ * Exercise UI Display
+ * Extends BaseExercise with UI-specific properties
+ */
+export interface ExerciseDisplay extends BaseExercise {
+  source: 'local' | 'powr' | 'nostr';
+  usageCount?: number;
+  lastUsed?: Date;
+  isFavorite?: boolean;
+}
+
+/**
+ * Set Types and Tracking
+ */
 export type SetType = 'warmup' | 'normal' | 'drop' | 'failure';
 
 export interface WorkoutSet {
@@ -77,7 +79,9 @@ export interface WorkoutSet {
   timestamp?: number;
 }
 
-// Exercise with workout-specific data
+/**
+ * Exercise with active workout data
+ */
 export interface WorkoutExercise extends BaseExercise {
   sets: WorkoutSet[];
   totalWeight?: number;
@@ -87,7 +91,9 @@ export interface WorkoutExercise extends BaseExercise {
   targetReps?: number;
 }
 
-// Exercise template specific types
+/**
+ * Exercise Template with recommendations and progression
+ */
 export interface ExerciseTemplate extends BaseExercise {
   defaultSets?: {
     type: SetType;
@@ -110,7 +116,9 @@ export interface ExerciseTemplate extends BaseExercise {
   };
 }
 
-// Exercise history and progress tracking
+/**
+ * Exercise History Tracking
+ */
 export interface ExerciseHistory {
   exerciseId: string;
   entries: Array<{
@@ -146,4 +154,19 @@ export function isWorkoutExercise(exercise: any): exercise is WorkoutExercise {
 
 export function isExerciseTemplate(exercise: any): exercise is ExerciseTemplate {
   return exercise && 'recommendations' in exercise;
+}
+
+/**
+ * Converts a BaseExercise to ExerciseDisplay
+ */
+export function toExerciseDisplay(exercise: BaseExercise): ExerciseDisplay {
+  return {
+    ...exercise, // Include all BaseExercise properties
+    source: exercise.availability.source.includes('nostr')
+      ? 'nostr'
+      : exercise.availability.source.includes('powr')
+        ? 'powr'
+        : 'local',
+    isFavorite: false
+  };
 }

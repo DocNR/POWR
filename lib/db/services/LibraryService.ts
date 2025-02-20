@@ -1,7 +1,7 @@
 // lib/db/services/LibraryService.ts
 import { SQLiteDatabase } from 'expo-sqlite';
 import { DbService } from '../db-service';
-import { BaseExercise, Exercise } from '@/types/exercise';
+import { BaseExercise, ExerciseDisplay } from '@/types/exercise';
 import { StorageSource } from '@/types/shared';
 import { generateId } from '@/utils/ids';
 
@@ -13,7 +13,7 @@ export class LibraryService {
     this.db = new DbService(database);
   }
 
-  async getExercises(): Promise<Exercise[]> {
+  async getExercises(): Promise<ExerciseDisplay[]> {
     try {
       const result = await this.db.getAllAsync<{
         id: string;
@@ -41,19 +41,19 @@ export class LibraryService {
       return result.map(row => ({
         id: row.id,
         title: row.title,
-        type: row.type as Exercise['type'],
-        category: row.category as Exercise['category'],
-        equipment: row.equipment as Exercise['equipment'] || undefined,
+        type: row.type as ExerciseDisplay['type'],
+        category: row.category as ExerciseDisplay['category'],
+        equipment: row.equipment as ExerciseDisplay['equipment'] || undefined,
         description: row.description || undefined,
         instructions: row.instructions ? row.instructions.split(',') : undefined,
         tags: row.tags ? row.tags.split(',') : [],
         created_at: row.created_at,
-        source: row.source as Exercise['source'],
+        source: row.source as ExerciseDisplay['source'],
         availability: {
           source: [row.source as StorageSource]
         },
-        format_json: row.format_json || undefined,
-        format_units_json: row.format_units_json || undefined
+        format: row.format_json ? JSON.parse(row.format_json) : undefined,
+        format_units: row.format_units_json ? JSON.parse(row.format_units_json) : undefined
       }));
     } catch (error) {
       console.error('Error getting exercises:', error);
@@ -61,7 +61,7 @@ export class LibraryService {
     }
   }
 
-  async addExercise(exercise: Omit<Exercise, 'id'>): Promise<string> {
+  async addExercise(exercise: Omit<ExerciseDisplay, 'id'>): Promise<string> {
     try {
       const id = generateId();      
       const timestamp = Date.now(); // Use same timestamp for both created_at and updated_at initially
@@ -83,8 +83,8 @@ export class LibraryService {
             timestamp, // created_at
             timestamp, // updated_at
             exercise.source,
-            exercise.format_json || null,
-            exercise.format_units_json || null
+            exercise.format ? JSON.stringify(exercise.format) : null,
+            exercise.format_units ? JSON.stringify(exercise.format_units) : null
           ]
         );
 

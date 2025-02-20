@@ -1,7 +1,14 @@
 // lib/hooks/useExercises.ts
 import React, { useState, useCallback, useEffect } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Exercise, ExerciseCategory, Equipment, ExerciseType } from '@/types/exercise';
+import { 
+  ExerciseDisplay, 
+  ExerciseCategory, 
+  Equipment, 
+  ExerciseType, 
+  BaseExercise,
+  toExerciseDisplay 
+} from '@/types/exercise';
 import { LibraryService } from '../db/services/LibraryService';
 
 // Filtering types
@@ -10,29 +17,29 @@ export interface ExerciseFilters {
   category?: ExerciseCategory[];
   equipment?: Equipment[];
   tags?: string[];
-  source?: Exercise['source'][];
+  source?: ('local' | 'powr' | 'nostr')[];
   searchQuery?: string;
 }
 
 interface ExerciseStats {
   totalCount: number;
-  byCategory: Record<ExerciseCategory, number>;
-  byType: Record<ExerciseType, number>;
-  byEquipment: Record<Equipment, number>;
+  byCategory: Partial<Record<ExerciseCategory, number>>;
+  byType: Partial<Record<ExerciseType, number>>;
+  byEquipment: Partial<Record<Equipment, number>>;
 }
 
 const initialStats: ExerciseStats = {
   totalCount: 0,
-  byCategory: {} as Record<ExerciseCategory, number>,
-  byType: {} as Record<ExerciseType, number>,
-  byEquipment: {} as Record<Equipment, number>,
+  byCategory: {},
+  byType: {},
+  byEquipment: {},
 };
 
 export function useExercises() {
   const db = useSQLiteContext();
   const libraryService = React.useMemo(() => new LibraryService(db), [db]);
   
-  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [exercises, setExercises] = useState<ExerciseDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [filters, setFilters] = useState<ExerciseFilters>({});
@@ -46,19 +53,31 @@ export function useExercises() {
       setExercises(allExercises);
       
       // Calculate stats
-      const newStats = allExercises.reduce((acc: ExerciseStats, exercise: Exercise) => {
+      const newStats = allExercises.reduce((acc: ExerciseStats, exercise: ExerciseDisplay) => {
+        // Increment total count
         acc.totalCount++;
-        acc.byCategory[exercise.category] = (acc.byCategory[exercise.category] || 0) + 1;
-        acc.byType[exercise.type] = (acc.byType[exercise.type] || 0) + 1;
+        
+        // Update category stats with type checking
+        if (exercise.category) {
+          acc.byCategory[exercise.category] = (acc.byCategory[exercise.category] || 0) + 1;
+        }
+        
+        // Update type stats with type checking
+        if (exercise.type) {
+          acc.byType[exercise.type] = (acc.byType[exercise.type] || 0) + 1;
+        }
+        
+        // Update equipment stats with type checking
         if (exercise.equipment) {
           acc.byEquipment[exercise.equipment] = (acc.byEquipment[exercise.equipment] || 0) + 1;
         }
+        
         return acc;
       }, {
         totalCount: 0,
-        byCategory: {} as Record<ExerciseCategory, number>,
-        byType: {} as Record<ExerciseType, number>,
-        byEquipment: {} as Record<Equipment, number>,
+        byCategory: {},
+        byType: {},
+        byEquipment: {},
       });
       
       setStats(newStats);
@@ -89,7 +108,7 @@ export function useExercises() {
       }
       
       // Tags filter
-      if (filters.tags?.length && !filters.tags.some(tag => exercise.tags.includes(tag))) {
+      if (filters.tags?.length && !exercise.tags.some((tag: string) => filters.tags?.includes(tag))) {
         return false;
       }
       
@@ -103,8 +122,8 @@ export function useExercises() {
         const query = filters.searchQuery.toLowerCase();
         return (
           exercise.title.toLowerCase().includes(query) ||
-          exercise.description?.toLowerCase().includes(query) ||
-          exercise.tags.some(tag => tag.toLowerCase().includes(query))
+          (exercise.description?.toLowerCase() || '').includes(query) ||
+          exercise.tags.some((tag: string) => tag.toLowerCase().includes(query))
         );
       }
       
@@ -113,9 +132,16 @@ export function useExercises() {
   }, [exercises, filters]);
 
   // Create a new exercise
-  const createExercise = useCallback(async (exercise: Omit<Exercise, 'id'>) => {
+  const createExercise = useCallback(async (exercise: Omit<BaseExercise, 'id'>) => {
     try {
-      const id = await libraryService.addExercise(exercise);
+      // Create a display version of the exercise with source
+      const displayExercise: Omit<ExerciseDisplay, 'id'> = {
+        ...exercise,
+        source: 'local', // Set default source for new exercises
+        isFavorite: false
+      };
+
+      const id = await libraryService.addExercise(displayExercise);
       await loadExercises(); // Reload all exercises to update stats
       return id;
     } catch (err) {

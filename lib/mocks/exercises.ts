@@ -1,6 +1,12 @@
 // lib/mocks/exercises.ts
 import { NostrEvent } from '@/types/nostr';
-import { Exercise, ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
+import { 
+  ExerciseDisplay, 
+  ExerciseType, 
+  ExerciseCategory, 
+  Equipment,
+  BaseExercise
+} from '@/types/exercise';
 import { generateId } from '@/utils/ids';
 
 // Mock exercise definitions that will become our initial POWR library
@@ -215,7 +221,7 @@ export const mockExerciseEvents: NostrEvent[] = [
   }
 ];
 
-function getTagValue(tags: string[][], name: string): string | undefined {
+  function getTagValue(tags: string[][], name: string): string | undefined {
     const tag = tags.find((tag: string[]) => tag[0] === name);
     return tag ? tag[1] : undefined;
   }
@@ -226,8 +232,8 @@ function getTagValue(tags: string[][], name: string): string | undefined {
       .map((tag: string[]) => tag[1]);
   }
   
-  export function convertNostrToExercise(event: NostrEvent): Exercise {
-    return {
+  export function convertNostrToExercise(event: NostrEvent): ExerciseDisplay {
+    const baseExercise: BaseExercise = {
       id: event.id || '',
       title: getTagValue(event.tags, 'title') || '',
       type: getTagValue(event.tags, 'equipment') === 'bodyweight' 
@@ -252,26 +258,33 @@ function getTagValue(tags: string[][], name: string): string | undefined {
       availability: {
         source: ['powr']
       },
-      created_at: event.created_at * 1000,
-      source: 'powr'
+      created_at: event.created_at * 1000
+    };
+  
+    // Convert to ExerciseDisplay
+    return {
+      ...baseExercise,
+      source: 'powr',
+      isFavorite: false,
+      usageCount: 0
     };
   }
-
-// Export pre-converted exercises for easy testing
-export const mockExercises = mockExerciseEvents.map(convertNostrToExercise);
-
-// Helper to seed the database
-export async function seedExercises(exerciseService: any) {
-  try {
-    const existingCount = (await exerciseService.getAllExercises()).length;
-    if (existingCount === 0) {
-      console.log('Seeding database with mock exercises...');
-      for (const exercise of mockExercises) {
-        await exerciseService.createExercise(exercise);
+  
+  // Export pre-converted exercises for easy testing
+  export const mockExercises = mockExerciseEvents.map(convertNostrToExercise);
+  
+  // Helper to seed the database
+  export async function seedExercises(exerciseService: any) {
+    try {
+      const existingCount = (await exerciseService.getAllExercises()).length;
+      if (existingCount === 0) {
+        console.log('Seeding database with mock exercises...');
+        for (const exercise of mockExercises) {
+          await exerciseService.createExercise(exercise);
+        }
+        console.log('Successfully seeded database');
       }
-      console.log('Successfully seeded database');
+    } catch (error) {
+      console.error('Error seeding database:', error);
     }
-  } catch (error) {
-    console.error('Error seeding database:', error);
   }
-}

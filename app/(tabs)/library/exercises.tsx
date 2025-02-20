@@ -1,129 +1,78 @@
 // app/(tabs)/library/exercises.tsx
-import React, { useRef, useState, useCallback } from 'react';
-import { View, SectionList, TouchableOpacity, ViewToken } from 'react-native';
+import React, { useState } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
-import { ExerciseCard } from '@/components/exercises/ExerciseCard';
+import { Input } from '@/components/ui/input';
+import { Search, Dumbbell } from 'lucide-react-native';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NewExerciseSheet } from '@/components/library/NewExerciseSheet';
-import { Dumbbell } from 'lucide-react-native';
-import { BaseExercise, Exercise } from '@/types/exercise';
+import { SimplifiedExerciseList } from '@/components/exercises/SimplifiedExerciseList';
+import { ExerciseDetails } from '@/components/exercises/ExerciseDetails';
+import { ExerciseDisplay, ExerciseType, BaseExercise } from '@/types/exercise';
 import { useExercises } from '@/lib/hooks/useExercises';
 
 export default function ExercisesScreen() {
-  const sectionListRef = useRef<SectionList>(null);
   const [showNewExercise, setShowNewExercise] = useState(false);
-  const [currentSection, setCurrentSection] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<ExerciseType | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<ExerciseDisplay | null>(null);
 
   const {
     exercises,
     loading,
     error,
-    stats,
     createExercise,
     deleteExercise,
-    refreshExercises
+    refreshExercises,
+    updateFilters,
+    clearFilters
   } = useExercises();
 
-  // Organize exercises into sections
-  const sections = React.useMemo(() => {
-    const exercisesByLetter = exercises.reduce((acc, exercise) => {
-      const firstLetter = exercise.title[0].toUpperCase();
-      if (!acc[firstLetter]) {
-        acc[firstLetter] = [];
+  // Filter exercises based on search query
+  React.useEffect(() => {
+    if (searchQuery) {
+      updateFilters({ searchQuery });
+    } else {
+      updateFilters({ searchQuery: undefined });
+    }
+  }, [searchQuery, updateFilters]);
+
+  // Update type filter when activeFilter changes
+  React.useEffect(() => {
+    if (activeFilter) {
+      updateFilters({ type: [activeFilter] });
+    } else {
+      clearFilters();
+    }
+  }, [activeFilter, updateFilters, clearFilters]);
+
+  const handleExercisePress = (exercise: ExerciseDisplay) => {
+    setSelectedExercise(exercise);
+  };
+
+  const handleEdit = async () => {
+    // TODO: Implement edit functionality
+    setSelectedExercise(null);
+  };
+
+  const handleCreateExercise = async (exerciseData: BaseExercise) => {
+    // Convert BaseExercise to include required source information
+    const exerciseWithSource: Omit<BaseExercise, 'id'> = {
+      ...exerciseData,
+      availability: {
+        source: ['local']
       }
-      acc[firstLetter].push(exercise);
-      return acc;
-    }, {} as Record<string, Exercise[]>);
-
-    return Object.entries(exercisesByLetter)
-      .map(([letter, exercises]) => ({
-        title: letter,
-        data: exercises.sort((a, b) => a.title.localeCompare(b.title))
-      }))
-      .sort((a, b) => a.title.localeCompare(b.title));
-  }, [exercises]);
-
-  const handleViewableItemsChanged = useCallback(({
-    viewableItems
-  }: {
-    viewableItems: ViewToken[];
-  }) => {
-    const firstSection = viewableItems.find(item => item.section)?.section?.title;
-    if (firstSection) {
-      setCurrentSection(firstSection);
-    }
-  }, []);
-
-  const scrollToSection = useCallback((letter: string) => {
-    const sectionIndex = sections.findIndex(section => section.title === letter);
-    if (sectionIndex !== -1 && sectionListRef.current) {
-      // Try to scroll to section
-      sectionListRef.current.scrollToLocation({
-        animated: true,
-        sectionIndex,
-        itemIndex: 0,
-        viewPosition: 0, // 0 means top of the view
-      });
-
-      // Log for debugging
-      if (__DEV__) {
-        console.log('Scrolling to section:', {
-          letter,
-          sectionIndex,
-          totalSections: sections.length
-        });
-      }
-    }
-  }, [sections]);
-
-  // Add getItemLayout to optimize scrolling
-  const getItemLayout = useCallback((data: any, index: number) => ({
-    length: 100, // Approximate height of each item
-    offset: 100 * index,
-    index,
-  }), []);
-
-
-  const handleAddExercise = async (exerciseData: Omit<BaseExercise, 'id' | 'availability' | 'created_at'>) => {
-    try {
-      const newExercise: Omit<Exercise, 'id'> = {
-        ...exerciseData,
-        source: 'local',
-        created_at: Date.now(),
-        availability: {
-          source: ['local']
-        },
-        format_json: exerciseData.format ? JSON.stringify(exerciseData.format) : undefined,
-        format_units_json: exerciseData.format_units ? JSON.stringify(exerciseData.format_units) : undefined
-      };
-  
-      await createExercise(newExercise);
-      setShowNewExercise(false);
-    } catch (error) {
-      console.error('Error adding exercise:', error);
-    }
+    };
+    
+    await createExercise(exerciseWithSource);
+    setShowNewExercise(false);
   };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteExercise(id);
-    } catch (error) {
-      console.error('Error deleting exercise:', error);
-    }
-  };
-
-  const handleExercisePress = (exerciseId: string) => {
-    console.log('Selected exercise:', exerciseId);
-  };
-
-  const alphabet = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-  const availableLetters = new Set(sections.map(section => section.title));
-
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
-        <Text>Loading exercises...</Text>
+        <ActivityIndicator size="large" color="#8B5CF6" />
+        <Text className="mt-4 text-muted-foreground">Loading exercises...</Text>
       </View>
     );
   }
@@ -135,7 +84,7 @@ export default function ExercisesScreen() {
           {error.message}
         </Text>
         <Button onPress={refreshExercises}>
-          <Text>Retry</Text>
+          <Text className="text-primary-foreground">Retry</Text>
         </Button>
       </View>
     );
@@ -143,122 +92,94 @@ export default function ExercisesScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Stats Bar */}
-      <View className="flex-row justify-between items-center p-4 bg-card border-b border-border">
-        <View>
-          <Text className="text-sm text-muted-foreground">Total Exercises</Text>
-          <Text className="text-2xl font-bold">{stats.totalCount}</Text>
-        </View>
-        <View className="flex-row gap-4">
-          <View>
-            <Text className="text-xs text-muted-foreground">Push</Text>
-            <Text className="text-base font-medium">{stats.byCategory['Push'] || 0}</Text>
+      {/* Search bar */}
+      <View className="px-4 py-3">
+        <View className="relative flex-row items-center bg-muted rounded-xl">
+          <View className="absolute left-3 z-10">
+            <Search size={18} className="text-muted-foreground" />
           </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Pull</Text>
-            <Text className="text-base font-medium">{stats.byCategory['Pull'] || 0}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Legs</Text>
-            <Text className="text-base font-medium">{stats.byCategory['Legs'] || 0}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Core</Text>
-            <Text className="text-base font-medium">{stats.byCategory['Core'] || 0}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Exercise List with Alphabet Scroll */}
-      <View className="flex-1 flex-row">
-        {/* Main List */}
-        <View className="flex-1">
-          <SectionList
-            ref={sectionListRef}
-            sections={sections}
-            keyExtractor={(item) => item.id}
-            getItemLayout={getItemLayout}
-            renderSectionHeader={({ section }) => (
-              <View className="py-2 px-4 bg-background/80">
-                <Text className="text-lg font-semibold text-foreground">
-                  {section.title}
-                </Text>
-              </View>
-            )}
-            renderItem={({ item }) => (
-              <View className="px-4 py-1">
-                <ExerciseCard
-                  {...item}
-                  onPress={() => handleExercisePress(item.id)}
-                  onDelete={() => handleDelete(item.id)}
-                />
-              </View>
-            )}
-            stickySectionHeadersEnabled
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            onViewableItemsChanged={handleViewableItemsChanged}
-            viewabilityConfig={{
-              itemVisiblePercentThreshold: 50
-            }}
+          <Input
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search"
+            className="pl-9 bg-transparent h-10 flex-1"
           />
         </View>
-
-        {/* Alphabet List */}
-        <View 
-          className="w-8 justify-center bg-transparent px-1"
-          onStartShouldSetResponder={() => true}
-          onResponderMove={(evt) => {
-            const touch = evt.nativeEvent;
-            const element = evt.target;
-            
-            // Get the layout of the alphabet bar
-            if (element) {
-              const elementPosition = (element as any).measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-                // Calculate which letter we're touching based on position
-                const totalHeight = height;
-                const letterHeight = totalHeight / alphabet.length;
-                const touchY = touch.pageY - pageY;
-                const index = Math.min(
-                  Math.max(Math.floor(touchY / letterHeight), 0),
-                  alphabet.length - 1
-                );
-                
-                const letter = alphabet[index];
-                if (availableLetters.has(letter)) {
-                  scrollToSection(letter);
-                }
-              });
-            }
-          }}
-        >
-          {alphabet.map((letter) => (
-            <Text 
-              key={letter}
-              className={
-                letter === currentSection
-                  ? 'text-xs text-center text-primary font-bold py-0.5'
-                  : availableLetters.has(letter)
-                  ? 'text-xs text-center text-primary font-medium py-0.5'
-                  : 'text-xs text-center text-muted-foreground py-0.5'
-              }
-            >
-              {letter}
-            </Text>
-          ))}
-        </View>
       </View>
 
+      {/* Filter buttons */}
+      <View className="flex-row px-4 pb-2 gap-2">
+        <Button
+          variant={activeFilter === null ? "default" : "outline"}
+          size="sm"
+          className="rounded-full"
+          onPress={() => setActiveFilter(null)}
+        >
+          <Text className={activeFilter === null ? "text-primary-foreground" : ""}>
+            All
+          </Text>
+        </Button>
+        <Button
+          variant={activeFilter === "strength" ? "default" : "outline"}
+          size="sm"
+          className="rounded-full"
+          onPress={() => setActiveFilter(activeFilter === "strength" ? null : "strength")}
+        >
+          <Text className={activeFilter === "strength" ? "text-primary-foreground" : ""}>
+            Strength
+          </Text>
+        </Button>
+        <Button
+          variant={activeFilter === "bodyweight" ? "default" : "outline"}
+          size="sm"
+          className="rounded-full"
+          onPress={() => setActiveFilter(activeFilter === "bodyweight" ? null : "bodyweight")}
+        >
+          <Text className={activeFilter === "bodyweight" ? "text-primary-foreground" : ""}>
+            Bodyweight
+          </Text>
+        </Button>
+        <Button
+          variant={activeFilter === "cardio" ? "default" : "outline"}
+          size="sm"
+          className="rounded-full"
+          onPress={() => setActiveFilter(activeFilter === "cardio" ? null : "cardio")}
+        >
+          <Text className={activeFilter === "cardio" ? "text-primary-foreground" : ""}>
+            Cardio
+          </Text>
+        </Button>
+      </View>
+
+      {/* Exercises list */}
+      <SimplifiedExerciseList
+        exercises={exercises}
+        onExercisePress={handleExercisePress}
+      />
+
+      {/* Exercise details sheet */}
+      {selectedExercise && (
+        <ExerciseDetails
+          exercise={selectedExercise}
+          open={!!selectedExercise}
+          onOpenChange={(open) => {
+            if (!open) setSelectedExercise(null);
+          }}
+          onEdit={handleEdit}
+        />
+      )}
+
+      {/* FAB for adding new exercise */}
       <FloatingActionButton
         icon={Dumbbell}
         onPress={() => setShowNewExercise(true)}
       />
 
+      {/* New exercise sheet */}
       <NewExerciseSheet 
         isOpen={showNewExercise}
         onClose={() => setShowNewExercise(false)}
-        onSubmit={handleAddExercise}
+        onSubmit={handleCreateExercise}
       />
     </View>
   );
