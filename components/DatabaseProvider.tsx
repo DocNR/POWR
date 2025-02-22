@@ -1,4 +1,3 @@
-// components/DatabaseProvider.tsx
 import React from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
 import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
@@ -13,6 +12,7 @@ interface DatabaseServicesContextValue {
   exerciseService: ExerciseService | null;
   eventCache: EventCache | null;
   devSeeder: DevSeederService | null;
+  // Remove NostrService since we're using the hooks-based approach now
 }
 
 const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue>({

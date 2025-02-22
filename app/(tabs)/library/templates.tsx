@@ -207,7 +207,7 @@ export default function TemplatesScreen() {
         <View className="h-20" />
       </ScrollView>
 
-      {/* Rest of the components (sheets & FAB) remain the same */}
+      {/* Template Details with tabs */}
       {selectedTemplate && (
         <TemplateDetails
           template={selectedTemplate}

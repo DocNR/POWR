@@ -17,7 +17,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Template, TemplateExerciseDisplay } from '@/types/templates';
 
 interface TemplateCardProps {
@@ -35,8 +34,8 @@ export function TemplateCard({
   onFavorite,
   onStartWorkout
 }: TemplateCardProps) {
-  const [showSheet, setShowSheet] = React.useState(false);
   const [showDeleteAlert, setShowDeleteAlert] = React.useState(false);
+  const lastUsed = template.metadata?.lastUsed ? new Date(template.metadata.lastUsed) : undefined;
 
   const {
     id,
@@ -47,207 +46,148 @@ export function TemplateCard({
     description,
     tags = [],
     source,
-    metadata,
     isFavorite
   } = template;
-
-  const lastUsed = metadata?.lastUsed ? new Date(metadata.lastUsed) : undefined;
 
   const handleConfirmDelete = () => {
     onDelete(id);
     setShowDeleteAlert(false);
   };
 
-  const handleCardPress = () => {
-    setShowSheet(true);
-    onPress();
-  };
-
   return (
-    <>
-      <TouchableOpacity onPress={handleCardPress} activeOpacity={0.7}>
-        <Card className="mx-4">
-          <CardContent className="p-4">
-            <View className="flex-row justify-between items-start">
-              <View className="flex-1">
-                <View className="flex-row items-center gap-2 mb-1">
-                  <Text className="text-lg font-semibold text-card-foreground">
-                    {title}
-                  </Text>
-                  <Badge 
-                    variant={source === 'local' ? 'outline' : 'secondary'}
-                    className="text-xs capitalize"
-                  >
-                    <Text>{source}</Text>
-                  </Badge>
-                </View>
-                
-                <View className="flex-row gap-2">
-                  <Badge variant="outline" className="text-xs capitalize">
-                    <Text>{type}</Text>
-                  </Badge>
-                  <Text className="text-sm text-muted-foreground">
-                    {category}
-                  </Text>
-                </View>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+      <Card className="mx-4">
+        <CardContent className="p-4">
+          <View className="flex-row justify-between items-start">
+            <View className="flex-1">
+              <View className="flex-row items-center gap-2 mb-1">
+                <Text className="text-lg font-semibold text-card-foreground">
+                  {title}
+                </Text>
+                <Badge 
+                  variant={source === 'local' ? 'outline' : 'secondary'}
+                  className="text-xs capitalize"
+                >
+                  <Text>{source}</Text>
+                </Badge>
+              </View>
+              
+              <View className="flex-row gap-2">
+                <Badge variant="outline" className="text-xs capitalize">
+                  <Text>{type}</Text>
+                </Badge>
+                <Text className="text-sm text-muted-foreground">
+                  {category}
+                </Text>
+              </View>
 
-                {exercises.length > 0 && (
-                  <View className="mt-2">
-                    <Text className="text-sm text-muted-foreground mb-1">
-                      Exercises:
-                    </Text>
-                    <View className="gap-1">
-                      {exercises.slice(0, 3).map((exercise: TemplateExerciseDisplay, index: number) => (
-                        <Text key={index} className="text-sm text-muted-foreground">
-                          • {exercise.title} ({exercise.targetSets}×{exercise.targetReps})
-                        </Text>
-                      ))}
-                      {exercises.length > 3 && (
-                        <Text className="text-sm text-muted-foreground">
-                          +{exercises.length - 3} more
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                )}
-
-                {description && (
-                  <Text className="text-sm text-muted-foreground mt-2 native:pr-12">
-                    {description}
+              {exercises.length > 0 && (
+                <View className="mt-2">
+                  <Text className="text-sm text-muted-foreground mb-1">
+                    Exercises:
                   </Text>
-                )}
-
-                {tags.length > 0 && (
-                  <View className="flex-row flex-wrap gap-2 mt-2">
-                    {tags.map((tag: string) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        <Text>{tag}</Text>
-                      </Badge>
+                  <View className="gap-1">
+                    {exercises.slice(0, 3).map((exercise, index) => (
+                      <Text key={index} className="text-sm text-muted-foreground">
+                        • {exercise.title} ({exercise.targetSets}×{exercise.targetReps})
+                      </Text>
                     ))}
+                    {exercises.length > 3 && (
+                      <Text className="text-sm text-muted-foreground">
+                        +{exercises.length - 3} more
+                      </Text>
+                    )}
                   </View>
-                )}
+                </View>
+              )}
 
-                {lastUsed && (
-                  <Text className="text-xs text-muted-foreground mt-2">
-                    Last used: {lastUsed.toLocaleDateString()}
-                  </Text>
-                )}
-              </View>
+              {description && (
+                <Text className="text-sm text-muted-foreground mt-2 native:pr-12">
+                  {description}
+                </Text>
+              )}
 
-              <View className="flex-row gap-1 native:absolute native:right-0 native:top-0 native:p-2">
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onPress={onStartWorkout}
-                  className="native:h-10 native:w-10"
-                >
-                  <Play className="text-primary" size={20} />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onPress={onFavorite}
-                  className="native:h-10 native:w-10"
-                >
-                  <Star 
-                    className={isFavorite ? "text-primary" : "text-muted-foreground"} 
-                    fill={isFavorite ? "currentColor" : "none"}
-                    size={20} 
-                  />
-                </Button>
-                <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
-                  <AlertDialogTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      className="native:h-10 native:w-10 native:bg-muted/50 items-center justify-center"
-                    >
-                      <Trash2 
-                        size={20} 
-                        color={Platform.select({
-                          ios: undefined,
-                          android: '#8B5CF6'
-                        })}
-                        className="text-destructive" 
-                      />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        <Text>Delete Template</Text>
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        <Text>Are you sure you want to delete {title}? This action cannot be undone.</Text>
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>
-                        <Text>Cancel</Text>
-                      </AlertDialogCancel>
-                      <AlertDialogAction onPress={handleConfirmDelete}>
-                        <Text>Delete</Text>
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </View>
-            </View>
-          </CardContent>
-        </Card>
-      </TouchableOpacity>
-
-      {/* Sheet for detailed view */}
-      <Sheet isOpen={showSheet} onClose={() => setShowSheet(false)}>
-        <SheetHeader>
-          <SheetTitle>
-            <Text className="text-xl font-bold">{title}</Text>
-          </SheetTitle>
-        </SheetHeader>
-        <SheetContent>
-          <View className="gap-6">
-            {description && (
-              <View>
-                <Text className="text-base font-semibold mb-2">Description</Text>
-                <Text className="text-base leading-relaxed">{description}</Text>
-              </View>
-            )}
-            <View>
-              <Text className="text-base font-semibold mb-2">Details</Text>
-              <View className="gap-2">
-                <Text className="text-base">Type: {type}</Text>
-                <Text className="text-base">Category: {category}</Text>
-                <Text className="text-base">Source: {source}</Text>
-                {metadata?.useCount && (
-                  <Text className="text-base">Times Used: {metadata.useCount}</Text>
-                )}
-              </View>
-            </View>
-            <View>
-              <Text className="text-base font-semibold mb-2">Exercises</Text>
-              <View className="gap-2">
-                {exercises.map((exercise: TemplateExerciseDisplay, index: number) => (
-                  <Text key={index} className="text-base">
-                    {exercise.title} ({exercise.targetSets}×{exercise.targetReps})
-                  </Text>
-                ))}
-              </View>
-            </View>
-            {tags.length > 0 && (
-              <View>
-                <Text className="text-base font-semibold mb-2">Tags</Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {tags.map((tag: string) => (
-                    <Badge key={tag} variant="secondary">
+              {tags.length > 0 && (
+                <View className="flex-row flex-wrap gap-2 mt-2">
+                  {tags.map(tag => (
+                    <Badge key={tag} variant="outline" className="text-xs">
                       <Text>{tag}</Text>
                     </Badge>
                   ))}
                 </View>
-              </View>
-            )}
+              )}
+
+              {lastUsed && (
+                <Text className="text-xs text-muted-foreground mt-2">
+                  Last used: {lastUsed.toLocaleDateString()}
+                </Text>
+              )}
+            </View>
+
+            <View className="flex-row gap-1 native:absolute native:right-0 native:top-0 native:p-2">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onPress={onStartWorkout}
+                className="native:h-10 native:w-10"
+                accessibilityLabel="Start workout"
+              >
+                <Play className="text-primary" size={20} />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onPress={onFavorite}
+                className="native:h-10 native:w-10"
+                accessibilityLabel={isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Star 
+                  className={isFavorite ? "text-primary" : "text-muted-foreground"} 
+                  fill={isFavorite ? "currentColor" : "none"}
+                  size={20} 
+                />
+              </Button>
+              <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className="native:h-10 native:w-10 native:bg-muted/50 items-center justify-center"
+                    accessibilityLabel="Delete template"
+                  >
+                    <Trash2 
+                      size={20} 
+                      color={Platform.select({
+                        ios: undefined,
+                        android: '#8B5CF6'
+                      })}
+                      className="text-destructive" 
+                    />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      <Text>Delete Template</Text>
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      <Text>Are you sure you want to delete {title}? This action cannot be undone.</Text>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>
+                      <Text>Cancel</Text>
+                    </AlertDialogCancel>
+                    <AlertDialogAction onPress={handleConfirmDelete}>
+                      <Text>Delete</Text>
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </View>
           </View>
-        </SheetContent>
-      </Sheet>
-    </>
+        </CardContent>
+      </Card>
+    </TouchableOpacity>
   );
 }

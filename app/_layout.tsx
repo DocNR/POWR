@@ -1,3 +1,4 @@
+// app/_layout.tsx
 import '@/global.css';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
@@ -11,6 +12,9 @@ import { setAndroidNavigationBar } from '@/lib/android-navigation-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseProvider } from '@/components/DatabaseProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { SettingsDrawerProvider } from '@/lib/contexts/SettingsDrawerContext';
+import SettingsDrawer from '@/components/SettingsDrawer';
+import { useNDKStore } from '@/lib/stores/ndk';
 
 const LIGHT_THEME = {
   ...DefaultTheme,
@@ -25,21 +29,26 @@ const DARK_THEME = {
 export default function RootLayout() {
   const [isInitialized, setIsInitialized] = React.useState(false);
   const { colorScheme, isDarkColorScheme } = useColorScheme();
+  const { init } = useNDKStore();
 
   React.useEffect(() => {
-    async function init() {
+    async function initApp() {
       try {
         if (Platform.OS === 'web') {
           document.documentElement.classList.add('bg-background');
         }
         setAndroidNavigationBar(colorScheme);
+        
+        // Initialize NDK
+        await init();
+        
         setIsInitialized(true);
       } catch (error) {
         console.error('Failed to initialize:', error);
       }
     }
 
-    init();
+    initApp();
   }, []);
 
   if (!isInitialized) {
@@ -55,16 +64,22 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <DatabaseProvider>
           <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-            <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen 
-                name="(tabs)" 
-                options={{
-                  headerShown: false,
-                }}
-              />
-            </Stack>
-            <PortalHost />
+            <SettingsDrawerProvider>
+              <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen 
+                  name="(tabs)" 
+                  options={{
+                    headerShown: false,
+                  }}
+                />
+              </Stack>
+              
+              {/* Settings drawer needs to be outside the navigation stack */}
+              <SettingsDrawer />
+              
+              <PortalHost />
+            </SettingsDrawerProvider>
           </ThemeProvider>
         </DatabaseProvider>
       </GestureHandlerRootView>

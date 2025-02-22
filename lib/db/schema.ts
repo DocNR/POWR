@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 3; // Incrementing version for new tables
+export const SCHEMA_VERSION = 4; // Updated to version 4 for user_profiles table
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -162,6 +162,52 @@ class Schema {
         );
         
         console.log('[Schema] Version 3 upgrade completed');
+      }
+
+      // Update to version 4 if needed - User Profiles
+      if (currentVersion < 4) {
+        console.log('[Schema] Upgrading to version 4');
+
+        // Create user profiles table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS user_profiles (
+            pubkey TEXT PRIMARY KEY,
+            name TEXT,
+            display_name TEXT,
+            about TEXT,
+            website TEXT,
+            picture TEXT,
+            nip05 TEXT, 
+            lud16 TEXT,
+            last_updated INTEGER
+          );
+        `);
+
+        // Create index for faster lookup
+        await db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_user_profiles_last_updated 
+          ON user_profiles(last_updated DESC);
+        `);
+
+        // Create user relays table for storing preferred relays
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS user_relays (
+            pubkey TEXT NOT NULL,
+            relay_url TEXT NOT NULL,
+            read BOOLEAN NOT NULL DEFAULT 1,
+            write BOOLEAN NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (pubkey, relay_url),
+            FOREIGN KEY(pubkey) REFERENCES user_profiles(pubkey) ON DELETE CASCADE
+          );
+        `);
+
+        await db.runAsync(
+          'INSERT INTO schema_version (version, updated_at) VALUES (?, ?)',
+          [4, Date.now()]
+        );
+        
+        console.log('[Schema] Version 4 upgrade completed');
       }
 
       // Verify final schema

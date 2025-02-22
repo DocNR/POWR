@@ -13,14 +13,11 @@ import {
   Target, 
   Calendar, 
   Hash,
-  ClipboardList,
-  Settings
+  ClipboardList, 
+  Settings,
+  LineChart
 } from 'lucide-react-native';
-import { 
-  WorkoutTemplate, 
-  TemplateSource,
-  getSourceDisplay 
-} from '@/types/templates';
+import { WorkoutTemplate, getSourceDisplay } from '@/types/templates';
 import { useTheme } from '@react-navigation/native';
 import type { CustomTheme } from '@/lib/theme';
 
@@ -35,23 +32,23 @@ interface TemplateDetailsProps {
 
 // Overview Tab Component
 function OverviewTab({ template, onEdit }: { template: WorkoutTemplate; onEdit?: () => void }) {
-    const { 
-      title,
-      type,
-      category,
-      description,
-      exercises = [],
-      tags = [],
-      metadata,
-      availability  // Replace source with availability
-    } = template;
-  
-    // Calculate source type from availability
-    const sourceType = availability.source.includes('nostr') 
-      ? 'nostr' 
-      : availability.source.includes('powr')
-        ? 'powr'
-        : 'local';
+  const { 
+    title,
+    type,
+    category,
+    description,
+    exercises = [],
+    tags = [],
+    metadata,
+    availability
+  } = template;
+
+  // Calculate source type from availability
+  const sourceType = availability.source.includes('nostr') 
+    ? 'nostr' 
+    : availability.source.includes('powr')
+      ? 'powr'
+      : 'local';
 
   return (
     <ScrollView 
@@ -104,20 +101,20 @@ function OverviewTab({ template, onEdit }: { template: WorkoutTemplate; onEdit?:
           </View>
           <View className="gap-2">
             {exercises.map((exerciseConfig, index) => (
-                <View key={index} className="bg-card p-3 rounded-lg">
-                    <Text className="text-base font-medium text-foreground">
-                    {exerciseConfig.exercise.title}
-                    </Text>
-                    <Text className="text-sm text-muted-foreground">
-                    {exerciseConfig.targetSets} sets × {exerciseConfig.targetReps} reps
-                    </Text>
-                    {exerciseConfig.notes && (
-                    <Text className="text-sm text-muted-foreground mt-1">
-                        {exerciseConfig.notes}
-                    </Text>
-                    )}
-                </View>
-                ))}
+              <View key={index} className="bg-card p-3 rounded-lg">
+                <Text className="text-base font-medium text-foreground">
+                  {exerciseConfig.exercise.title}
+                </Text>
+                <Text className="text-sm text-muted-foreground">
+                  {exerciseConfig.targetSets} sets × {exerciseConfig.targetReps} reps
+                </Text>
+                {exerciseConfig.notes && (
+                  <Text className="text-sm text-muted-foreground mt-1">
+                    {exerciseConfig.notes}
+                  </Text>
+                )}
+              </View>
+            ))}
           </View>
         </View>
 
@@ -182,19 +179,6 @@ function OverviewTab({ template, onEdit }: { template: WorkoutTemplate; onEdit?:
   );
 }
 
-// Function to format template source for display
-function formatTemplateSource(source: TemplateSource | undefined, templateSource: 'local' | 'powr' | 'nostr'): string {
-  if (!source) {
-    return templateSource === 'local' ? 'Local Template' : templateSource.toUpperCase();
-  }
-
-  const author = source.authorName || 'Unknown Author';
-  if (source.version) {
-    return `Modified from ${author} (v${source.version})`;
-  }
-  return `Original by ${author}`;
-}
-
 // History Tab Component
 function HistoryTab({ template }: { template: WorkoutTemplate }) {
   return (
@@ -206,18 +190,40 @@ function HistoryTab({ template }: { template: WorkoutTemplate }) {
         {/* Performance Stats */}
         <View>
           <Text className="text-base font-semibold text-foreground mb-4">Performance Summary</Text>
-          <View className="flex-row gap-4">
-            <View className="flex-1 bg-card p-4 rounded-lg">
-              <Text className="text-sm text-muted-foreground mb-1">Avg. Duration</Text>
-              <Text className="text-lg font-semibold text-foreground">
-                {template.metadata?.averageDuration 
-                  ? `${Math.round(template.metadata.averageDuration / 60)}m` 
-                  : '--'}
-              </Text>
+          <View className="gap-4">
+            <View className="bg-card p-4 rounded-lg">
+              <Text className="text-sm text-muted-foreground mb-1">Usage Stats</Text>
+              <View className="flex-row justify-between mt-2">
+                <View>
+                  <Text className="text-sm text-muted-foreground">Total Workouts</Text>
+                  <Text className="text-lg font-semibold text-foreground">
+                    {template.metadata?.useCount || 0}
+                  </Text>
+                </View>
+                <View>
+                  <Text className="text-sm text-muted-foreground">Avg. Duration</Text>
+                  <Text className="text-lg font-semibold text-foreground">
+                    {template.metadata?.averageDuration 
+                      ? `${Math.round(template.metadata.averageDuration / 60)}m` 
+                      : '--'}
+                  </Text>
+                </View>
+                <View>
+                  <Text className="text-sm text-muted-foreground">Completion Rate</Text>
+                  <Text className="text-lg font-semibold text-foreground">--</Text>
+                </View>
+              </View>
             </View>
-            <View className="flex-1 bg-card p-4 rounded-lg">
-              <Text className="text-sm text-muted-foreground mb-1">Completion Rate</Text>
-              <Text className="text-lg font-semibold text-foreground">--</Text>
+
+            {/* Progress Chart Placeholder */}
+            <View className="bg-card p-4 rounded-lg">
+              <Text className="text-sm text-muted-foreground mb-4">Progress Over Time</Text>
+              <View className="h-40 items-center justify-center">
+                <LineChart size={24} className="text-muted-foreground mb-2" />
+                <Text className="text-sm text-muted-foreground">
+                  Progress tracking coming soon
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -231,6 +237,9 @@ function HistoryTab({ template }: { template: WorkoutTemplate }) {
               <ClipboardList size={24} className="text-muted-foreground mb-2" />
               <Text className="text-muted-foreground text-center">
                 No workout history available yet
+              </Text>
+              <Text className="text-sm text-muted-foreground text-center mt-1">
+                Complete a workout using this template to see your history
               </Text>
             </View>
           </View>
@@ -250,6 +259,13 @@ function SettingsTab({ template }: { template: WorkoutTemplate }) {
     restBetweenRounds,
   } = template;
 
+  // Helper function to format seconds into MM:SS
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <ScrollView 
       className="flex-1 px-4"
@@ -261,31 +277,31 @@ function SettingsTab({ template }: { template: WorkoutTemplate }) {
           <Text className="text-base font-semibold text-foreground mb-4">Workout Settings</Text>
           <View className="gap-4">
             <View className="bg-card p-4 rounded-lg">
-              <Text className="text-sm text-muted-foreground mb-1">Type</Text>
+              <Text className="text-sm text-muted-foreground mb-1">Workout Type</Text>
               <Text className="text-base font-medium text-foreground capitalize">{type}</Text>
             </View>
 
             {rounds && (
               <View className="bg-card p-4 rounded-lg">
-                <Text className="text-sm text-muted-foreground mb-1">Rounds</Text>
+                <Text className="text-sm text-muted-foreground mb-1">Number of Rounds</Text>
                 <Text className="text-base font-medium text-foreground">{rounds}</Text>
               </View>
             )}
 
             {duration && (
               <View className="bg-card p-4 rounded-lg">
-                <Text className="text-sm text-muted-foreground mb-1">Duration</Text>
+                <Text className="text-sm text-muted-foreground mb-1">Total Duration</Text>
                 <Text className="text-base font-medium text-foreground">
-                  {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}
+                  {formatTime(duration)}
                 </Text>
               </View>
             )}
 
             {interval && (
               <View className="bg-card p-4 rounded-lg">
-                <Text className="text-sm text-muted-foreground mb-1">Interval</Text>
+                <Text className="text-sm text-muted-foreground mb-1">Interval Time</Text>
                 <Text className="text-base font-medium text-foreground">
-                  {Math.floor(interval / 60)}:{(interval % 60).toString().padStart(2, '0')}
+                  {formatTime(interval)}
                 </Text>
               </View>
             )}
@@ -294,10 +310,21 @@ function SettingsTab({ template }: { template: WorkoutTemplate }) {
               <View className="bg-card p-4 rounded-lg">
                 <Text className="text-sm text-muted-foreground mb-1">Rest Between Rounds</Text>
                 <Text className="text-base font-medium text-foreground">
-                  {Math.floor(restBetweenRounds / 60)}:{(restBetweenRounds % 60).toString().padStart(2, '0')}
+                  {formatTime(restBetweenRounds)}
                 </Text>
               </View>
             )}
+          </View>
+        </View>
+
+        {/* Sync Settings */}
+        <View>
+          <Text className="text-base font-semibold text-foreground mb-4">Sync Settings</Text>
+          <View className="bg-card p-4 rounded-lg">
+            <Text className="text-sm text-muted-foreground mb-1">Template Source</Text>
+            <Text className="text-base font-medium text-foreground">
+              {getSourceDisplay(template)}
+            </Text>
           </View>
         </View>
       </View>
@@ -321,7 +348,7 @@ export function TemplateDetails({
         </SheetTitle>
       </SheetHeader>
       <SheetContent>
-        <View style={{ flex: 1, minHeight: 400 }}>
+        <View style={{ flex: 1, minHeight: 400 }} className="rounded-t-[10px]">
           <Tab.Navigator
             style={{ flex: 1 }}
             screenOptions={{
