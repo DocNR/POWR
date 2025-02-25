@@ -37,12 +37,18 @@ interface FavoriteTemplateData {
   source: 'local' | 'powr' | 'nostr';
 }
 
+// Type for tracking pending workout actions
+type PendingWorkoutAction = 
+  | { type: 'quick-start' } 
+  | { type: 'template', templateId: string }
+  | { type: 'template-select' };
+
 export default function WorkoutScreen() {
   const { startWorkout } = useWorkoutStore.getState();
-  const [showActiveWorkoutModal, setShowActiveWorkoutModal] = useState(false)
-  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null)
-  const [favoriteWorkouts, setFavoriteWorkouts] = useState<FavoriteTemplateData[]>([])
-  const [isLoadingFavorites, setIsLoadingFavorites] = useState(true)
+  const [showActiveWorkoutModal, setShowActiveWorkoutModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingWorkoutAction | null>(null);
+  const [favoriteWorkouts, setFavoriteWorkouts] = useState<FavoriteTemplateData[]>([]);
+  const [isLoadingFavorites, setIsLoadingFavorites] = useState(true);
 
   const { 
     getFavorites,
@@ -51,16 +57,16 @@ export default function WorkoutScreen() {
     checkFavoriteStatus,
     isActive,
     endWorkout
-  } = useWorkoutStore()
+  } = useWorkoutStore();
 
   useEffect(() => {
-    loadFavorites()
-  }, [])
+    loadFavorites();
+  }, []);
 
   const loadFavorites = async () => {
-    setIsLoadingFavorites(true)
+    setIsLoadingFavorites(true);
     try {
-      const favorites = await getFavorites()
+      const favorites = await getFavorites();
       
       const workoutTemplates = favorites
         .filter(f => f.content && f.content.id && checkFavoriteStatus(f.content.id))
@@ -87,57 +93,51 @@ export default function WorkoutScreen() {
           } as FavoriteTemplateData;
         });
 
-      setFavoriteWorkouts(workoutTemplates)
+      setFavoriteWorkouts(workoutTemplates);
     } catch (error) {
-      console.error('Error loading favorites:', error)
+      console.error('Error loading favorites:', error);
     } finally {
-      setIsLoadingFavorites(false)
+      setIsLoadingFavorites(false);
     }
-  }
+  };
 
+  // Handle starting a template-based workout
   const handleStartWorkout = async (templateId: string) => {
     if (isActive) {
-      setPendingTemplateId(templateId)
-      setShowActiveWorkoutModal(true)
-      return
+      // Save what the user wants to do for later
+      setPendingAction({ type: 'template', templateId });
+      setShowActiveWorkoutModal(true);
+      return;
     }
   
     try {
-      await startWorkoutFromTemplate(templateId)
-      router.push('/(workout)/create')
+      await startWorkoutFromTemplate(templateId);
+      router.push('/(workout)/create');
     } catch (error) {
-      console.error('Error starting workout:', error)
+      console.error('Error starting workout:', error);
     }
-  }
+  };
 
-  const handleStartNew = async () => {
-    if (!pendingTemplateId) return
+  // Handle selecting a template
+  const handleSelectTemplate = () => {
+    if (isActive) {
+      setPendingAction({ type: 'template-select' });
+      setShowActiveWorkoutModal(true);
+      return;
+    }
     
-    const templateToStart = pendingTemplateId
-    setShowActiveWorkoutModal(false)
-    setPendingTemplateId(null)
+    router.push('/(workout)/template-select');
+  };
 
-    await endWorkout()
-    await startWorkoutFromTemplate(templateToStart)
-    router.push('/(workout)/create')
-  }
-
-  const handleContinueExisting = () => {
-    setShowActiveWorkoutModal(false)
-    setPendingTemplateId(null)
-    router.push('/(workout)/create')
-  }
-
-  const handleFavoritePress = async (templateId: string) => {
-    try {
-      await removeFavorite(templateId)
-      await loadFavorites()
-    } catch (error) {
-      console.error('Error toggling favorite:', error)
-    }
-  }
-
+  // Handle quick start
   const handleQuickStart = () => {
+    // Check if there's already an active workout
+    if (isActive) {
+      setPendingAction({ type: 'quick-start' });
+      setShowActiveWorkoutModal(true);
+      return;
+    }
+    
     // Initialize a new workout with a random funny title
     startWorkout({
       title: getRandomWorkoutTitle(),
@@ -148,18 +148,71 @@ export default function WorkoutScreen() {
     router.push('/(workout)/create');
   };
 
+  // Handle starting a new workout (after ending the current one)
+  const handleStartNew = async () => {
+    if (!pendingAction) return;
+    
+    setShowActiveWorkoutModal(false);
+    
+    // End the current workout first
+    await endWorkout();
+    
+    // Now handle the pending action
+    switch (pendingAction.type) {
+      case 'quick-start':
+        // Start a new quick workout
+        startWorkout({
+          title: getRandomWorkoutTitle(),
+          type: 'strength',
+          exercises: []
+        });
+        router.push('/(workout)/create');
+        break;
+        
+      case 'template':
+        // Start a workout from the selected template
+        await startWorkoutFromTemplate(pendingAction.templateId);
+        router.push('/(workout)/create');
+        break;
+        
+      case 'template-select':
+        // Navigate to template selection
+        router.push('/(workout)/template-select');
+        break;
+    }
+    
+    // Clear the pending action
+    setPendingAction(null);
+  };
+
+  // Handle continuing the existing workout
+  const handleContinueExisting = () => {
+    setShowActiveWorkoutModal(false);
+    setPendingAction(null);
+    router.push('/(workout)/create');
+  };
+
+  const handleFavoritePress = async (templateId: string) => {
+    try {
+      await removeFavorite(templateId);
+      await loadFavorites();
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
+  };
+
   return (
     <TabScreen>
       <Header title="Workout" />
       
       <ScrollView 
-        className="flex-1 px-4"
+        className="flex-1 px-4 pt-4"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20 }}
       >
         <HomeWorkout 
-          onStartBlank={handleQuickStart}  // Use the new handler here
-          onSelectTemplate={() => router.push('/(workout)/template-select')}
+          onStartBlank={handleQuickStart}
+          onSelectTemplate={handleSelectTemplate}
         />
         
         {/* Favorites section */}
@@ -205,11 +258,11 @@ export default function WorkoutScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle>Active Workout</AlertDialogTitle>
             <AlertDialogDescription>
-              You have an active workout in progress. Would you like to finish it first?
+              <Text>You have an active workout in progress. Would you like to continue it or start a new workout?</Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <View className="flex-row justify-end gap-3">
-            <AlertDialogCancel onPress={() => setShowActiveWorkoutModal(false)}>
+            <AlertDialogCancel onPress={handleStartNew}>
               <Text>Start New</Text>
             </AlertDialogCancel>
             <AlertDialogAction onPress={handleContinueExisting}>
@@ -219,5 +272,5 @@ export default function WorkoutScreen() {
         </AlertDialogContent>
       </AlertDialog>
     </TabScreen>
-  )
+  );
 }

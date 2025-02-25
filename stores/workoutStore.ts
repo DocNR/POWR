@@ -17,9 +17,13 @@ import type {
   TemplateType,
   TemplateExerciseConfig
 } from '@/types/templates';
-import type { BaseExercise } from '@/types/exercise'; // Add this import
+import type { BaseExercise } from '@/types/exercise';
 
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
+
+// Define a module-level timer reference for the workout timer
+// This ensures it persists even when components unmount
+let workoutTimerInterval: NodeJS.Timeout | null = null;
 
 interface FavoriteItem {
   id: string;
@@ -29,32 +33,33 @@ interface FavoriteItem {
 
 interface ExtendedWorkoutState extends WorkoutState {
   isActive: boolean;
+  isMinimized: boolean;
   favorites: FavoriteItem[];
 }
 
 interface WorkoutActions {
-    // Core Workout Flow
-    startWorkout: (workout: Partial<Workout>) => void;
-    pauseWorkout: () => void;
-    resumeWorkout: () => void;
-    completeWorkout: () => void;
-    cancelWorkout: () => void;
-    reset: () => void;
-  
-    // Exercise and Set Management
-    updateSet: (exerciseIndex: number, setIndex: number, data: Partial<WorkoutSet>) => void;
-    completeSet: (exerciseIndex: number, setIndex: number) => void;
-    nextExercise: () => void;
-    previousExercise: () => void;
-  
-    // Rest Timer
-    startRest: (duration: number) => void;
-    stopRest: () => void;
-    extendRest: (additionalSeconds: number) => void;
-  
-    // Timer Actions
-    tick: (elapsed: number) => void;
-  }
+  // Core Workout Flow
+  startWorkout: (workout: Partial<Workout>) => void;
+  pauseWorkout: () => void;
+  resumeWorkout: () => void;
+  completeWorkout: () => void;
+  cancelWorkout: () => void;
+  reset: () => void;
+
+  // Exercise and Set Management
+  updateSet: (exerciseIndex: number, setIndex: number, data: Partial<WorkoutSet>) => void;
+  completeSet: (exerciseIndex: number, setIndex: number) => void;
+  nextExercise: () => void;
+  previousExercise: () => void;
+
+  // Rest Timer
+  startRest: (duration: number) => void;
+  stopRest: () => void;
+  extendRest: (additionalSeconds: number) => void;
+
+  // Timer Actions
+  tick: (elapsed: number) => void;
+}
 
 interface ExtendedWorkoutActions extends WorkoutActions {
   // Core Workout Flow from original implementation
@@ -93,6 +98,14 @@ interface ExtendedWorkoutActions extends WorkoutActions {
   endWorkout: () => Promise<void>;
   clearAutoSave: () => Promise<void>;
   updateWorkoutTitle: (title: string) => void;
+  
+  // Minimized state actions
+  minimizeWorkout: () => void;
+  maximizeWorkout: () => void;
+  
+  // Workout timer management
+  startWorkoutTimer: () => void;
+  stopWorkoutTimer: () => void;
 }
 
 const initialState: ExtendedWorkoutState = {
@@ -107,11 +120,12 @@ const initialState: ExtendedWorkoutState = {
     remaining: 0
   },
   isActive: false,
+  isMinimized: false,
   favorites: []
 };
 
 const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions>()((set, get) => ({
-    ...initialState,  
+  ...initialState,  
 
   // Core Workout Flow
   startWorkout: (workoutData: Partial<Workout> = {}) => {
@@ -135,8 +149,12 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       activeWorkout: workout,
       currentExerciseIndex: 0,
       elapsedTime: 0,
-      isActive: true
+      isActive: true,
+      isMinimized: false
     });
+    
+    // Start the workout timer
+    get().startWorkoutTimer();
   },
 
   pauseWorkout: () => {
@@ -159,6 +177,9 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     const { activeWorkout } = get();
     if (!activeWorkout) return;
 
+    // Stop the workout timer
+    get().stopWorkoutTimer();
+
     const completedWorkout = {
       ...activeWorkout,
       isCompleted: true,
@@ -175,23 +196,43 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
 
     set({
       status: 'completed',
-      activeWorkout: completedWorkout
+      activeWorkout: completedWorkout,
+      isActive: false,
+      isMinimized: false
     });
   },
 
-  cancelWorkout: () => {
+  cancelWorkout: async () => {
     const { activeWorkout } = get();
     if (!activeWorkout) return;
-
-    // Save cancelled state for recovery if needed
-    saveWorkout({
+  
+    // Stop the workout timer
+    get().stopWorkoutTimer();
+    
+    // Prepare canceled workout with proper metadata
+    const canceledWorkout = {
       ...activeWorkout,
       isCompleted: false,
       endTime: Date.now(),
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      status: 'canceled'
+    };
+    
+    // Log the cancellation if needed
+    console.log('Workout canceled:', canceledWorkout.id);
+    
+    // Save the canceled state for analytics or recovery purposes
+    await saveWorkout(canceledWorkout);
+    
+    // Clear any auto-saves
+    // This would be the place to implement storage cleanup if needed
+    await get().clearAutoSave();
+    
+    // Reset to initial state
+    set({
+      ...initialState,
+      favorites: get().favorites // Preserve favorites when resetting
     });
-
-    set(initialState);
   },
 
   // Exercise and Set Management
@@ -232,10 +273,14 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     const sets = [...exercise.sets];
 
     const now = Date.now();
+    
+    // Toggle completion status
+    const isCurrentlyCompleted = sets[setIndex].isCompleted;
+    
     sets[setIndex] = {
       ...sets[setIndex],
-      isCompleted: true,
-      completedAt: now,
+      isCompleted: !isCurrentlyCompleted,
+      completedAt: !isCurrentlyCompleted ? now : undefined,
       lastUpdated: now
     };
 
@@ -345,7 +390,7 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     const { status, restTimer } = get();
     
     if (status === 'active') {
-      set((state: WorkoutState) => ({
+      set((state: ExtendedWorkoutState) => ({
         elapsedTime: state.elapsedTime + elapsed
       }));
 
@@ -364,6 +409,33 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
           });
         }
       }
+    }
+  },
+  
+  // Workout timer management - new functions
+  startWorkoutTimer: () => {
+    // Clear any existing timer first to prevent duplicates
+    if (workoutTimerInterval) {
+      clearInterval(workoutTimerInterval);
+      workoutTimerInterval = null;
+    }
+    
+    // Start a new timer that continues to run even when components unmount
+    workoutTimerInterval = setInterval(() => {
+      const { status } = useWorkoutStoreBase.getState();
+      if (status === 'active') {
+        useWorkoutStoreBase.getState().tick(1000);
+      }
+    }, 1000);
+    
+    console.log('Workout timer started');
+  },
+  
+  stopWorkoutTimer: () => {
+    if (workoutTimerInterval) {
+      clearInterval(workoutTimerInterval);
+      workoutTimerInterval = null;
+      console.log('Workout timer stopped');
     }
   },
 
@@ -385,13 +457,13 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
           source: ['local']
         },
         created_at: Date.now(),
-        sets: Array(templateExercise.targetSets || 3).fill({
+        sets: Array(templateExercise.targetSets || 3).fill(0).map(() => ({
           id: generateId('local'),
           type: 'normal',
           weight: 0,
           reps: templateExercise.targetReps || 0,
           isCompleted: false
-        }),
+        })),
         isCompleted: false,
         notes: templateExercise.notes || ''
       }));
@@ -405,18 +477,18 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       });
     },
 
-    updateWorkoutTitle: (title: string) => {
-        const { activeWorkout } = get();
-        if (!activeWorkout) return;
-      
-        set({
-          activeWorkout: {
-            ...activeWorkout,
-            title,
-            lastUpdated: Date.now()
-          }
-        });
-      },
+  updateWorkoutTitle: (title: string) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+    
+    set({
+      activeWorkout: {
+        ...activeWorkout,
+        title,
+        lastUpdated: Date.now()
+      }
+    });
+  },
 
   // Favorite Management
   getFavorites: async () => {
@@ -448,30 +520,42 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     if (!activeWorkout) return;
 
     await get().completeWorkout();
-    set({ isActive: false });
   },
 
   clearAutoSave: async () => {
     // TODO: Implement clearing autosave from storage
+    get().stopWorkoutTimer(); // Make sure to stop the timer
     set(initialState);
   },
+  
+  // New actions for minimized state
+  minimizeWorkout: () => {
+    set({ isMinimized: true });
+  },
+  
+  maximizeWorkout: () => {
+    set({ isMinimized: false });
+  },
 
-  reset: () => set(initialState)
+  reset: () => {
+    get().stopWorkoutTimer(); // Make sure to stop the timer
+    set(initialState);
+  }
 }));
 
 // Helper functions
 async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> {
-    // This is a placeholder - you'll need to implement actual template fetching
-    // from your database/storage service
-    try {
-      // Example implementation:
-      // return await db.getTemplate(templateId);
-      return null;
-    } catch (error) {
-      console.error('Error fetching template:', error);
-      return null;
-    }
+  // This is a placeholder - you'll need to implement actual template fetching
+  // from your database/storage service
+  try {
+    // Example implementation:
+    // return await db.getTemplate(templateId);
+    return null;
+  } catch (error) {
+    console.error('Error fetching template:', error);
+    return null;
   }
+}
 
 async function saveWorkout(workout: Workout): Promise<void> {
   try {
@@ -534,3 +618,15 @@ async function saveSummary(summary: WorkoutSummary) {
 
 // Create auto-generated selectors
 export const useWorkoutStore = createSelectors(useWorkoutStoreBase);
+
+// Clean up interval on hot reload in development
+if (typeof module !== 'undefined' && 'hot' in module) {
+  // @ts-ignore - 'hot' exists at runtime but TypeScript doesn't know about it
+  module.hot?.dispose(() => {
+    if (workoutTimerInterval) {
+      clearInterval(workoutTimerInterval);
+      workoutTimerInterval = null;
+      console.log('Workout timer cleared on hot reload');
+    }
+  });
+}

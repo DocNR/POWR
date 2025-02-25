@@ -19,7 +19,7 @@ export default function HomeWorkout({ onStartBlank, onSelectTemplate }: HomeWork
       <CardContent className="flex-col gap-4">
         <Button 
           size="lg"
-          className="w-full items-center justify-center gap-2"
+          className="w-full flex-row items-center justify-center gap-2"
           onPress={onStartBlank}
         >
           <Play className="h-5 w-5" />
@@ -29,7 +29,7 @@ export default function HomeWorkout({ onStartBlank, onSelectTemplate }: HomeWork
         <Button 
           variant="outline"
           size="lg"
-          className="w-full items-center justify-center gap-2"
+          className="w-full flex-row items-center justify-center gap-2"
           onPress={onSelectTemplate}
         >
           <Plus className="h-5 w-5" />
