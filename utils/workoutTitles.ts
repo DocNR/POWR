@@ -1,0 +1,123 @@
+export const WORKOUT_TITLES = [
+  // Action Movies
+  'Die Hard Reps',
+  'The Fast and The Furious: Deadlift Drift',
+  'Mission: Impossible - Strength Protocol',
+  'Rambo: The Strength Warrior',
+  'Terminator: Reps Rising',
+  'Mad Max: Fury Reps',
+  'The Equalizer Set',
+  'John Wick: Power Moves',
+  'The Bourne Identity Workout',
+  'The Rocketeer Push',
+  'Lethal Weapon Reps',
+  'Fast & Furious: Reps Drift',
+  'The Expendables Strength',
+  'Edge of Tomorrow Reps',
+  'Commando Strength Challenge',
+  'Speed: Rep Rush',
+  'Taken: The Workout',
+  'Heat: Reps Edition',
+  'The A-Team Lifts',
+  'Bad Boys for Life Squats',
+
+  // Thriller Movies
+  'The Dark Knight Lifting',
+  'Inception Reps',
+  'The Sixth Sense Workout',
+  'Shutter Island Strength',
+  'Gone Girl Gains',
+  'The Prestige Pulls',
+  'Se7en: The Seven Reps',
+  'The Departed Squats',
+  'Zodiac Killer Lifts',
+  'Fight Club Reps',
+  'Prisoners Power Pulls',
+  'The Girl with the Dragon Tattoo Strength',
+  'Panic Room Workout',
+  'Nightcrawler Circuit',
+  'Memento Lifting',
+  'The Insider Workout',
+  'Insomnia Reps',
+  'Source Code Strength',
+  'The Talented Mr. Ripley Lifts',
+  'Shutter Island Push',
+
+  // Western Movies
+  'The Good, The Bad, and The Swole',
+  'True Grit Gains',
+  'Django Unchained Reps',
+  'The Magnificent Seven Strength',
+  'Unforgiven Squats',
+  'Tombstone Power Pulls',
+  'The Outlaw Josie Wales Lifting',
+  'Butch Cassidy and the Sundance Rep',
+  'For a Few Dollars More Strength',
+  'Once Upon a Time in the West Squats',
+  'High Noon Lifts',
+  'The Wild Bunch Power Push',
+  'Silverado Strength Challenge',
+  'The Assassination of Jesse James Reps',
+  'The Hateful Eight Lifting',
+  '3:10 to Yuma Power Pulls',
+  'The Searchers Strength',
+  'A Fistful of Dollars Lifts',
+  'No Country for Old Men Squats',
+  'Rango Power Reps',
+
+  // Horror Movies
+  'The Texas Chainsaw Massacre Reps',
+  'Nightmare on Elm Street Strength',
+  'Halloween Squats',
+  'Friday the 13th Reps',
+  'The Shining Strength Challenge',
+  'It Chapter One: The Clown Reps',
+  'The Exorcist Deadlift',
+  'Scream Workout',
+  'Psycho Lifting',
+  'The Ring Circuit',
+  'The Cabin in the Woods Lifts',
+  'A Nightmare on Elm Street: Power Push',
+  'Get Out Strength',
+  'The Silence of the Lambs Reps',
+  'Hereditary Push',
+  'The Witch Lifting',
+  'It Follows Squats',
+  'Poltergeist Power Pulls',
+  'The Conjuring Strength',
+  'Midsommar Lifting',
+  'The Babadook Reps',
+
+  // Hybrid Action/Horror Movies
+  'Aliens Lifting',
+  'Predator Strength Challenge',
+  'Terminator 2: Judgment Day Reps',
+  'Resident Evil Power Pulls',
+  'The Matrix: Reps Reloaded',
+  'World War Z Workout',
+  '28 Days Later Strength',
+  'The Mist Power Push',
+  'The Road Reps',
+  'I Am Legend Lifts',
+  'The Walking Dead Strength Challenge',
+  'The Thing Squats',
+  'Dawn of the Dead Reps',
+  'Event Horizon Push',
+  'Daybreakers Power Lifts',
+  'Land of the Dead Lifting',
+  'The Strangers Reps',
+  'Escape from New York Strength',
+  'The Purge Circuit',
+  'Zombie Land Lifting'
+];
+
+export function getRandomWorkoutTitle(): string {
+  const index = Math.floor(Math.random() * WORKOUT_TITLES.length);
+  return WORKOUT_TITLES[index];
+}
+
+// Get a random title from a specific genre
+export function getRandomWorkoutTitleByGenre(genre: string): string {
+  // Implementation for future genre-specific selection
+  return getRandomWorkoutTitle();
+}

@@ -1,10 +1,11 @@
-// types/template.ts
-import { BaseExercise, ExerciseCategory } from './exercise';
+// types/templates.ts
+import { BaseExercise, Equipment, ExerciseCategory, SetType } from './exercise';
 import { StorageSource, SyncableContent } from './shared';
 import { generateId } from '@/utils/ids';
 
 /**
  * Template Classifications
+ * Aligned with NIP-33402
  */
 export type TemplateType = 'strength' | 'circuit' | 'emom' | 'amrap';
 
@@ -34,9 +35,11 @@ export interface TemplateExerciseConfig {
   targetReps: number;
   weight?: number;
   rpe?: number;
-  setType?: 'warmup' | 'normal' | 'drop' | 'failure';
+  setType?: SetType;
   restSeconds?: number;
   notes?: string;
+  
+  // Format configuration from NIP-33401
   format?: {
     weight?: boolean;
     reps?: boolean;
@@ -49,6 +52,14 @@ export interface TemplateExerciseConfig {
     rpe?: '0-10';
     set_type?: 'warmup|normal|drop|failure';
   };
+  
+  // For timed workouts
+  duration?: number;
+  interval?: number;
+  
+  // For circuit/EMOM
+  position?: number;
+  roundRest?: number;
 }
 
 /**
@@ -71,12 +82,23 @@ export interface TemplateBase {
   type: TemplateType;
   category: TemplateCategory;
   description?: string;
+  notes?: string;
   tags: string[];
+  
+  // Workout structure
+  rounds?: number;
+  duration?: number;
+  interval?: number;
+  restBetweenRounds?: number;
+  
+  // Metadata
   metadata?: {
     lastUsed?: number;
     useCount?: number;
     averageDuration?: number;
+    completionRate?: number;
   };
+  
   author?: {
     name: string;
     pubkey?: string;
@@ -114,12 +136,6 @@ export interface WorkoutTemplate extends TemplateBase, SyncableContent {
     set_type: 'warmup|normal|drop|failure';
   };
   
-  // Workout specific configuration
-  rounds?: number;
-  duration?: number;
-  interval?: number;
-  restBetweenRounds?: number;
-  
   // Template derivation
   sourceTemplate?: TemplateSource;
   derivatives?: {
@@ -129,6 +145,7 @@ export interface WorkoutTemplate extends TemplateBase, SyncableContent {
   
   // Nostr integration
   nostrEventId?: string;
+  relayUrls?: string[];
 }
 
 /**
@@ -194,7 +211,20 @@ export function toWorkoutTemplate(template: Template): WorkoutTemplate {
         title: ex.title,
         type: 'strength',
         category: 'Push' as ExerciseCategory,
+        equipment: 'barbell' as Equipment,
         tags: [],
+        format: {
+          weight: true,
+          reps: true,
+          rpe: true,
+          set_type: true
+        },
+        format_units: {
+          weight: 'kg',
+          reps: 'count',
+          rpe: '0-10',
+          set_type: 'warmup|normal|drop|failure'
+        },
         availability: {
           source: ['local']
         },
@@ -210,5 +240,32 @@ export function toWorkoutTemplate(template: Template): WorkoutTemplate {
     availability: {
       source: ['local']
     }
+  };
+}
+
+/**
+ * Creates a Nostr event from a template (NIP-33402)
+ */
+export function createNostrTemplateEvent(template: WorkoutTemplate) {
+  return {
+    kind: 33402,
+    content: template.description || '',
+    tags: [
+      ['d', template.id],
+      ['title', template.title],
+      ['type', template.type],
+      ...(template.rounds ? [['rounds', template.rounds.toString()]] : []),
+      ...(template.duration ? [['duration', template.duration.toString()]] : []),
+      ...(template.interval ? [['interval', template.interval.toString()]] : []),
+      ...template.exercises.map(ex => [
+        'exercise',
+        `33401:${ex.exercise.id}`,
+        ex.targetSets.toString(),
+        ex.targetReps.toString(),
+        ex.setType || 'normal'
+      ]),
+      ...template.tags.map(tag => ['t', tag])
+    ],
+    created_at: Math.floor(Date.now() / 1000)
   };
 }

@@ -84,11 +84,12 @@ export interface WorkoutSet {
  */
 export interface WorkoutExercise extends BaseExercise {
   sets: WorkoutSet[];
-  totalWeight?: number;
-  notes?: string;
-  restTime?: number; // Rest time in seconds
   targetSets?: number;
   targetReps?: number;
+  notes?: string;
+  restTime?: number;
+  isCompleted?: boolean;
+  lastUpdated?: number;
 }
 
 /**
