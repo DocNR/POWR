@@ -132,7 +132,7 @@ interface WorkoutRecord extends NostrEvent {
     ["d", string], // Unique identifier
     ["title", string], // Workout name
     ["type", string], // Workout type
-    ["template"?, string], // Optional template reference
+    ["template", "33402:<pubkey>:<d-tag>", "<relay-url>"], // Explicit template reference
     ["exercise", ...string[]][], // Exercises with actual values
     ["start", string], // Start timestamp
     ["end", string], // End timestamp
@@ -144,20 +144,30 @@ interface WorkoutRecord extends NostrEvent {
   ]
 }
 
-// Comment (Kind 1111)
+// Comment (Kind 1111 - as per NIP-22)
 interface WorkoutComment extends NostrEvent {
   kind: 1111;
   content: string; // Comment text
   tags: [
     // Root reference (exercise, template, or record)
-    ["e", string, string, string], // id, relay, pubkey
+    ["e", string, string, string], // id, relay, marker "root"
     ["K", string], // Root kind (33401, 33402, or 33403)
     ["P", string, string], // Root pubkey, relay
     
     // Parent comment (for replies)
-    ["e"?, string, string, string], // id, relay, pubkey
+    ["e"?, string, string, string], // id, relay, marker "reply"
     ["k"?, string], // Parent kind (1111)
     ["p"?, string, string], // Parent pubkey, relay
+  ]
+}
+
+// Reaction (Kind 7 - as per NIP-25)
+interface Reaction extends NostrEvent {
+  kind: 7;
+  content: "+" | "🔥" | "👍"; // Standard reaction symbols
+  tags: [
+    ["e", string, string], // event-id, relay-url
+    ["p", string] // pubkey of the event creator
   ]
 }
 
@@ -224,7 +234,125 @@ class SocialService {
   async reactToEvent(
     event: NostrEvent,
     reaction: "+" | "🔥" | "👍"
-  ): Promise<NostrEvent>;
+  ): Promise<NostrEvent> {
+    const reactionEvent = {
+      kind: 7,
+      content: reaction,
+      tags: [
+        ["e", event.id, "<relay-url>"],
+        ["p", event.pubkey]
+      ],
+      created_at: Math.floor(Date.now() / 1000)
+    };
+    
+    // Sign and publish the reaction
+    return await this.ndk.publish(reactionEvent);
+  }
+}
+```
+
+### Data Flow Diagram
+
+```mermaid
+graph TD
+    subgraph User
+        A[Create Content] --> B[Local Storage]
+        G[View Content] --> F[UI Components]
+    end
+    
+    subgraph LocalStorage
+        B --> C[SQLite Database]
+        C --> D[Event Processor]
+    end
+    
+    subgraph NostrNetwork
+        D -->|Publish| E[Relays]
+        E -->|Subscribe| F
+    end
+    
+    subgraph SocialInteractions
+        H[Comments] --> I[Comment Processor]
+        J[Reactions] --> K[Reaction Processor]
+        L[Zaps] --> M[NWC Manager]
+    end
+    
+    I -->|Publish| E
+    K -->|Publish| E
+    M -->|Request| N[Lightning Wallet]
+    N -->|Zap| E
+    
+    E -->|Fetch Related| F
+    C -->|Offline Data| F
+```
+
+### Query Examples
+
+```typescript
+// Find all exercise templates
+const exerciseTemplatesQuery = {
+  kinds: [33401],
+  limit: 50
+};
+
+// Find workout templates that use a specific exercise
+const templatesWithExerciseQuery = {
+  kinds: [33402],
+  "#exercise": [`33401:${pubkey}:${exerciseId}`]
+};
+
+// Find workout records for a specific template
+const workoutRecordsQuery = {
+  kinds: [33403],
+  "#template": [`33402:${pubkey}:${templateId}`]
+};
+
+// Find comments on a workout record
+const commentsQuery = {
+  kinds: [1111],
+  "#e": [workoutEventId],
+  "#K": ["33403"] // Root kind filter
+};
+
+// Find social posts (kind 1) that reference our workout events
+const socialReferencesQuery = {
+  kinds: [1],
+  "#e": [workoutEventId]
+};
+
+// Get reactions to a workout record
+const reactionsQuery = {
+  kinds: [7],
+  "#e": [workoutEventId]
+};
+
+// Find popular templates based on usage count
+async function findPopularTemplates() {
+  // First get all templates
+  const templates = await ndk.fetchEvents({
+    kinds: [33402],
+    limit: 100
+  });
+  
+  // Then count associated workout records for each
+  const templateCounts = await Promise.all(
+    templates.map(async (template) => {
+      const dTag = template.tags.find(t => t[0] === 'd')?.[1];
+      if (!dTag) return { template, count: 0 };
+      
+      const records = await ndk.fetchEvents({
+        kinds: [33403],
+        "#template": [`33402:${template.pubkey}:${dTag}`]
+      });
+      
+      return {
+        template,
+        count: records.length
+      };
+    })
+  );
+  
+  // Sort by usage count
+  return templateCounts.sort((a, b) => b.count - a.count);
 }
 ```
 
@@ -392,6 +520,32 @@ class SocialService {
 - Content filtering for inappropriate material
 - User control over content visibility
 - Protection against spam and abuse
+
+### Privacy Control Mechanisms
+
+The application implements several layers of privacy controls:
+
+1. **Publication Controls**:
+   - Per-content privacy settings (public, followers-only, private)
+   - Relay selection for each published event
+   - Option to keep all workout data local-only
+
+2. **Content Visibility**:
+   - Anonymous workout publishing (remove identifying data)
+   - Selective stat sharing (choose which metrics to publish)
+   - Time-delayed publishing (share workouts after a delay)
+
+3. **Technical Mechanisms**:
+   - Local-first storage ensures all data is usable offline
+   - Content encryption for sensitive information (using NIP-44)
+   - Private relay support for limited audience sharing
+   - Event expiration tags for temporary content
+
+4. **User Interface**:
+   - Clear visual indicators for public vs. private content
+   - Confirmation dialogs before publishing to relays
+   - Privacy setting presets (public account, private account, mixed)
+   - Granular permission controls for different content types
 
 ## Rollout Strategy
 
