@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { Platform, View } from 'react-native';
 import { Tabs, useNavigation } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
-import { Dumbbell, Library, Users, History, User } from 'lucide-react-native';
+import { Dumbbell, Library, Users, History, User, Home } from 'lucide-react-native';
 import type { CustomTheme } from '@/lib/theme';
 import ActiveWorkoutBar from '@/components/workout/ActiveWorkoutBar';
 import { useWorkoutStore } from '@/stores/workoutStore';
@@ -51,7 +51,7 @@ export default function TabLayout() {
           options={{
             title: 'Profile',
             tabBarIcon: ({ color, size }) => (
-              <User size={size} color={color} />
+              <Home size={size} color={color} />
             ),
           }}
         />
@@ -85,7 +85,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="history"
           options={{
-            title: 'History',
+          title: 'History',
             tabBarIcon: ({ color, size }) => (
               <History size={size} color={color} />
             ),

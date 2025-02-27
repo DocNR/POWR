@@ -2,12 +2,15 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
-import { useRouter } from 'expo-router';
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { TabScreen } from '@/components/layout/TabScreen';
+import { ChevronLeft } from 'lucide-react-native';
 import { generateId } from '@/utils/ids';
-import type { TemplateType } from '@/types/templates'; 
+import type { TemplateType } from '@/types/templates';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 // Temporary mock data - replace with actual template data
 const MOCK_TEMPLATES = [
@@ -37,6 +40,7 @@ const MOCK_TEMPLATES = [
 
 export default function TemplateSelectScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const startWorkout = useWorkoutStore.use.startWorkout();
 
   const handleSelectTemplate = (template: typeof MOCK_TEMPLATES[0]) => {
@@ -76,34 +80,54 @@ export default function TemplateSelectScreen() {
         created_at: Date.now()
       }))
     });
-    router.back();
+    
+    // Navigate directly to the create screen instead of going back
+    router.push('/(workout)/create');
   };
 
   return (
-    <ScrollView className="flex-1 p-4">
-      <Text className="text-lg font-semibold mb-4">Recent Templates</Text>
-      
-      {MOCK_TEMPLATES.map(template => (
-        <Card key={template.id} className="mb-4">
-          <CardContent className="p-4">
-            <Text className="text-lg font-semibold">{template.title}</Text>
-            <Text className="text-sm text-muted-foreground mb-2">{template.category}</Text>
-            
-            {/* Exercise Preview */}
-            <View className="mb-4">
-              {template.exercises.map((exercise, index) => (
-                <Text key={index} className="text-sm text-muted-foreground">
-                  {exercise.title} - {exercise.sets}×{exercise.reps}
-                </Text>
-              ))}
-            </View>
+    <TabScreen>
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        {/* Standard header with back button */}
+        <View className="px-4 py-3 flex-row items-center border-b border-border">
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onPress={() => router.back()}
+          >
+            <ChevronLeft className="text-foreground" />
+          </Button>
+          <Text className="text-xl font-semibold ml-2">Select Template</Text>
+        </View>
+        
+        <ScrollView className="flex-1 px-4 pt-4">
+          <Text className="text-lg font-semibold mb-4">Recent Templates</Text>
+          
+          <View className="gap-3">
+            {MOCK_TEMPLATES.map(template => (
+              <Card key={template.id} className="mb-4">
+                <CardContent className="p-4">
+                  <Text className="text-lg font-semibold">{template.title}</Text>
+                  <Text className="text-sm text-muted-foreground mb-2">{template.category}</Text>
+                  
+                  {/* Exercise Preview */}
+                  <View className="mb-4">
+                    {template.exercises.map((exercise, index) => (
+                      <Text key={index} className="text-sm text-muted-foreground">
+                        {exercise.title} - {exercise.sets}×{exercise.reps}
+                      </Text>
+                    ))}
+                  </View>
 
-            <Button onPress={() => handleSelectTemplate(template)}>
-              <Text>Start Workout</Text>
-            </Button>
-          </CardContent>
-        </Card>
-      ))}
-    </ScrollView>
+                  <Button onPress={() => handleSelectTemplate(template)}>
+                    <Text className="text-primary-foreground">Start Workout</Text>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    </TabScreen>
   );
 }

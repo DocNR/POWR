@@ -1,7 +1,7 @@
 // app/(workout)/create.tsx
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { TabScreen } from '@/components/layout/TabScreen';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -16,14 +16,22 @@ import {
   AlertDialogCancel 
 } from '@/components/ui/alert-dialog';
 import { useWorkoutStore } from '@/stores/workoutStore';
-import { ArrowLeft, Plus, Pause, Play, MoreHorizontal, CheckCircle2, Dumbbell } from 'lucide-react-native';
+import { Plus, Pause, Play, MoreHorizontal, CheckCircle2, Dumbbell, ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EditableText from '@/components/EditableText';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/utils/ids';
 import { WorkoutSet } from '@/types/workout';
-import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { formatTime } from '@/utils/formatTime';
+import { ParamListBase } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+// Define styles outside of component
+const styles = StyleSheet.create({
+  timerText: {
+    fontVariant: ['tabular-nums']
+  }
+});
 
 export default function CreateWorkoutScreen() {
   const { 
@@ -46,14 +54,31 @@ export default function CreateWorkoutScreen() {
     maximizeWorkout
   } = useWorkoutStore.getState();
 
+  type CreateScreenNavigationProp = NativeStackNavigationProp<ParamListBase>;
+  const navigation = useNavigation<CreateScreenNavigationProp>();
+
   // Check if we're coming from minimized state when component mounts
   useEffect(() => {
     if (isMinimized) {
       maximizeWorkout();
     }
+  }, [isMinimized, maximizeWorkout]);
+
+  // Handle back navigation
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // If we have an active workout, just minimize it before continuing
+      if (activeWorkout && !isMinimized) {
+        // Call minimizeWorkout to update the state
+        minimizeWorkout();
+        
+        // Let the navigation continue naturally
+        // Don't call router.back() here to avoid recursion
+      }
+    });
     
-    // No need to set up a timer here as it's now managed by the store
-  }, [isMinimized]);
+    return unsubscribe;
+  }, [navigation, activeWorkout, isMinimized, minimizeWorkout]);
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const insets = useSafeAreaInsets();
@@ -102,12 +127,6 @@ export default function CreateWorkoutScreen() {
       ...set,
       isCompleted: !set.isCompleted
     });
-  };
-
-  // Handler for minimizing workout and going back
-  const handleMinimize = () => {
-    minimizeWorkout();
-    router.back();
   };
 
   // Show empty state when no workout is active
@@ -172,76 +191,73 @@ export default function CreateWorkoutScreen() {
   return (
     <TabScreen>
       <View style={{ flex: 1, paddingTop: insets.top }}>
-        {/* Swipe indicator and back button */}
-        <View className="w-full items-center py-2">
-          <View className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+        {/* Header with back button */}
+        <View className="px-4 py-3 flex-row items-center justify-between border-b border-border">
+          <View className="flex-row items-center">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onPress={() => {
+                minimizeWorkout();
+                router.back();
+              }}
+            >
+              <ChevronLeft className="text-foreground" />
+            </Button>
+            <Text className="text-xl font-semibold ml-2">Back</Text>
+          </View>
+          
+          <Button
+            variant="purple"
+            className="px-4"
+            onPress={() => completeWorkout()}
+            disabled={!hasExercises}
+          >
+            <Text className="text-white font-medium">Finish</Text>
+          </Button>
         </View>
         
-        {/* Header with Title and Finish Button */}
-        <View className="px-4 py-3 border-b border-border">
-          {/* Top row with minimize and finish buttons */}
-          <View className="flex-row justify-between items-center mb-2">
+        {/* Full-width workout title */}
+        <View className="px-4 py-3">
+          <EditableText
+            value={activeWorkout.title}
+            onChangeText={(newTitle) => updateWorkoutTitle(newTitle)}
+            placeholder="Workout Title"
+            textStyle={{
+              fontSize: 24,
+              fontWeight: '700',
+            }}
+          />
+        </View>
+        
+        {/* Timer Display */}
+        <View className="flex-row items-center px-4 pb-3 border-b border-border">
+          <Text style={styles.timerText} className={cn(
+            "text-2xl font-mono",
+            status === 'paused' ? "text-muted-foreground" : "text-foreground"
+          )}>
+            {formatTime(elapsedTime)}
+          </Text>
+          
+          {status === 'active' ? (
             <Button
               variant="ghost"
-              className="flex-row items-center"
-              onPress={handleMinimize}
+              size="icon"
+              className="ml-2"
+              onPress={pauseWorkout}
             >
-              <ArrowLeft className="mr-1 text-foreground" size={18} />
-              <Text className="text-foreground">Minimize</Text>
+              <Pause className="text-foreground" />
             </Button>
-            
+          ) : (
             <Button
-              variant="purple"
-              className="px-4"
-              onPress={() => completeWorkout()}
-              disabled={!hasExercises}
+              variant="ghost"
+              size="icon"
+              className="ml-2"
+              onPress={resumeWorkout}
             >
-              <Text className="text-white font-medium">Finish</Text>
+              <Play className="text-foreground" />
             </Button>
-          </View>
-          
-          {/* Full-width workout title */}
-          <View className="mb-3">
-            <EditableText
-              value={activeWorkout.title}
-              onChangeText={(newTitle) => updateWorkoutTitle(newTitle)}
-              placeholder="Workout Title"
-              textStyle={{
-                fontSize: 24,
-                fontWeight: '700',
-              }}
-            />
-          </View>
-          
-          {/* Timer Display */}
-          <View className="flex-row items-center">
-            <Text style={styles.timerText} className={cn(
-              "text-2xl font-mono",
-              status === 'paused' ? "text-muted-foreground" : "text-foreground"
-            )}>
-              {formatTime(elapsedTime)}
-            </Text>
-            
-            {status === 'active' ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="ml-2"
-                onPress={pauseWorkout}
-              >
-                <Pause className="text-foreground" />
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="ml-2"
-                onPress={resumeWorkout}
-              >
-                <Play className="text-foreground" />
-              </Button>
-            )}
-          </View>
+          )}
         </View>
 
         {/* Content Area */}
@@ -317,43 +333,43 @@ export default function CreateWorkoutScreen() {
                             {previousSet ? `${previousSet.weight}×${previousSet.reps}` : '—'}
                           </Text>
                           
-                        {/* Weight Input */}
-                        <View className="flex-1 px-2">
-                        <TextInput
-                            className={cn(
-                            "bg-secondary h-10 rounded-md px-3 text-center text-foreground",
-                            set.isCompleted && "bg-primary/10"
-                            )}
-                            value={set.weight ? set.weight.toString() : ''}
-                            onChangeText={(text) => {
-                            const weight = text === '' ? 0 : parseFloat(text);
-                            if (!isNaN(weight)) {
-                                updateSet(exerciseIndex, setIndex, { weight });
-                            }
-                            }}
-                            keyboardType="numeric"
-                            selectTextOnFocus
-                        />
-                        </View>
+                          {/* Weight Input */}
+                          <View className="flex-1 px-2">
+                            <TextInput
+                              className={cn(
+                                "bg-secondary h-10 rounded-md px-3 text-center text-foreground",
+                                set.isCompleted && "bg-primary/10"
+                              )}
+                              value={set.weight ? set.weight.toString() : ''}
+                              onChangeText={(text) => {
+                                const weight = text === '' ? 0 : parseFloat(text);
+                                if (!isNaN(weight)) {
+                                  updateSet(exerciseIndex, setIndex, { weight });
+                                }
+                              }}
+                              keyboardType="numeric"
+                              selectTextOnFocus
+                            />
+                          </View>
 
-                        {/* Reps Input */}
-                        <View className="flex-1 px-2">
-                        <TextInput
-                            className={cn(
-                            "bg-secondary h-10 rounded-md px-3 text-center text-foreground",
-                            set.isCompleted && "bg-primary/10"
-                            )}
-                            value={set.reps ? set.reps.toString() : ''}
-                            onChangeText={(text) => {
-                            const reps = text === '' ? 0 : parseInt(text, 10);
-                            if (!isNaN(reps)) {
-                                updateSet(exerciseIndex, setIndex, { reps });
-                            }
-                            }}
-                            keyboardType="numeric"
-                            selectTextOnFocus
-                        />
-                        </View>
+                          {/* Reps Input */}
+                          <View className="flex-1 px-2">
+                            <TextInput
+                              className={cn(
+                                "bg-secondary h-10 rounded-md px-3 text-center text-foreground",
+                                set.isCompleted && "bg-primary/10"
+                              )}
+                              value={set.reps ? set.reps.toString() : ''}
+                              onChangeText={(text) => {
+                                const reps = text === '' ? 0 : parseInt(text, 10);
+                                if (!isNaN(reps)) {
+                                  updateSet(exerciseIndex, setIndex, { reps });
+                                }
+                              }}
+                              keyboardType="numeric"
+                              selectTextOnFocus
+                            />
+                          </View>
                           
                           {/* Complete Button */}
                           <Button
@@ -385,16 +401,23 @@ export default function CreateWorkoutScreen() {
                 </Card>
               ))}
               
-              {/* Cancel Button - only shown at the bottom when exercises exist */}
-              <View className="mt-4 mb-8">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onPress={() => setShowCancelDialog(true)}
-                >
-                  <Text className="text-foreground">Cancel Workout</Text>
-                </Button>
-              </View>
+              {/* Add Exercises Button */}
+              <Button
+                variant="purple"
+                className="w-full mb-4"
+                onPress={() => router.push('/(workout)/add-exercises')}
+              >
+                <Text className="text-white font-medium">Add Exercises</Text>
+              </Button>
+              
+              {/* Cancel Button */}
+              <Button
+                variant="outline"
+                className="w-full mb-8"
+                onPress={() => setShowCancelDialog(true)}
+              >
+                <Text className="text-foreground">Cancel Workout</Text>
+              </Button>
             </>
           ) : (
             // Empty State with nice message and icon
@@ -427,20 +450,6 @@ export default function CreateWorkoutScreen() {
             </View>
           )}
         </ScrollView>
-
-        {/* Add Exercise FAB - only shown when exercises exist */}
-        {hasExercises && (
-          <View style={{ 
-            position: 'absolute', 
-            right: 16, 
-            bottom: insets.bottom + 16
-          }}>
-            <FloatingActionButton 
-              icon={Plus}
-              onPress={() => router.push('/(workout)/add-exercises')}
-            />
-          </View>
-        )}
       </View>
 
       {/* Cancel Workout Dialog */}
@@ -465,9 +474,3 @@ export default function CreateWorkoutScreen() {
     </TabScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  timerText: {
-    fontVariant: ['tabular-nums']
-  }
-});

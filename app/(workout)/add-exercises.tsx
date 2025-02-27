@@ -10,8 +10,9 @@ import { useWorkoutStore } from '@/stores/workoutStore';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LibraryService } from '@/lib/db/services/LibraryService';
 import { TabScreen } from '@/components/layout/TabScreen';
-import { X } from 'lucide-react-native';
+import { ChevronLeft } from 'lucide-react-native';
 import { BaseExercise } from '@/types/exercise';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AddExercisesScreen() {
   const db = useSQLiteContext();
@@ -19,6 +20,7 @@ export default function AddExercisesScreen() {
   const [exercises, setExercises] = useState<BaseExercise[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  const insets = useSafeAreaInsets();
   
   const { addExercises } = useWorkoutStore();
 
@@ -53,26 +55,26 @@ export default function AddExercisesScreen() {
     const selectedExercises = exercises.filter(e => selectedIds.includes(e.id));
     addExercises(selectedExercises);
     
-    // Just go back - this will dismiss the modal and return to create screen
+    // Go back to create screen
     router.back();
   };
 
   return (
     <TabScreen>
-      <View className="flex-1 pt-12">
-        {/* Close button in the top right */}
-        <View className="absolute top-12 right-4 z-10">
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        {/* Standard header with back button */}
+        <View className="px-4 py-3 flex-row items-center border-b border-border">
           <Button 
             variant="ghost" 
             size="icon"
             onPress={() => router.back()}
           >
-            <X className="text-foreground" />
+            <ChevronLeft className="text-foreground" />
           </Button>
+          <Text className="text-xl font-semibold ml-2">Add Exercises</Text>
         </View>
         
         <View className="px-4 pt-4 pb-2">
-          <Text className="text-xl font-semibold mb-4">Add Exercises</Text>
           <Input
             placeholder="Search exercises..."
             value={search}

@@ -1,20 +1,21 @@
 // app/(tabs)/library/templates.tsx
 import React, { useState } from 'react';
-import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView } from 'react-native';
+import { router } from 'expo-router'; // Add this import
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { useFocusEffect } from '@react-navigation/native';
 import { Search, Plus } from 'lucide-react-native';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NewTemplateSheet } from '@/components/library/NewTemplateSheet';
 import { TemplateCard } from '@/components/templates/TemplateCard';
-import { TemplateDetails } from '@/components/templates/TemplateDetails';
+// Remove TemplateDetails import since we're not using it anymore
 import { 
   Template, 
-  WorkoutTemplate,
   TemplateCategory,
   toWorkoutTemplate 
 } from '@/types/templates';
+import { useWorkoutStore } from '@/stores/workoutStore';
 
 const TEMPLATE_CATEGORIES: TemplateCategory[] = [
   'Full Body',
@@ -61,30 +62,63 @@ export default function TemplatesScreen() {
   const [templates, setTemplates] = useState(initialTemplates);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<WorkoutTemplate | null>(null);
+  // Remove selectedTemplate state since we're not using it anymore
 
   const handleDelete = (id: string) => {
     setTemplates(current => current.filter(t => t.id !== id));
   };
 
+  // Update to navigate to the template details screen
   const handleTemplatePress = (template: Template) => {
-    setSelectedTemplate(toWorkoutTemplate(template));
+    router.push(`/template/${template.id}`);
   };
 
-  const handleStartWorkout = (template: Template) => {
-    // TODO: Navigate to workout screen with template
-    console.log('Starting workout with template:', template);
+  const handleStartWorkout = async (template: Template) => {
+    try {
+      // Use the workoutStore action to start a workout from template
+      await useWorkoutStore.getState().startWorkoutFromTemplate(template.id);
+      
+      // Navigate to the active workout screen
+      router.push('/(workout)/create');
+    } catch (error) {
+      console.error("Error starting workout:", error);
+    }
   };
 
-  const handleFavorite = (template: Template) => {
-    setTemplates(current =>
-      current.map(t =>
-        t.id === template.id
-          ? { ...t, isFavorite: !t.isFavorite }
-          : t
-      )
-    );
-  };
+  const handleFavorite = async (template: Template) => {
+    try {
+      const workoutTemplate = toWorkoutTemplate(template);
+      const isFavorite = useWorkoutStore.getState().checkFavoriteStatus(template.id);
+      
+      if (isFavorite) {
+        await useWorkoutStore.getState().removeFavorite(template.id);
+      } else {
+        await useWorkoutStore.getState().addFavorite(workoutTemplate);
+      }
+      
+      // Update local state to reflect change
+      setTemplates(current =>
+        current.map(t =>
+          t.id === template.id
+            ? { ...t, isFavorite: !isFavorite }
+            : t
+        )
+      );
+    } catch (error) {
+      console.error('Error toggling favorite status:', error);
+    }
+  };  
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Refresh template favorite status when tab gains focus
+      setTemplates(current => current.map(template => ({
+        ...template,
+        isFavorite: useWorkoutStore.getState().checkFavoriteStatus(template.id)
+      })));
+      return () => {};
+    }, [])
+  );
 
   const handleAddTemplate = (template: Template) => {
     setTemplates(prev => [...prev, template]);
@@ -120,7 +154,7 @@ export default function TemplatesScreen() {
         </View>
       </View>
 
-      {/* Category filters */}
+{/*      // Category filters 
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -151,7 +185,7 @@ export default function TemplatesScreen() {
             </Button>
           ))}
         </View>
-      </ScrollView>
+      </ScrollView> */}
 
       {/* Templates list */}
       <ScrollView>
@@ -207,16 +241,7 @@ export default function TemplatesScreen() {
         <View className="h-20" />
       </ScrollView>
 
-      {/* Template Details with tabs */}
-      {selectedTemplate && (
-        <TemplateDetails
-          template={selectedTemplate}
-          open={!!selectedTemplate}
-          onOpenChange={(open) => {
-            if (!open) setSelectedTemplate(null);
-          }}
-        />
-      )}
+      {/* Remove the TemplateDetails component since we're using router navigation now */}
 
       <FloatingActionButton
         icon={Plus}

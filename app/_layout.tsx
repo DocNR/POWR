@@ -15,6 +15,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SettingsDrawerProvider } from '@/lib/contexts/SettingsDrawerContext';
 import SettingsDrawer from '@/components/SettingsDrawer';
 import { useNDKStore } from '@/lib/stores/ndk';
+import { useWorkoutStore } from '@/stores/workoutStore';
 
 const LIGHT_THEME = {
   ...DefaultTheme,
@@ -41,6 +42,9 @@ export default function RootLayout() {
         
         // Initialize NDK
         await init();
+        
+        // Load favorites from SQLite
+        await useWorkoutStore.getState().loadFavorites();
         
         setIsInitialized(true);
       } catch (error) {

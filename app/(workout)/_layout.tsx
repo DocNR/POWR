@@ -2,49 +2,58 @@
 import React from 'react'
 import { Stack } from 'expo-router'
 import { useTheme } from '@react-navigation/native';
+import { Platform } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 
 export default function WorkoutLayout() {
   const theme = useTheme();
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { 
-          backgroundColor: theme.colors.background 
-        },
-        presentation: 'modal', // Make all screens in this group modal by default
-        animation: 'slide_from_bottom',
-        gestureEnabled: true, // Allow gesture to dismiss
-        gestureDirection: 'vertical', // Swipe down to dismiss
-      }}
-    >
-      <Stack.Screen 
-        name="create"
-        options={{
-          // Modal presentation for create screen
-          presentation: 'modal',
-          animation: 'slide_from_bottom',
+    <>
+      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { 
+            backgroundColor: theme.colors.background 
+          },
+          // Use standard card presentation for all screens
+          presentation: 'card',
+          // Standard animation
+          animation: 'default',
+          // Enable standard left-edge back gesture
           gestureEnabled: true,
-          gestureDirection: 'vertical',
+          gestureDirection: 'horizontal',
         }}
-      />
-      <Stack.Screen 
-        name="template-select"
-        options={{
-          presentation: 'modal',
-          animation: 'slide_from_bottom',
-          gestureEnabled: true,
-        }}
-      />
-      <Stack.Screen 
-        name="add-exercises"
-        options={{
-          presentation: 'modal',
-          animation: 'slide_from_bottom',
-          gestureEnabled: true,
-        }}
-      />
-    </Stack>
-  )
+      >
+        <Stack.Screen 
+          name="create"
+          options={{
+            presentation: 'card',
+            animation: 'default',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        />
+        <Stack.Screen 
+          name="add-exercises"
+          options={{
+            presentation: 'card',
+            animation: 'default',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        />
+        <Stack.Screen 
+          name="template-select"
+          options={{
+            presentation: 'card',
+            animation: 'default',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        />
+      </Stack>
+    </>
+  );
 }

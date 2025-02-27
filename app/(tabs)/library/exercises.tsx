@@ -107,50 +107,6 @@ export default function ExercisesScreen() {
         </View>
       </View>
 
-      {/* Filter buttons */}
-      <View className="flex-row px-4 pb-2 gap-2">
-        <Button
-          variant={activeFilter === null ? "default" : "outline"}
-          size="sm"
-          className="rounded-full"
-          onPress={() => setActiveFilter(null)}
-        >
-          <Text className={activeFilter === null ? "text-primary-foreground" : ""}>
-            All
-          </Text>
-        </Button>
-        <Button
-          variant={activeFilter === "strength" ? "default" : "outline"}
-          size="sm"
-          className="rounded-full"
-          onPress={() => setActiveFilter(activeFilter === "strength" ? null : "strength")}
-        >
-          <Text className={activeFilter === "strength" ? "text-primary-foreground" : ""}>
-            Strength
-          </Text>
-        </Button>
-        <Button
-          variant={activeFilter === "bodyweight" ? "default" : "outline"}
-          size="sm"
-          className="rounded-full"
-          onPress={() => setActiveFilter(activeFilter === "bodyweight" ? null : "bodyweight")}
-        >
-          <Text className={activeFilter === "bodyweight" ? "text-primary-foreground" : ""}>
-            Bodyweight
-          </Text>
-        </Button>
-        <Button
-          variant={activeFilter === "cardio" ? "default" : "outline"}
-          size="sm"
-          className="rounded-full"
-          onPress={() => setActiveFilter(activeFilter === "cardio" ? null : "cardio")}
-        >
-          <Text className={activeFilter === "cardio" ? "text-primary-foreground" : ""}>
-            Cardio
-          </Text>
-        </Button>
-      </View>
-
       {/* Exercises list */}
       <SimplifiedExerciseList
         exercises={exercises}

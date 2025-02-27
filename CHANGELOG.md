@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Zustand workout store for state management
+  - Created comprehensive workout state store with Zustand
+  - Implemented selectors for efficient state access
+  - Added workout persistence and recovery
+  - Built automatic timer management with background support
+  - Developed minimization and maximization functionality
+- Workout tracking implementation with real-time tracking
+  - Added workout timer with proper background handling
+  - Implemented rest timer functionality
+  - Added exercise set tracking with weight and reps
+  - Created workout minimization and maximization system
+  - Implemented active workout bar for minimized workouts
 - SQLite database implementation with development seeding
   - Successfully integrated SQLite with proper transaction handling
   - Added mock exercise library with 10 initial exercises
@@ -38,8 +50,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Favorite template functionality
   - Template categories and filtering
   - Quick-start template actions
+- Full-screen template details with tab navigation
+  - Replaced bottom sheet with dedicated full-screen layout
+  - Implemented material top tabs for content organization
+  - Added Overview, History, and Social tabs
+  - Improved template information hierarchy
+  - Added contextual action buttons based on template source
+  - Enhanced social sharing capabilities
+  - Improved workout history visualization
 
 ### Changed
+- Improved workout screen navigation consistency
+  - Standardized screen transitions and gestures
+  - Added back buttons for clearer navigation
+  - Implemented proper workout state persistence
+- Enhanced exercise selection interface
+  - Updated add-exercises screen with cleaner UI
+  - Added multi-select functionality for bulk exercise addition
+  - Implemented exercise search and filtering
 - Improved exercise library interface
   - Removed "Recent Exercises" section for cleaner UI
   - Added alphabetical section organization
@@ -62,8 +90,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added category pills for filtering
   - Improved spacing and layout
   - Better visual hierarchy for favorites
+- Migrated from React Context to Zustand for state management
+  - Improved performance with fine-grained rendering
+  - Enhanced developer experience with simpler API
+  - Better type safety with TypeScript integration
+  - Added persistent workout state for recovery
+- Redesigned template details experience
+  - Migrated from bottom sheet to full-screen layout
+  - Restructured content with tab-based navigation
+  - Added dedicated header with prominent action buttons
+  - Improved attribution and source indication
+  - Enhanced visual separation between template metadata and content
 
 ### Fixed
+- Workout navigation gesture handling issues
+- Workout timer inconsistency during app background state
 - Exercise deletion functionality
 - Keyboard overlap issues in exercise creation form
 - SQLite transaction nesting issues
@@ -73,6 +114,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Template category spacing issues
 - Exercise list rendering on iOS
 - Database reset and reseeding behavior
+- Template details UI overflow issues
+- Navigation inconsistencies between template screens
+- Content rendering issues in bottom sheet components
 
 ### Technical Details
 1. Database Schema Enforcement:
@@ -99,11 +143,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Added DevSeederService for development data
    - Enhanced error handling and logging
 
+5. Workout State Management with Zustand:
+   - Implemented selector pattern for performance optimization
+   - Added module-level timer references for background operation
+   - Created workout persistence with auto-save functionality
+   - Developed state recovery for crash protection
+   - Added support for future Nostr integration
+   - Implemented workout minimization for multi-tasking
+
+6. Template Details UI Architecture:
+   - Implemented MaterialTopTabNavigator for content organization
+   - Created screen-specific components for each tab
+   - Developed conditional rendering based on template source
+   - Implemented context-aware action buttons
+   - Added proper navigation state handling
+
 ### Migration Notes
 - Exercise creation now enforces schema constraints
 - Input validation prevents invalid data entry
 - Enhanced error messages provide better debugging information
 - Template management requires updated type definitions
+- Workout state now persists across app restarts
+- Component access to workout state requires new selector pattern
+- Template details navigation has changed from modal to screen-based approach
 
 ## [0.1.0] - 2024-02-09
 

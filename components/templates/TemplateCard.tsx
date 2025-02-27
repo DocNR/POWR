@@ -1,6 +1,7 @@
 // components/templates/TemplateCard.tsx
 import React from 'react';
 import { View, TouchableOpacity, Platform } from 'react-native';
+import { router } from 'expo-router'; // Add this import
 import { Text } from '@/components/ui/text';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,8 +55,13 @@ export function TemplateCard({
     setShowDeleteAlert(false);
   };
 
+  // Handle navigation to template details
+  const handleTemplatePress = () => {
+    router.push(`/template/${id}`);
+  };
+
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity onPress={handleTemplatePress} activeOpacity={0.7}>
       <Card className="mx-4">
         <CardContent className="p-4">
           <View className="flex-row justify-between items-start">

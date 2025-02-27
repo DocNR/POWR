@@ -1,7 +1,6 @@
 // app/(tabs)/library/_layout.tsx
 import { View } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Text } from '@/components/ui/text';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SearchPopover } from '@/components/library/SearchPopover';
 import { FilterPopover } from '@/components/library/FilterPopover';

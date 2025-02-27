@@ -1,6 +1,7 @@
 // app/(tabs)/index.tsx
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'; 
 import { ScrollView, View } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router'
 import { 
   AlertDialog,
@@ -17,7 +18,6 @@ import Header from '@/components/Header'
 import HomeWorkout from '@/components/workout/HomeWorkout'
 import FavoriteTemplate from '@/components/workout/FavoriteTemplate'
 import { useWorkoutStore } from '@/stores/workoutStore'
-import type { WorkoutTemplate } from '@/types/templates'
 import { Text } from '@/components/ui/text'
 import { getRandomWorkoutTitle } from '@/utils/workoutTitles'
 
@@ -59,39 +59,40 @@ export default function WorkoutScreen() {
     endWorkout
   } = useWorkoutStore();
 
-  useEffect(() => {
-    loadFavorites();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites();
+      return () => {}; // Cleanup function
+    }, [])
+  );
 
   const loadFavorites = async () => {
     setIsLoadingFavorites(true);
     try {
       const favorites = await getFavorites();
       
-      const workoutTemplates = favorites
-        .filter(f => f.content && f.content.id && checkFavoriteStatus(f.content.id))
-        .map(f => {
-          const content = f.content;
-          return {
-            id: content.id,
-            title: content.title || 'Untitled Workout',
-            description: content.description || '',
-            exercises: content.exercises.map(ex => ({
-              title: ex.exercise.title,
-              sets: ex.targetSets,
-              reps: ex.targetReps
-            })),
-            exerciseCount: content.exercises.length,
-            duration: content.metadata?.averageDuration,
-            isFavorited: true,
-            lastUsed: content.metadata?.lastUsed,
-            source: content.availability.source.includes('nostr') 
-              ? 'nostr' 
-              : content.availability.source.includes('powr')
-                ? 'powr'
-                : 'local'
-          } as FavoriteTemplateData;
-        });
+      const workoutTemplates = favorites.map(f => {
+        const content = f.content;
+        return {
+          id: content.id,
+          title: content.title || 'Untitled Workout',
+          description: content.description || '',
+          exercises: content.exercises.map(ex => ({
+            title: ex.exercise.title,
+            sets: ex.targetSets,
+            reps: ex.targetReps
+          })),
+          exerciseCount: content.exercises.length,
+          duration: content.metadata?.averageDuration,
+          isFavorited: true,
+          lastUsed: content.metadata?.lastUsed,
+          source: content.availability.source.includes('nostr') 
+            ? 'nostr' 
+            : content.availability.source.includes('powr')
+              ? 'powr'
+              : 'local'
+        } as FavoriteTemplateData;
+      });
 
       setFavoriteWorkouts(workoutTemplates);
     } catch (error) {
