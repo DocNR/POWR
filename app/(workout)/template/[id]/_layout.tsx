@@ -23,6 +23,9 @@ import OverviewTab from './index';
 import SocialTab from './social';
 import HistoryTab from './history';
 
+// Import the shared context
+import { TemplateContext } from './_templateContext';
+
 // Types
 import { WorkoutTemplate } from '@/types/templates';
 import type { CustomTheme } from '@/lib/theme';
@@ -262,22 +265,4 @@ export default function TemplateDetailsLayout() {
       </View>
     </TabScreen>
   );
-}
-
-// Create a context to share the template with the tab screens
-interface TemplateContextType {
-  template: WorkoutTemplate | null;
-}
-
-export const TemplateContext = React.createContext<TemplateContextType>({
-  template: null
-});
-
-// Custom hook to access the template
-export function useTemplate() {
-  const context = React.useContext(TemplateContext);
-  if (!context.template) {
-    throw new Error('useTemplate must be used within a TemplateContext.Provider');
-  }
-  return context.template;
 }

@@ -7,6 +7,7 @@ import { Bell } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/UserAvatar';
+import PowerLogo from '@/components/PowerLogo';
 import { useSettingsDrawer } from '@/lib/contexts/SettingsDrawerContext';
 import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
 
@@ -14,12 +15,14 @@ interface HeaderProps {
   title?: string;
   hideTitle?: boolean;
   rightElement?: React.ReactNode;
+  useLogo?: boolean;
 }
 
 export default function Header({ 
   title, 
   hideTitle = false, 
-  rightElement 
+  rightElement,
+  useLogo = false
 }: HeaderProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -56,9 +59,13 @@ export default function Header({
           fallback={fallbackLetter}
         />
 
-        {/* Middle - Title */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>{title}</Text>
+        {/* Middle - Title or Logo */}
+        <View style={[styles.titleContainer, { marginLeft: 10 }]}>
+          {useLogo ? (
+            <PowerLogo size="md" />
+          ) : (
+            <Text style={styles.title}>{title}</Text>
+          )}
         </View>
 
         {/* Right side - Custom element or default notifications */}
@@ -69,7 +76,11 @@ export default function Header({
               size="icon"
               onPress={() => {}}
             >
-              <Bell size={24} className="text-foreground" />
+              <View className="relative">
+                <Bell size={24} className="text-foreground" />
+                {/* Notification indicator - you can conditionally render this */}
+                <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+              </View>
             </Button>
           )}
         </View>
@@ -93,7 +104,9 @@ const styles = StyleSheet.create({
   titleContainer: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    paddingHorizontal: 0, // Remove padding to allow more precise positioning
+    height: '100%',
   },
   title: {
     fontSize: 20,

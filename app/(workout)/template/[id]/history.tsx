@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Calendar } from 'lucide-react-native';
-import { useTemplate } from './_layout';
+import { useTemplate } from './_templateContext';
 
 // Format date helper
 const formatDate = (date: Date) => {

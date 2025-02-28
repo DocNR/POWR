@@ -1,15 +1,16 @@
 // app/(tabs)/library/templates.tsx
 import React, { useState } from 'react';
 import { View, ScrollView } from 'react-native';
-import { router } from 'expo-router'; // Add this import
+import { router } from 'expo-router';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
 import { useFocusEffect } from '@react-navigation/native';
-import { Search, Plus } from 'lucide-react-native';
+import { Search, Plus, ListFilter } from 'lucide-react-native';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NewTemplateSheet } from '@/components/library/NewTemplateSheet';
+import { FilterSheet, type FilterOptions, type SourceType } from '@/components/library/FilterSheet';
 import { TemplateCard } from '@/components/templates/TemplateCard';
-// Remove TemplateDetails import since we're not using it anymore
+import { Button } from '@/components/ui/button';
 import { 
   Template, 
   TemplateCategory,
@@ -17,13 +18,19 @@ import {
 } from '@/types/templates';
 import { useWorkoutStore } from '@/stores/workoutStore';
 
-const TEMPLATE_CATEGORIES: TemplateCategory[] = [
-  'Full Body',
-  'Push/Pull/Legs',
-  'Upper/Lower',
-  'Conditioning',
-  'Custom'
-];
+// Default available filters
+const availableFilters = {
+  equipment: ['Barbell', 'Dumbbell', 'Bodyweight', 'Machine', 'Cables', 'Other'],
+  tags: ['Strength', 'Cardio', 'Mobility', 'Recovery'],
+  source: ['local', 'powr', 'nostr'] as SourceType[]
+};
+
+// Initial filter state
+const initialFilters: FilterOptions = {
+  equipment: [],
+  tags: [],
+  source: []
+};
 
 // Mock data - move to a separate file later
 const initialTemplates: Template[] = [
@@ -61,14 +68,14 @@ export default function TemplatesScreen() {
   const [showNewTemplate, setShowNewTemplate] = useState(false);
   const [templates, setTemplates] = useState(initialTemplates);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<TemplateCategory | null>(null);
-  // Remove selectedTemplate state since we're not using it anymore
-
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
+  const [activeFilters, setActiveFilters] = useState(0);
+  
   const handleDelete = (id: string) => {
     setTemplates(current => current.filter(t => t.id !== id));
   };
 
-  // Update to navigate to the template details screen
   const handleTemplatePress = (template: Template) => {
     router.push(`/template/${template.id}`);
   };
@@ -109,6 +116,15 @@ export default function TemplatesScreen() {
     }
   };  
 
+  const handleApplyFilters = (filters: FilterOptions) => {
+    setCurrentFilters(filters);
+    const totalFilters = Object.values(filters).reduce(
+      (acc, curr) => acc + curr.length, 
+      0
+    );
+    setActiveFilters(totalFilters);
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       // Refresh template favorite status when tab gains focus
@@ -125,12 +141,29 @@ export default function TemplatesScreen() {
     setShowNewTemplate(false);
   };
 
-  // Filter templates based on category and search
+  // Filter templates based on search and applied filters
   const filteredTemplates = templates.filter(template => {
-    const matchesCategory = !activeCategory || template.category === activeCategory;
+    // Filter by search query
     const matchesSearch = !searchQuery || 
       template.title.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    
+    // Filter by equipment if any selected
+    const matchesEquipment = currentFilters.equipment.length === 0 || 
+      (template.exercises.some(ex => 
+        currentFilters.equipment.includes(ex.equipment || '')
+      ));
+    
+    // Filter by tags if any selected
+    const matchesTags = currentFilters.tags.length === 0 ||
+      (template.tags && template.tags.some(tag => 
+        currentFilters.tags.includes(tag)
+      ));
+    
+    // Filter by source if any selected
+    const matchesSource = currentFilters.source.length === 0 ||
+      currentFilters.source.includes(template.source as SourceType);
+    
+    return matchesSearch && matchesEquipment && matchesTags && matchesSource;
   });
 
   // Separate favorites and regular templates
@@ -139,60 +172,52 @@ export default function TemplatesScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Search bar */}
-      <View className="px-4 py-2">
-        <View className="relative flex-row items-center bg-muted rounded-xl">
-          <View className="absolute left-3 z-10">
-            <Search size={18} className="text-muted-foreground" />
+      {/* Search bar with filter button */}
+      <View className="px-4 py-2 border-b border-border">
+        <View className="flex-row items-center">
+          <View className="relative flex-1">
+            <View className="absolute left-3 z-10 h-full justify-center">
+              <Search size={18} className="text-muted-foreground" />
+            </View>
+            <Input
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search templates"
+              className="pl-9 pr-10 bg-muted/50 border-0"
+            />
+            <View className="absolute right-2 z-10 h-full justify-center">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onPress={() => setFilterSheetOpen(true)}
+              >
+                <View className="relative">
+                  <ListFilter className="text-muted-foreground" size={20} />
+                  {activeFilters > 0 && (
+                    <View className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f7931a' }} />
+                  )}
+                </View>
+              </Button>
+            </View>
           </View>
-          <Input
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search templates"
-            className="pl-9 bg-transparent h-10 flex-1"
-          />
         </View>
       </View>
 
-{/*      // Category filters 
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        className="px-4 py-2 border-b border-border"
-      >
-        <View className="flex-row gap-2">
-          <Button
-            variant={activeCategory === null ? "default" : "outline"}
-            size="sm"
-            className="rounded-full"
-            onPress={() => setActiveCategory(null)}
-          >
-            <Text className={activeCategory === null ? "text-primary-foreground" : ""}>
-              All
-            </Text>
-          </Button>
-          {TEMPLATE_CATEGORIES.map((category) => (
-            <Button
-              key={category}
-              variant={activeCategory === category ? "default" : "outline"}
-              size="sm"
-              className="rounded-full"
-              onPress={() => setActiveCategory(activeCategory === category ? null : category)}
-            >
-              <Text className={activeCategory === category ? "text-primary-foreground" : ""}>
-                {category}
-              </Text>
-            </Button>
-          ))}
-        </View>
-      </ScrollView> */}
+      {/* Filter Sheet */}
+      <FilterSheet 
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        options={currentFilters}
+        onApplyFilters={handleApplyFilters}
+        availableFilters={availableFilters}
+      />
 
       {/* Templates list */}
-      <ScrollView>
+      <ScrollView className="flex-1">
         {/* Favorites Section */}
         {favoriteTemplates.length > 0 && (
-          <View>
-            <Text className="text-lg font-semibold px-4 py-2">
+          <View className="py-4">
+            <Text className="text-lg font-semibold mb-4 px-4">
               Favorites
             </Text>
             <View className="gap-3">
@@ -211,8 +236,8 @@ export default function TemplatesScreen() {
         )}
 
         {/* All Templates Section */}
-        <View>
-          <Text className="text-lg font-semibold px-4 py-2">
+        <View className="py-4">
+          <Text className="text-lg font-semibold mb-4 px-4">
             All Templates
           </Text>
           {regularTemplates.length > 0 ? (
@@ -240,8 +265,6 @@ export default function TemplatesScreen() {
         {/* Add some bottom padding for FAB */}
         <View className="h-20" />
       </ScrollView>
-
-      {/* Remove the TemplateDetails component since we're using router navigation now */}
 
       <FloatingActionButton
         icon={Plus}

@@ -176,48 +176,6 @@ export const SimplifiedExerciseList = ({
           }}
         />
       </View>
-
-      {/* Alphabet List */}
-      <View 
-        className="w-8 justify-center bg-transparent px-1"
-        onStartShouldSetResponder={() => true}
-        onResponderMove={(evt) => {
-          const touch = evt.nativeEvent;
-          const element = evt.target;
-          
-          if (element) {
-            (element as any).measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-              const totalHeight = height;
-              const letterHeight = totalHeight / alphabet.length;
-              const touchY = touch.pageY - pageY;
-              const index = Math.min(
-                Math.max(Math.floor(touchY / letterHeight), 0),
-                alphabet.length - 1
-              );
-              
-              const letter = alphabet[index];
-              if (availableLetters.has(letter)) {
-                scrollToSection(letter);
-              }
-            });
-          }
-        }}
-      >
-        {alphabet.map((letter) => (
-          <Text 
-            key={letter}
-            className={
-              letter === currentSection
-                ? 'text-xs text-center text-primary font-bold py-0.5'
-                : availableLetters.has(letter)
-                ? 'text-xs text-center text-primary font-medium py-0.5'
-                : 'text-xs text-center text-muted-foreground py-0.5'
-            }
-          >
-            {letter}
-          </Text>
-        ))}
-      </View>
     </View>
   );
 };

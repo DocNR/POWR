@@ -11,7 +11,7 @@ import {
   Repeat,
   Bookmark
 } from 'lucide-react-native';
-import { useTemplate } from './_layout';
+import { useTemplate } from './_templateContext';
 import { cn } from '@/lib/utils';
 
 // Mock social feed data

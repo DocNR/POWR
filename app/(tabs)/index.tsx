@@ -20,6 +20,8 @@ import FavoriteTemplate from '@/components/workout/FavoriteTemplate'
 import { useWorkoutStore } from '@/stores/workoutStore'
 import { Text } from '@/components/ui/text'
 import { getRandomWorkoutTitle } from '@/utils/workoutTitles'
+import { Bell } from 'lucide-react-native';
+import { Button } from '@/components/ui/button';
 
 interface FavoriteTemplateData {
   id: string;
@@ -204,7 +206,21 @@ export default function WorkoutScreen() {
 
   return (
     <TabScreen>
-      <Header title="Workout" />
+      <Header 
+        useLogo={true}
+        rightElement={
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onPress={() => console.log('Open notifications')}
+          >
+            <View className="relative">
+              <Bell className="text-foreground" />
+              <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+            </View>
+          </Button>
+        }
+      />
       
       <ScrollView 
         className="flex-1 px-4 pt-4"

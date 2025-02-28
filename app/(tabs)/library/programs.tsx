@@ -3,13 +3,15 @@ import React, { useState, useEffect } from 'react';
 import { View, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2, Code } from 'lucide-react-native';
+import { AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2, Code, Search, ListFilter } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
 import { SQLTransaction, SQLResultSet, SQLError } from '@/lib/db/types';
 import { schema } from '@/lib/db/schema';
 import { Platform } from 'react-native';
+import { FilterSheet, type FilterOptions, type SourceType } from '@/components/library/FilterSheet';
 
 interface TableInfo {
   name: string;
@@ -37,6 +39,20 @@ interface ExerciseRow {
   format_units_json: string;
 }
 
+// Default available filters for programs - can be adjusted later
+const availableFilters = {
+  equipment: ['Barbell', 'Dumbbell', 'Bodyweight', 'Machine', 'Cables', 'Other'],
+  tags: ['Strength', 'Cardio', 'Mobility', 'Recovery'],
+  source: ['local', 'powr', 'nostr'] as SourceType[]
+};
+
+// Initial filter state
+const initialFilters: FilterOptions = {
+  equipment: [],
+  tags: [],
+  source: []
+};
+
 export default function ProgramsScreen() {
   const db = useSQLiteContext();
   const [dbStatus, setDbStatus] = useState<{
@@ -52,6 +68,10 @@ export default function ProgramsScreen() {
     success: boolean;
     message: string;
   } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
+  const [activeFilters, setActiveFilters] = useState(0);
 
   useEffect(() => {
     checkDatabase();
@@ -200,132 +220,189 @@ export default function ProgramsScreen() {
     }
   };
 
-  return (
-    <ScrollView className="flex-1 bg-background p-4">
-      <View className="py-4 space-y-4">
-        <Text className="text-lg font-semibold text-center mb-4">Database Debug Panel</Text>
-        
-        {/* Schema Inspector Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex-row items-center gap-2">
-              <Code size={20} className="text-foreground" />
-              <Text className="text-lg font-semibold">Database Schema ({Platform.OS})</Text>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <View className="space-y-4">
-              {schemas.map((table) => (
-                <View key={table.name} className="space-y-2">
-                  <Text className="font-semibold">{table.name}</Text>
-                  <Text className="text-muted-foreground text-sm">
-                    {table.sql}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <Button 
-              className="mt-4"
-              onPress={inspectDatabase}
-            >
-              <Text className="text-primary-foreground">Refresh Schema</Text>
-            </Button>
-          </CardContent>
-        </Card>
+  const handleApplyFilters = (filters: FilterOptions) => {
+    setCurrentFilters(filters);
+    const totalFilters = Object.values(filters).reduce(
+      (acc, curr) => acc + curr.length, 
+      0
+    );
+    setActiveFilters(totalFilters);
+    // Implement filtering logic for programs when available
+  };
 
-        {/* Status Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex-row items-center gap-2">
-              <Database size={20} className="text-foreground" />
-              <Text className="text-lg font-semibold">Database Status</Text>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <View className="space-y-2">
-              <Text>Initialized: {dbStatus.initialized ? '✅' : '❌'}</Text>
-              <Text>Tables Found: {dbStatus.tables.length}</Text>
-              <View className="pl-4">
-                {dbStatus.tables.map(table => (
-                  <Text key={table} className="text-muted-foreground">• {table}</Text>
+  return (
+    <View className="flex-1 bg-background">
+      {/* Search bar with filter button */}
+      <View className="px-4 py-2 border-b border-border">
+        <View className="flex-row items-center">
+          <View className="relative flex-1">
+            <View className="absolute left-3 z-10 h-full justify-center">
+              <Search size={18} className="text-muted-foreground" />
+            </View>
+            <Input
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search programs"
+              className="pl-9 pr-10 bg-muted/50 border-0"
+            />
+            <View className="absolute right-2 z-10 h-full justify-center">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onPress={() => setFilterSheetOpen(true)}
+              >
+                <View className="relative">
+                  <ListFilter className="text-muted-foreground" size={20} />
+                  {activeFilters > 0 && (
+                    <View className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f7931a' }} />
+                  )}
+                </View>
+              </Button>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Filter Sheet */}
+      <FilterSheet 
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        options={currentFilters}
+        onApplyFilters={handleApplyFilters}
+        availableFilters={availableFilters}
+      />
+
+      <ScrollView className="flex-1 p-4">
+        <View className="py-4 space-y-4">
+          <Text className="text-lg font-semibold text-center mb-4">Programs Coming Soon</Text>
+          <Text className="text-center text-muted-foreground mb-6">
+            Training programs will allow you to organize your workouts into structured training plans.
+          </Text>
+          
+          <Text className="text-lg font-semibold text-center mb-4">Database Debug Panel</Text>
+          
+          {/* Schema Inspector Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex-row items-center gap-2">
+                <Code size={20} className="text-foreground" />
+                <Text className="text-lg font-semibold">Database Schema ({Platform.OS})</Text>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <View className="space-y-4">
+                {schemas.map((table) => (
+                  <View key={table.name} className="space-y-2">
+                    <Text className="font-semibold">{table.name}</Text>
+                    <Text className="text-muted-foreground text-sm">
+                      {table.sql}
+                    </Text>
+                  </View>
                 ))}
               </View>
-              {dbStatus.error && (
-                <View className="mt-4 p-4 bg-destructive/10 rounded-lg border border-destructive">
-                  <View className="flex-row items-center gap-2">
-                    <AlertCircle className="text-destructive" size={20} />
-                    <Text className="font-semibold text-destructive">Error</Text>
-                  </View>
-                  <Text className="mt-2 text-destructive">{dbStatus.error}</Text>
-                </View>
-              )}
-            </View>
-          </CardContent>
-        </Card>
+              <Button 
+                className="mt-4"
+                onPress={inspectDatabase}
+              >
+                <Text className="text-primary-foreground">Refresh Schema</Text>
+              </Button>
+            </CardContent>
+          </Card>
 
-        {/* Operations Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex-row items-center gap-2">
-              <RefreshCcw size={20} className="text-foreground" />
-              <Text className="text-lg font-semibold">Database Operations</Text>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <View className="space-y-4">
-              <Button 
-                onPress={runTestInsert}
-                className="w-full"
-              >
-                <Text className="text-primary-foreground">Run Test Insert</Text>
-              </Button>
-              
-              <Button 
-                onPress={resetDatabase}
-                variant="destructive"
-                className="w-full"
-              >
-                <Trash2 size={18} className="mr-2" />
-                <Text className="text-destructive-foreground">Reset Database</Text>
-              </Button>
-              
-              {testResults && (
-                <View className={`mt-4 p-4 rounded-lg border ${
-                  testResults.success 
-                    ? 'bg-primary/10 border-primary' 
-                    : 'bg-destructive/10 border-destructive'
-                }`}>
-                  <View className="flex-row items-center gap-2">
-                    {testResults.success ? (
-                      <CheckCircle2 
-                        className="text-primary" 
-                        size={20} 
-                      />
-                    ) : (
-                      <AlertCircle 
-                        className="text-destructive" 
-                        size={20} 
-                      />
-                    )}
-                    <Text className={`font-semibold ${
-                      testResults.success ? 'text-primary' : 'text-destructive'
-                    }`}>
-                      {testResults.success ? "Success" : "Error"}
-                    </Text>
-                  </View>
-                  <ScrollView className="mt-2">
-                    <Text className={`${
-                      testResults.success ? 'text-foreground' : 'text-destructive'
-                    }`}>
-                      {testResults.message}
-                    </Text>
-                  </ScrollView>
+          {/* Status Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex-row items-center gap-2">
+                <Database size={20} className="text-foreground" />
+                <Text className="text-lg font-semibold">Database Status</Text>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <View className="space-y-2">
+                <Text>Initialized: {dbStatus.initialized ? '✅' : '❌'}</Text>
+                <Text>Tables Found: {dbStatus.tables.length}</Text>
+                <View className="pl-4">
+                  {dbStatus.tables.map(table => (
+                    <Text key={table} className="text-muted-foreground">• {table}</Text>
+                  ))}
                 </View>
-              )}
-            </View>
-          </CardContent>
-        </Card>
-      </View>
-    </ScrollView>
+                {dbStatus.error && (
+                  <View className="mt-4 p-4 bg-destructive/10 rounded-lg border border-destructive">
+                    <View className="flex-row items-center gap-2">
+                      <AlertCircle className="text-destructive" size={20} />
+                      <Text className="font-semibold text-destructive">Error</Text>
+                    </View>
+                    <Text className="mt-2 text-destructive">{dbStatus.error}</Text>
+                  </View>
+                )}
+              </View>
+            </CardContent>
+          </Card>
+
+          {/* Operations Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex-row items-center gap-2">
+                <RefreshCcw size={20} className="text-foreground" />
+                <Text className="text-lg font-semibold">Database Operations</Text>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <View className="space-y-4">
+                <Button 
+                  onPress={runTestInsert}
+                  className="w-full"
+                >
+                  <Text className="text-primary-foreground">Run Test Insert</Text>
+                </Button>
+                
+                <Button 
+                  onPress={resetDatabase}
+                  variant="destructive"
+                  className="w-full"
+                >
+                  <Trash2 size={18} className="mr-2" />
+                  <Text className="text-destructive-foreground">Reset Database</Text>
+                </Button>
+                
+                {testResults && (
+                  <View className={`mt-4 p-4 rounded-lg border ${
+                    testResults.success 
+                      ? 'bg-primary/10 border-primary' 
+                      : 'bg-destructive/10 border-destructive'
+                  }`}>
+                    <View className="flex-row items-center gap-2">
+                      {testResults.success ? (
+                        <CheckCircle2 
+                          className="text-primary" 
+                          size={20} 
+                        />
+                      ) : (
+                        <AlertCircle 
+                          className="text-destructive" 
+                          size={20} 
+                        />
+                      )}
+                      <Text className={`font-semibold ${
+                        testResults.success ? 'text-primary' : 'text-destructive'
+                      }`}>
+                        {testResults.success ? "Success" : "Error"}
+                      </Text>
+                    </View>
+                    <ScrollView className="mt-2">
+                      <Text className={`${
+                        testResults.success ? 'text-foreground' : 'text-destructive'
+                      }`}>
+                        {testResults.message}
+                      </Text>
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            </CardContent>
+          </Card>
+        </View>
+      </ScrollView>
+    </View>
   );
 }

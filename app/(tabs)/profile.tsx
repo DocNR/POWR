@@ -1,7 +1,7 @@
 // app/(tabs)/profile.tsx
 import { View, ScrollView, ImageBackground } from 'react-native';
 import { useState, useEffect } from 'react';
-import { Settings, LogIn } from 'lucide-react-native';
+import { Settings, LogIn, Bell } from 'lucide-react-native';
 import { H1 } from '@/components/ui/typography';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -67,7 +67,21 @@ export default function ProfileScreen() {
   if (!isAuthenticated) {
     return (
       <TabScreen>
-        <Header title="Profile" />
+        <Header 
+          useLogo={true}
+          rightElement={
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onPress={() => console.log('Open notifications')}
+            >
+              <View className="relative">
+                <Bell className="text-foreground" />
+                <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+              </View>
+            </Button>
+          }
+        />
         <View className="flex-1 items-center justify-center p-6">
           <View className="items-center mb-8">
             <UserAvatar
@@ -102,14 +116,17 @@ export default function ProfileScreen() {
   return (
     <TabScreen>
       <Header 
-        title="Profile" 
+        useLogo={true}
         rightElement={
           <Button 
             variant="ghost" 
             size="icon"
-            onPress={() => console.log('Open settings')}
+            onPress={() => console.log('Open notifications')}
           >
-            <Settings className="text-foreground" />
+            <View className="relative">
+              <Bell className="text-foreground" />
+              <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+            </View>
           </Button>
         }
       />

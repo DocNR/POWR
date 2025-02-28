@@ -26,6 +26,7 @@ export interface TemplateExerciseDisplay {
   title: string;
   targetSets: number;
   targetReps: number;
+  equipment?: string; 
   notes?: string;
 }
 
