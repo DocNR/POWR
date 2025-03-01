@@ -38,7 +38,7 @@ export default function TabLayout() {
             elevation: 0,
             shadowOpacity: 0,
           },
-          tabBarActiveTintColor: theme.colors.tabActive,
+          tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.tabInactive,
           tabBarShowLabel: true,
           tabBarLabelStyle: {

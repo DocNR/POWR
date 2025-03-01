@@ -1,6 +1,6 @@
 // app/(workout)/create.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { router, useNavigation } from 'expo-router';
 import { TabScreen } from '@/components/layout/TabScreen';
 import { Text } from '@/components/ui/text';
@@ -16,7 +16,7 @@ import {
   AlertDialogCancel 
 } from '@/components/ui/alert-dialog';
 import { useWorkoutStore } from '@/stores/workoutStore';
-import { Plus, Pause, Play, MoreHorizontal, CheckCircle2, Dumbbell, ChevronLeft } from 'lucide-react-native';
+import { Plus, Pause, Play, MoreHorizontal, Dumbbell, ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EditableText from '@/components/EditableText';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ import { WorkoutSet } from '@/types/workout';
 import { formatTime } from '@/utils/formatTime';
 import { ParamListBase } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import SetInput from '@/components/workout/SetInput';
 
 // Define styles outside of component
 const styles = StyleSheet.create({
@@ -114,19 +115,6 @@ export default function CreateWorkoutScreen() {
     };
 
     updateSet(exerciseIndex, exercise.sets.length, newSet);
-  };
-
-  // Handler for completing a set
-  const handleCompleteSet = (exerciseIndex: number, setIndex: number) => {
-    if (!activeWorkout) return;
-    
-    const exercise = activeWorkout.exercises[exerciseIndex];
-    const set = exercise.sets[setIndex];
-    
-    updateSet(exerciseIndex, setIndex, {
-      ...set,
-      isCompleted: !set.isCompleted
-    });
   };
 
   // Show empty state when no workout is active
@@ -280,7 +268,7 @@ export default function CreateWorkoutScreen() {
                 >
                   {/* Exercise Header */}
                   <View className="flex-row justify-between items-center px-4 py-3 border-b border-border">
-                    <Text className="text-lg font-semibold text-purple">
+                    <Text className="text-lg font-semibold text-[#8B5CF6]">
                       {exercise.title}
                     </Text>
                     <Button
@@ -314,77 +302,19 @@ export default function CreateWorkoutScreen() {
                   {/* Exercise Sets */}
                   <CardContent className="p-0">
                     {exercise.sets.map((set, setIndex) => {
-                      const previousSet = setIndex > 0 ? exercise.sets[setIndex - 1] : null;
+                      const previousSet = setIndex > 0 ? exercise.sets[setIndex - 1] : undefined;
+                      
                       return (
-                        <View 
+                        <SetInput
                           key={set.id}
-                          className={cn(
-                            "flex-row items-center px-4 py-3 border-t border-border",
-                            set.isCompleted && "bg-primary/5"
-                          )}
-                        >
-                          {/* Set Number */}
-                          <Text className="w-16 text-base font-medium text-foreground">
-                            {setIndex + 1}
-                          </Text>
-                          
-                          {/* Previous Set */}
-                          <Text className="w-20 text-sm text-muted-foreground">
-                            {previousSet ? `${previousSet.weight}×${previousSet.reps}` : '—'}
-                          </Text>
-                          
-                          {/* Weight Input */}
-                          <View className="flex-1 px-2">
-                            <TextInput
-                              className={cn(
-                                "bg-secondary h-10 rounded-md px-3 text-center text-foreground",
-                                set.isCompleted && "bg-primary/10"
-                              )}
-                              value={set.weight ? set.weight.toString() : ''}
-                              onChangeText={(text) => {
-                                const weight = text === '' ? 0 : parseFloat(text);
-                                if (!isNaN(weight)) {
-                                  updateSet(exerciseIndex, setIndex, { weight });
-                                }
-                              }}
-                              keyboardType="numeric"
-                              selectTextOnFocus
-                            />
-                          </View>
-
-                          {/* Reps Input */}
-                          <View className="flex-1 px-2">
-                            <TextInput
-                              className={cn(
-                                "bg-secondary h-10 rounded-md px-3 text-center text-foreground",
-                                set.isCompleted && "bg-primary/10"
-                              )}
-                              value={set.reps ? set.reps.toString() : ''}
-                              onChangeText={(text) => {
-                                const reps = text === '' ? 0 : parseInt(text, 10);
-                                if (!isNaN(reps)) {
-                                  updateSet(exerciseIndex, setIndex, { reps });
-                                }
-                              }}
-                              keyboardType="numeric"
-                              selectTextOnFocus
-                            />
-                          </View>
-                          
-                          {/* Complete Button */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="w-11 h-11"
-                            onPress={() => handleCompleteSet(exerciseIndex, setIndex)}
-                          >
-                            <CheckCircle2 
-                              className={set.isCompleted ? "text-purple" : "text-muted-foreground"} 
-                              fill={set.isCompleted ? "currentColor" : "none"}
-                              size={22} 
-                            />
-                          </Button>
-                        </View>
+                          exerciseIndex={exerciseIndex}
+                          setIndex={setIndex}
+                          setNumber={setIndex + 1}
+                          weight={set.weight}
+                          reps={set.reps}
+                          isCompleted={set.isCompleted}
+                          previousSet={previousSet}
+                        />
                       );
                     })}
                   </CardContent>

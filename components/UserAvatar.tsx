@@ -32,7 +32,7 @@ const UserAvatar = ({
   }, [uri]);
   
   // Log the URI for debugging
-  console.log("Avatar URI:", uri);
+  // console.log("Avatar URI:", uri);
   
   const containerStyles = cn(
     {

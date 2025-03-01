@@ -6,6 +6,22 @@ This specification defines workout events for fitness tracking. These workout ev
 
 ## Event Kinds
 
+### Event Kind Selection Rationale
+
+The event kinds in this NIP follow Nostr protocol conventions:
+
+- **Exercise and Workout Templates** (33401, 33402) use parameterized replaceable event kinds (30000+) because:
+  - They represent content that may be updated or improved over time
+  - The author may want to replace previous versions with improved ones
+  - They need the `d` parameter to distinguish between different templates by the same author
+  - Multiple versions shouldn't accumulate in clients' storage
+
+- **Workout Records** (1301) use a standard event kind (0-9999) because:
+  - They represent a chronological feed of activity that shouldn't replace previous records
+  - Each workout is a unique occurrence that adds to a user's history
+  - Users publish multiple records over time, creating a timeline
+  - They're conceptually similar to notes (kind 1) but with structured fitness data
+
 ### Exercise Template (kind: 33401)
 Defines reusable exercise definitions. These should remain public to enable discovery and sharing. The `content` field contains detailed form instructions and notes.
 
@@ -37,7 +53,7 @@ Defines a complete workout plan. The `content` field contains workout notes and 
 * `rest_between_rounds` - Rest time between rounds in seconds
 * `t` - Hashtags for categorization
 
-### Workout Record (kind: 33403)
+### Workout Record (kind: 1301)
 Records a completed workout session. The `content` field contains notes about the workout.
 
 #### Required Tags
@@ -52,6 +68,7 @@ Records a completed workout session. The `content` field contains notes about th
 #### Optional Tags
 * `rounds_completed` - Number of rounds completed
 * `interval` - Duration of each exercise portion in seconds (for timed workouts)
+* `template` - Reference to the workout template used, if any. Format: ["template", "33402:<pubkey>:<d-tag>", "<relay-url>"]
 * `pr` - Personal Record achieved during workout. Format: "kind:pubkey:d-tag,metric,value". Used to track when a user achieves their best performance for a given exercise and metric (e.g., heaviest weight lifted, most reps completed, fastest time)
 * `t` - Hashtags for categorization
 
@@ -154,7 +171,7 @@ Sets where technical failure was reached before completing prescribed reps. Thes
 ### Circuit Workout Record
 ```json
 {
-  "kind": 33403,
+  "kind": 1301,
   "content": "Completed first round as prescribed. Second round showed form deterioration on deadlifts.",
   "tags": [
     ["d", "workout-20250128"],

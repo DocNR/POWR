@@ -2,10 +2,10 @@
 import React, { useState, useCallback } from 'react';
 import { View, TextInput, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
-import { Button } from '@/components/ui/button';
-import { Check } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 import { cn } from '@/lib/utils';
 import { useWorkoutStore } from '@/stores/workoutStore';
+import { useColorScheme } from '@/lib/useColorScheme';
 import type { WorkoutSet } from '@/types/workout';
 import debounce from 'lodash/debounce';
 
@@ -28,6 +28,9 @@ export default function SetInput({
   isCompleted = false,
   previousSet
 }: SetInputProps) {
+  // Get theme colors
+  const { isDarkColorScheme } = useColorScheme();
+  
   // Local state for controlled inputs
   const [weightValue, setWeightValue] = useState(weight.toString());
   const [repsValue, setRepsValue] = useState(reps.toString());
@@ -72,7 +75,7 @@ export default function SetInput({
 
   const handleCompleteSet = useCallback(() => {
     completeSet(exerciseIndex, setIndex);
-  }, [exerciseIndex, setIndex]);
+  }, [exerciseIndex, setIndex, completeSet]);
 
   const handleCopyPreviousWeight = useCallback(() => {
     if (previousSet?.weight) {
@@ -85,6 +88,13 @@ export default function SetInput({
       handleRepsChange(previousSet.reps.toString());
     }
   }, [previousSet]);
+
+  // Get the appropriate colors based on theme variables
+  // Using the --purple and --muted-foreground from your theme
+  const purpleColor = 'hsl(261, 90%, 66%)'; // --purple from your constants
+  const mutedForegroundColor = isDarkColorScheme 
+    ? 'hsl(240, 5%, 64.9%)' // --muted-foreground dark
+    : 'hsl(240, 3.8%, 46.1%)'; // --muted-foreground light
 
   return (
     <View className={cn(
@@ -117,7 +127,7 @@ export default function SetInput({
           onChangeText={handleWeightChange}
           keyboardType="decimal-pad"
           placeholder="0"
-          placeholderTextColor="text-muted-foreground"
+          placeholderTextColor={mutedForegroundColor}
           returnKeyType="next"
           selectTextOnFocus
         />
@@ -139,26 +149,23 @@ export default function SetInput({
           onChangeText={handleRepsChange}
           keyboardType="number-pad"
           placeholder="0"
-          placeholderTextColor="text-muted-foreground"
+          placeholderTextColor={mutedForegroundColor}
           returnKeyType="done"
           selectTextOnFocus
         />
       </TouchableOpacity>
 
-      {/* Complete Button */}
-      <Button
-        variant={isCompleted ? "secondary" : "ghost"}
-        size="icon"
-        className="w-10 h-10"
+      {/* Complete Button using Feather icons with appropriate theme colors */}
+      <TouchableOpacity 
+        className="w-10 h-10 items-center justify-center"
         onPress={handleCompleteSet}
       >
-        <Check 
-          className={cn(
-            "w-4 h-4",
-            isCompleted ? "text-primary" : "text-muted-foreground"
-          )} 
+        <Feather 
+          name={isCompleted ? "check-circle" : "circle"} 
+          size={24} 
+          color={isCompleted ? purpleColor : mutedForegroundColor} 
         />
-      </Button>
+      </TouchableOpacity>
     </View>
   );
 }
