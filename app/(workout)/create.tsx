@@ -267,7 +267,7 @@ export default function CreateWorkoutScreen() {
                   className="mb-6 overflow-hidden border border-border bg-card"
                 >
                   {/* Exercise Header */}
-                  <View className="flex-row justify-between items-center px-4 py-3 border-b border-border">
+                  <View className="flex-row justify-between items-center px-4 py-1 border-b border-border">
                     <Text className="text-lg font-semibold text-[#8B5CF6]">
                       {exercise.title}
                     </Text>
@@ -284,19 +284,19 @@ export default function CreateWorkoutScreen() {
                   </View>
                   
                   {/* Sets Info */}
-                  <View className="px-4 py-2">
+                  <View className="px-4 py-1">
                     <Text className="text-sm text-muted-foreground">
                       {exercise.sets.filter(s => s.isCompleted).length} sets completed
                     </Text>
                   </View>
                   
                   {/* Set Headers */}
-                  <View className="flex-row px-4 py-2 border-t border-border bg-muted/30">
-                    <Text className="w-16 text-sm font-medium text-muted-foreground">SET</Text>
-                    <Text className="w-20 text-sm font-medium text-muted-foreground">PREV</Text>
+                  <View className="flex-row px-4 py-1 border-t border-border bg-muted/30">
+                    <Text className="w-8 text-sm font-medium text-muted-foreground text-center">SET</Text>
+                    <Text className="w-20 text-sm font-medium text-muted-foreground text-center">PREV</Text>
                     <Text className="flex-1 text-sm font-medium text-center text-muted-foreground">KG</Text>
                     <Text className="flex-1 text-sm font-medium text-center text-muted-foreground">REPS</Text>
-                    <View style={{ width: 44 }} />
+                    <View style={{ width: 44 }} />  {/* Space for the checkmark/complete button */}
                   </View>
                   
                   {/* Exercise Sets */}
@@ -322,7 +322,7 @@ export default function CreateWorkoutScreen() {
                   {/* Add Set Button */}
                   <Button
                     variant="ghost"
-                    className="flex-row justify-center items-center py-3 border-t border-border"
+                    className="flex-row justify-center items-center py-2 border-t border-border"
                     onPress={() => handleAddSet(exerciseIndex)}
                   >
                     <Plus size={18} className="text-foreground mr-2" />
@@ -386,7 +386,9 @@ export default function CreateWorkoutScreen() {
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Workout</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Text>Cancel Workout</Text>
+            </AlertDialogTitle>
             <AlertDialogDescription>
               <Text>Are you sure you want to cancel this workout? All progress will be lost.</Text>
             </AlertDialogDescription>

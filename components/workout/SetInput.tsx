@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, TextInput, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
-import { Feather } from '@expo/vector-icons';
+import { Circle, CheckCircle } from 'lucide-react-native'; // Lucide React icons
 import { cn } from '@/lib/utils';
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -90,7 +90,6 @@ export default function SetInput({
   }, [previousSet]);
 
   // Get the appropriate colors based on theme variables
-  // Using the --purple and --muted-foreground from your theme
   const purpleColor = 'hsl(261, 90%, 66%)'; // --purple from your constants
   const mutedForegroundColor = isDarkColorScheme 
     ? 'hsl(240, 5%, 64.9%)' // --muted-foreground dark
@@ -98,11 +97,11 @@ export default function SetInput({
 
   return (
     <View className={cn(
-      "flex-row items-center px-4 py-2 border-b border-border",
+      "flex-row items-center px-4 py-1 border-b border-border",
       isCompleted && "bg-primary/5"
     )}>
       {/* Set Number */}
-      <Text className="w-8 text-sm font-medium text-muted-foreground">
+      <Text className="w-8 text-sm font-medium text-muted-foreground text-center">
         {setNumber}
       </Text>
 
@@ -119,7 +118,7 @@ export default function SetInput({
       >
         <TextInput
           className={cn(
-            "h-10 px-3 rounded-md text-center text-foreground",
+            "h-8 px-3 rounded-md text-center text-foreground",
             "bg-secondary border border-border",
             isCompleted && "bg-primary/10 border-primary/20"
           )}
@@ -141,7 +140,7 @@ export default function SetInput({
       >
         <TextInput
           className={cn(
-            "h-10 px-3 rounded-md text-center text-foreground",
+            "h-8 px-3 rounded-md text-center text-foreground",
             "bg-secondary border border-border",
             isCompleted && "bg-primary/10 border-primary/20"
           )}
@@ -155,16 +154,23 @@ export default function SetInput({
         />
       </TouchableOpacity>
 
-      {/* Complete Button using Feather icons with appropriate theme colors */}
+      {/* Complete Button using Lucide React icons - without fill */}
       <TouchableOpacity 
         className="w-10 h-10 items-center justify-center"
         onPress={handleCompleteSet}
       >
-        <Feather 
-          name={isCompleted ? "check-circle" : "circle"} 
-          size={24} 
-          color={isCompleted ? purpleColor : mutedForegroundColor} 
-        />
+        {isCompleted ? (
+          <CheckCircle 
+            size={24} 
+            color={purpleColor}
+            // Removed fill and fillOpacity properties
+          />
+        ) : (
+          <Circle 
+            size={24} 
+            color={mutedForegroundColor}
+          />
+        )}
       </TouchableOpacity>
     </View>
   );

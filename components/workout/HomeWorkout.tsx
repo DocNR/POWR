@@ -18,14 +18,14 @@ export default function HomeWorkout({ onStartBlank, onSelectTemplate }: HomeWork
       </CardHeader>
       <CardContent className="flex-col gap-4">
         <Button 
+          variant="purple"
           size="lg"
           className="w-full flex-row items-center justify-center gap-2"
           onPress={onStartBlank}
         >
-          <Play className="h-5 w-5" />
-          <Text className="text-primary-foreground">Quick Start</Text>
+          <Play className="h-5 w-5" color="white" />
+          <Text className="text-white">Quick Start</Text>
         </Button>
-        
         <Button 
           variant="outline"
           size="lg"

@@ -19,13 +19,13 @@ export default function SocialLayout() {
       <Header useLogo={true} />
 
       <Tab.Navigator
-        initialRouteName="following"
+        initialRouteName="powr"
         screenOptions={{
           tabBarActiveTintColor: theme.colors.tabIndicator,
           tabBarInactiveTintColor: theme.colors.tabInactive,
           tabBarLabelStyle: {
             fontSize: 14,
-            textTransform: 'capitalize',
+            textTransform: 'none',
             fontWeight: 'bold',
           },
           tabBarIndicatorStyle: {

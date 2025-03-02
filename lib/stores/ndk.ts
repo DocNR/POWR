@@ -9,10 +9,11 @@ const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
 
 // Default relays
 const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.nostr.band',
-  'wss://purplepag.es',
-  'wss://nos.lol'
+  'ws://localhost:8080',  // Add your local test relay
+  //'wss://relay.damus.io',
+  //'wss://relay.nostr.band',
+  //'wss://purplepag.es',
+  //'wss://nos.lol'
 ];
 
 // Helper function to convert Array/Uint8Array to hex string
