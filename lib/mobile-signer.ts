@@ -1,11 +1,9 @@
 // lib/mobile-signer.ts
-import '../lib/crypto-polyfill'; // Import crypto polyfill first
+import 'react-native-get-random-values'; // First import - most important!
 import * as Crypto from 'expo-crypto';
-import * as Random from 'expo-random';
-import { NDKPrivateKeySigner } from '@nostr-dev-kit/ndk';
+import { NDKPrivateKeySigner } from '@nostr-dev-kit/ndk-mobile'; // Import from ndk-mobile
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import * as nostrTools from 'nostr-tools';
-import { setupCryptoPolyfill } from './crypto-polyfill';
 
 /**
  * A custom signer implementation for React Native
@@ -47,24 +45,12 @@ export class NDKMobilePrivateKeySigner extends NDKPrivateKeySigner {
  * Generate a new Nostr keypair
  * Uses Expo's crypto functions directly instead of relying on polyfills
  */
-// Add this to your generateKeyPair function
 export function generateKeyPair() {
   try {
-    // Ensure crypto polyfill is set up
-    if (typeof setupCryptoPolyfill === 'function') {
-      setupCryptoPolyfill();
-    }
-    
     let privateKeyBytes;
     
-    // Try expo-crypto first since expo-random is deprecated
-    try {
-      privateKeyBytes = Crypto.getRandomBytes(32);
-    } catch (e) {
-      console.warn('expo-crypto failed:', e);
-      // Fallback to expo-random as last resort
-      privateKeyBytes = Random.getRandomBytes(32);
-    }
+    // Try expo-crypto
+    privateKeyBytes = Crypto.getRandomBytes(32);
     
     const privateKey = bytesToHex(privateKeyBytes);
     
@@ -72,6 +58,7 @@ export function generateKeyPair() {
     const publicKey = nostrTools.getPublicKey(privateKeyBytes);
     
     // Encode keys in bech32 format
+    // Fixed the parameter types for nsecEncode - it needs Uint8Array not string
     const nsec = nostrTools.nip19.nsecEncode(privateKeyBytes);
     const npub = nostrTools.nip19.npubEncode(publicKey);
     

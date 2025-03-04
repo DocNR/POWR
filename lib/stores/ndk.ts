@@ -1,12 +1,15 @@
-// stores/ndk.ts
-import '@/lib/crypto-polyfill'; // Import crypto polyfill first
+// lib/stores/ndk.ts
+// IMPORTANT: 'react-native-get-random-values' must be the first import to ensure
+// proper crypto polyfill application before other libraries are loaded
+import 'react-native-get-random-values';
+import { Platform } from 'react-native';
 import { create } from 'zustand';
-import NDK, { NDKFilter, NDKEvent as NDKEventBase } from '@nostr-dev-kit/ndk';
-import { NDKUser } from '@nostr-dev-kit/ndk-mobile';
-import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
+// Using standard NDK types but importing NDKEvent from ndk-mobile for compatibility
+import NDK, { NDKFilter } from '@nostr-dev-kit/ndk';
+import { NDKEvent, NDKUser } from '@nostr-dev-kit/ndk-mobile';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
 import { NDKMobilePrivateKeySigner, generateKeyPair } from '@/lib/mobile-signer';
-import { setupCryptoPolyfill } from '@/lib/crypto-polyfill';
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
@@ -64,6 +67,14 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       });
       set({ relayStatus });
 
+      // IMPORTANT: Due to the lack of an Expo config plugin for ndk-mobile,
+      // we're using a standard NDK initialization approach rather than trying to use
+      // ndk-mobile's native modules, which require a custom build.
+      //
+      // When an Expo plugin becomes available for ndk-mobile, we can remove this
+      // fallback approach and use the initializeNDK() function directly.
+      console.log('[NDK] Using standard NDK initialization');
+      
       // Initialize NDK with relays
       const ndk = new NDK({
         explicitRelayUrls: DEFAULT_RELAYS
@@ -243,7 +254,15 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
     }
   },
   
-  // In your publishEvent function in ndk.ts:
+  // IMPORTANT: This method uses monkey patching to make event signing work
+  // in React Native environment. This is necessary because the underlying
+  // Nostr libraries expect Web Crypto API to be available.
+  //
+  // When ndk-mobile gets proper Expo support, this function can be simplified to:
+  // 1. Create the event
+  // 2. Call event.sign() directly
+  // 3. Call event.publish()
+  // without the monkey patching code.
   publishEvent: async (kind: number, content: string, tags: string[][]) => {
     try {
       const { ndk, isAuthenticated, currentUser } = get();
@@ -256,21 +275,24 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
         throw new Error('Not authenticated');
       }
       
-      // Define custom functions we'll use to override crypto
-      const customRandomBytes = (length: number): Uint8Array => {
-        console.log('Using custom randomBytes in event signing');
-        // Use type assertion to avoid TypeScript error
-        return (Crypto as any).getRandomBytes(length);
-      };
-      
       // Create event
+      console.log('Creating event...');
       const event = new NDKEvent(ndk);
       event.kind = kind;
       event.content = content;
       event.tags = tags;
       
-      // Direct monkey-patching approach
+      // MONKEY PATCHING APPROACH:
+      // This is needed because the standard NDK doesn't properly work with
+      // React Native's crypto implementation. When ndk-mobile adds proper Expo
+      // support, this can be removed.
       try {
+        // Define custom function for random bytes generation
+        const customRandomBytes = (length: number): Uint8Array => {
+          console.log('Using custom randomBytes in event signing');
+          return (Crypto as any).getRandomBytes(length);
+        };
+        
         // Try to find and override the randomBytes function
         const nostrTools = require('nostr-tools');
         const nobleHashes = require('@noble/hashes/utils');

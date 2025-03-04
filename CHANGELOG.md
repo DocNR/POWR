@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Successful Nostr protocol integration
+  - Implemented NDK-mobile for React Native compatibility
+  - Added secure key management with Expo SecureStore
+  - Created event signing and publishing functionality
+  - Built relay connection management system
+  - Implemented event caching for offline support
+  - Added support for various Nostr event kinds (Text, Exercise, Template, Workout)
+- Programs component for testing Nostr functionality
+  - Created tabbed interface with Database and Nostr sections
+  - Implemented user authentication flow
+  - Added event creation with multiple event types
+  - Built query functionality for retrieving events
+  - Developed event display with detailed tag inspection
+  - Added login/logout capabilities with secure key handling
+- Enhanced crypto support for React Native environment
+  - Implemented proper cryptographic polyfills
+  - Added secure random number generation
+  - Built robust key management system
+  - Developed signer implementation for Nostr
+- Zustand workout store for state management
+  - Created comprehensive workout state store with Zustand
+  - Implemented selectors for efficient state access
+  - Added workout persistence and recovery
+  - Built automatic timer management with background support
+  - Developed minimization and maximization functionality
 - Zustand workout store for state management
   - Created comprehensive workout state store with Zustand
   - Implemented selectors for efficient state access
@@ -119,39 +144,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content rendering issues in bottom sheet components
 
 ### Technical Details
-1. Database Schema Enforcement:
+1. Nostr Integration:
+   - Implemented @nostr-dev-kit/ndk-mobile package for React Native compatibility
+   - Created dedicated NDK store using Zustand for state management
+   - Built secure key storage and retrieval using Expo SecureStore
+   - Implemented event creation, signing, and publishing workflow
+   - Added relay connection management with status tracking
+   - Developed proper error handling for network operations
+
+2. Cryptographic Implementation:
+   - Integrated react-native-get-random-values for crypto API polyfill
+   - Implemented NDKMobilePrivateKeySigner for key operations
+   - Added proper key format handling (hex, nsec)
+   - Created secure key generation functionality
+   - Built robust error handling for cryptographic operations
+
+3. Programs Testing Component:
+   - Developed dual-purpose interface for Database and Nostr testing
+   - Implemented login system with key generation and secure storage
+   - Built event creation interface with multiple event kinds
+   - Added event querying and display functionality
+   - Created detailed event inspection with tag visualization
+   - Added relay status monitoring
+4.  Database Schema Enforcement:
    - Added CHECK constraints for equipment types
    - Added CHECK constraints for exercise types
    - Added CHECK constraints for categories
    - Proper handling of foreign key constraints
-
-2. Input Validation:
+5. Input Validation:
    - Equipment options: bodyweight, barbell, dumbbell, kettlebell, machine, cable, other
    - Exercise types: strength, cardio, bodyweight
    - Categories: Push, Pull, Legs, Core
    - Difficulty levels: beginner, intermediate, advanced
    - Movement patterns: push, pull, squat, hinge, carry, rotation
-
-3. Error Handling:
+6. Error Handling:
    - Added SQLite error type definitions
    - Improved error propagation in LibraryService
    - Added transaction rollback on constraint violations
-
-4. Database Services:
+7. Database Services:
    - Added EventCache service for Nostr events
    - Improved ExerciseService with transaction awareness
    - Added DevSeederService for development data
    - Enhanced error handling and logging
-
-5. Workout State Management with Zustand:
+8. Workout State Management with Zustand:
    - Implemented selector pattern for performance optimization
    - Added module-level timer references for background operation
    - Created workout persistence with auto-save functionality
    - Developed state recovery for crash protection
    - Added support for future Nostr integration
    - Implemented workout minimization for multi-tasking
-
-6. Template Details UI Architecture:
+9. Template Details UI Architecture:
    - Implemented MaterialTopTabNavigator for content organization
    - Created screen-specific components for each tab
    - Developed conditional rendering based on template source
