@@ -1,102 +1,42 @@
 // app/(tabs)/library/programs.tsx
-import React, { useState, useEffect, useRef } from 'react';
-import { View, ScrollView, TextInput, ActivityIndicator, Platform, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, ScrollView, TextInput, ActivityIndicator, Platform, TouchableOpacity, Modal } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2, 
-  Code, Search, ListFilter, Wifi, Zap, FileJson
+  Code, Search, ListFilter, Wifi, Zap, FileJson, X, Info
 } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ExerciseType, ExerciseCategory, Equipment } from '@/types/exercise';
-import { SQLTransaction, SQLResultSet, SQLError } from '@/lib/db/types';
+import { useNDK, useNDKAuth, useNDKCurrentUser } from '@/lib/hooks/useNDK';
 import { schema } from '@/lib/db/schema';
 import { FilterSheet, type FilterOptions, type SourceType } from '@/components/library/FilterSheet';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { getPublicKey } from 'nostr-tools';
+import { NostrEventKind } from '@/types/nostr';
+import { useNDKStore } from '@/lib/stores/ndk';
 
-// Constants for Nostr
-const EVENT_KIND_EXERCISE = 33401;
-const EVENT_KIND_WORKOUT_TEMPLATE = 33402;
-const EVENT_KIND_WORKOUT_RECORD = 1301;
+// Define relay status
+enum RelayStatus {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  ERROR = 'error'
+}
 
-// Simplified mock implementations for testing
-const generatePrivateKey = (): string => {
-  // Generate a random hex string (32 bytes)
-  return Array.from({ length: 64 }, () => 
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
-};
-
-const getEventHash = (event: any): string => {
-  // For testing, just create a mock hash
-  const eventData = JSON.stringify([
-    0,
-    event.pubkey,
-    event.created_at,
-    event.kind,
-    event.tags,
-    event.content
-  ]);
-  
-  // Simple hash function for demonstration
-  return Array.from(eventData)
-    .reduce((hash, char) => {
-      return ((hash << 5) - hash) + char.charCodeAt(0);
-    }, 0)
-    .toString(16)
-    .padStart(64, '0');
-};
-
-const signEvent = (event: any, privateKey: string): string => {
-  // In real implementation, this would sign the event hash with the private key
-  // For testing, we'll just return a mock signature
-  return Array.from({ length: 128 }, () => 
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
-};
-
-interface NostrEvent {
-  id?: string;
+// Interface for event display
+interface DisplayEvent {
+  id: string;
   pubkey: string;
-  created_at: number;
   kind: number;
-  tags: string[][];
+  created_at: number;
   content: string;
+  tags: string[][];
   sig?: string;
 }
 
-interface TableInfo {
-  name: string;
-}
-
-interface TableSchema {
-  name: string;
-  sql: string;
-}
-
-interface SchemaVersion {
-  version: number;
-}
-
-interface ExerciseRow {
-  id: string;
-  title: string;
-  type: string;
-  category: string;
-  equipment: string | null;
-  description: string | null;
-  created_at: number;
-  updated_at: number;
-  format_json: string;
-  format_units_json: string;
-}
-
-// Default available filters for programs - can be adjusted later
+// Default available filters for programs
 const availableFilters = {
   equipment: ['Barbell', 'Dumbbell', 'Bodyweight', 'Machine', 'Cables', 'Other'],
   tags: ['Strength', 'Cardio', 'Mobility', 'Recovery'],
@@ -121,7 +61,7 @@ export default function ProgramsScreen() {
     initialized: false,
     tables: [],
   });
-  const [schemas, setSchemas] = useState<TableSchema[]>([]);
+  const [schemas, setSchemas] = useState<{name: string, sql: string}[]>([]);
   const [testResults, setTestResults] = useState<{
     success: boolean;
     message: string;
@@ -132,35 +72,48 @@ export default function ProgramsScreen() {
   const [activeFilters, setActiveFilters] = useState(0);
   
   // Nostr state
-  const [relayUrl, setRelayUrl] = useState('ws://localhost:7777');
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [relayStatus, setRelayStatus] = useState<RelayStatus>(RelayStatus.DISCONNECTED);
   const [statusMessage, setStatusMessage] = useState('');
-  const [events, setEvents] = useState<NostrEvent[]>([]);
+  const [events, setEvents] = useState<DisplayEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  const [privateKey, setPrivateKey] = useState('');
-  const [publicKey, setPublicKey] = useState('');
-  const [useGeneratedKeys, setUseGeneratedKeys] = useState(true);
-  const [eventKind, setEventKind] = useState(EVENT_KIND_EXERCISE);
+  const [eventKind, setEventKind] = useState(NostrEventKind.EXERCISE);
   const [eventContent, setEventContent] = useState('');
+  const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
+  const [privateKey, setPrivateKey] = useState('');
+  const [error, setError] = useState<string | null>(null);
   
-  // WebSocket reference
-  const socketRef = useRef<WebSocket | null>(null);
+  // Use the NDK hooks
+  const { ndk, isLoading: ndkLoading } = useNDK();
+  const { currentUser, isAuthenticated } = useNDKCurrentUser();
+  const { login, logout, generateKeys } = useNDKAuth();
   
   // Tab state
   const [activeTab, setActiveTab] = useState('database');
-
   useEffect(() => {
+    // Check database status
     checkDatabase();
     inspectDatabase();
-    generateKeys();
-  }, []);
+    
+    // Update relay status when NDK changes
+    if (ndk) {
+      setRelayStatus(RelayStatus.CONNECTED);
+      setStatusMessage(isAuthenticated 
+        ? `Connected as ${currentUser?.npub?.slice(0, 8)}...` 
+        : 'Connected to relays via NDK');
+    } else if (ndkLoading) {
+      setRelayStatus(RelayStatus.CONNECTING);
+      setStatusMessage('Connecting to relays...');
+    } else {
+      setRelayStatus(RelayStatus.DISCONNECTED);
+      setStatusMessage('Not connected');
+    }
+  }, [ndk, ndkLoading, isAuthenticated, currentUser]);
 
   // DATABASE FUNCTIONS
   
   const inspectDatabase = async () => {
     try {
-      const result = await db.getAllAsync<TableSchema>(
+      const result = await db.getAllAsync<{name: string, sql: string}>(
         "SELECT name, sql FROM sqlite_master WHERE type='table'"
       );
       setSchemas(result);
@@ -172,12 +125,12 @@ export default function ProgramsScreen() {
   const checkDatabase = async () => {
     try {
       // Check schema_version table
-      const version = await db.getFirstAsync<SchemaVersion>(
+      const version = await db.getFirstAsync<{version: number}>(
         'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1'
       );
       
       // Get all tables
-      const tables = await db.getAllAsync<TableInfo>(
+      const tables = await db.getAllAsync<{name: string}>(
         "SELECT name FROM sqlite_master WHERE type='table'"
       );
       
@@ -193,6 +146,7 @@ export default function ProgramsScreen() {
       }));
     }
   };
+
   const resetDatabase = async () => {
     try {
       await db.withTransactionAsync(async () => {
@@ -231,9 +185,9 @@ export default function ProgramsScreen() {
       // Test exercise
       const testExercise = {
         title: "Test Squat",
-        type: "strength" as ExerciseType,
-        category: "Legs" as ExerciseCategory,
-        equipment: "barbell" as Equipment,
+        type: "strength",
+        category: "Legs",
+        equipment: "barbell",
         description: "Test exercise",
         tags: ["test", "legs"],
         format: {
@@ -241,8 +195,8 @@ export default function ProgramsScreen() {
           reps: true
         },
         format_units: {
-          weight: "kg" as const,
-          reps: "count" as const
+          weight: "kg",
+          reps: "count"
         }
       };
 
@@ -280,7 +234,7 @@ export default function ProgramsScreen() {
       });
 
       // Verify insert
-      const result = await db.getFirstAsync<ExerciseRow>(
+      const result = await db.getFirstAsync(
         "SELECT * FROM exercises WHERE id = ?",
         ['test-1']
       );
@@ -308,184 +262,216 @@ export default function ProgramsScreen() {
     setActiveFilters(totalFilters);
     // Implement filtering logic for programs when available
   };
-
   // NOSTR FUNCTIONS
+
+  // Handle login dialog
+  const handleShowLogin = () => {
+    setIsLoginSheetOpen(true);
+  };
   
-  // Generate new keypair
-  const generateKeys = () => {
+  // Close login sheet
+  const handleCloseLogin = () => {
+    setIsLoginSheetOpen(false);
+  };
+
+  // Handle key generation
+  const handleGenerateKeys = async () => {
     try {
-      const privKey = generatePrivateKey();
-      // For getPublicKey, we can use a mock function that returns a valid-looking pubkey
-      const pubKey = privKey.slice(0, 64); // Just use part of the private key for demo
-      
-      setPrivateKey(privKey);
-      setPublicKey(pubKey);
-      setStatusMessage('Keys generated successfully');
-    } catch (error) {
-      setStatusMessage(`Error generating keys: ${error}`);
+      const { nsec } = generateKeys();
+      setPrivateKey(nsec);
+      setError(null);
+    } catch (err) {
+      setError('Failed to generate keys');
+      console.error('Key generation error:', err);
     }
   };
-  
-  // Connect to relay
-  const connectToRelay = () => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.close();
-    }
-    
-    setConnecting(true);
-    setStatusMessage('Connecting to relay...');
-    
-    try {
-      const socket = new WebSocket(relayUrl);
-      
-      socket.onopen = () => {
-        setConnected(true);
-        setConnecting(false);
-        setStatusMessage('Connected to relay!');
-        socketRef.current = socket;
-        
-        // Subscribe to exercise-related events
-        const subscriptionId = 'test-sub-' + Math.random().toString(36).substring(2, 15);
-        const subscription = JSON.stringify([
-          'REQ', 
-          subscriptionId,
-          { kinds: [EVENT_KIND_EXERCISE, EVENT_KIND_WORKOUT_TEMPLATE, EVENT_KIND_WORKOUT_RECORD], limit: 10 }
-        ]);
-        socket.send(subscription);
-      };
-      
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data[0] === 'EVENT' && data[1] && data[2]) {
-            const nostrEvent = data[2];
-            setEvents(prev => [nostrEvent, ...prev].slice(0, 50)); // Keep most recent 50 events
-          } else if (data[0] === 'NOTICE') {
-            setStatusMessage(`Relay message: ${data[1]}`);
-          }
-        } catch (error) {
-          console.error('Error parsing message:', error, event.data);
-        }
-      };
-      
-      socket.onclose = () => {
-        setConnected(false);
-        setConnecting(false);
-        setStatusMessage('Disconnected from relay');
-      };
-      
-      socket.onerror = (error) => {
-        setConnected(false);
-        setConnecting(false);
-        setStatusMessage(`Connection error: ${error}`);
-        console.error('WebSocket error:', error);
-      };
-    } catch (error) {
-      setConnecting(false);
-      setStatusMessage(`Failed to connect: ${error}`);
-      console.error('Connection setup error:', error);
-    }
-  };
-  
-  // Disconnect from relay
-  const disconnectFromRelay = () => {
-    if (socketRef.current) {
-      socketRef.current.close();
-    }
-  };
-  
-  // Create and publish a new event
-  const publishEvent = () => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setStatusMessage('Not connected to a relay');
+
+  // Handle login
+  const handleLogin = async () => {
+    if (!privateKey.trim()) {
+      setError('Please enter your private key or generate a new one');
       return;
     }
-    
-    if (!privateKey || !publicKey) {
-      setStatusMessage('Need private and public keys to publish');
-      return;
+
+    setError(null);
+    try {
+      const success = await login(privateKey);
+      
+      if (success) {
+        setPrivateKey('');
+        handleCloseLogin();
+      } else {
+        setError('Failed to login with the provided key');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     }
-    
+  };
+  
+  // Handle logout
+  const handleLogout = async () => {
     try {
       setLoading(true);
+      await logout();
+      setStatusMessage('Logged out');
+      setEvents([]);
+    } catch (error) {
+      console.error('Logout error:', error);
+      setStatusMessage(`Logout error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Publish an event
+  const handlePublishEvent = async () => {
+    if (!isAuthenticated || !ndk || !currentUser) {
+      setStatusMessage('You must login first');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      console.log('Creating event...');
       
-      // Create event with required pubkey (no longer optional)
-      const event: NostrEvent = {
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000),
-        kind: eventKind,
-        tags: [],
-        content: eventContent,
-      };
+      // Prepare tags based on event kind
+      const tags: string[][] = [];
+      const timestamp = Math.floor(Date.now() / 1000);
       
-      // A basic implementation for each event kind
-      if (eventKind === EVENT_KIND_EXERCISE) {
-        event.tags.push(['d', `exercise-${Date.now()}`]);
-        event.tags.push(['title', 'Test Exercise']);
-        event.tags.push(['format', 'weight', 'reps']);
-        event.tags.push(['format_units', 'kg', 'count']);
-        event.tags.push(['equipment', 'barbell']);
-      } else if (eventKind === EVENT_KIND_WORKOUT_TEMPLATE) {
-        event.tags.push(['d', `template-${Date.now()}`]);
-        event.tags.push(['title', 'Test Workout Template']);
-        event.tags.push(['type', 'strength']);
-      } else if (eventKind === EVENT_KIND_WORKOUT_RECORD) {
-        event.tags.push(['d', `workout-${Date.now()}`]);
-        event.tags.push(['title', 'Test Workout Record']);
-        event.tags.push(['start', `${Math.floor(Date.now() / 1000) - 3600}`]);
-        event.tags.push(['end', `${Math.floor(Date.now() / 1000)}`]);
+      // Add appropriate tags based on event kind
+      if (eventKind === NostrEventKind.TEXT) {
+        // For regular text notes, we can add some simple tags
+        tags.push(
+          ['t', 'powr'],  // Adding a hashtag
+          ['t', 'test'],   // Another hashtag
+          ['client', 'POWR App']  // Client info
+        );
+        
+        // If no content was provided, use a default message
+        if (!eventContent || eventContent.trim() === '') {
+          setEventContent('Hello from POWR App - Test Note');
+        }
+      } else if (eventKind === NostrEventKind.EXERCISE) {
+        // Your existing exercise event code
+        const uniqueId = `exercise-${timestamp}`;
+        tags.push(
+          ['d', uniqueId],
+          ['title', eventContent || 'Test Exercise'],
+          // Rest of your tags...
+        );
+      } 
+      if (eventKind === NostrEventKind.EXERCISE) {
+        const uniqueId = `exercise-${timestamp}`;
+        tags.push(
+          ['d', uniqueId],
+          ['title', eventContent || 'Test Exercise'],
+          ['type', 'strength'],
+          ['category', 'Legs'],
+          ['format', 'weight', 'reps'],
+          ['format_units', 'kg', 'count'],
+          ['equipment', 'barbell'],
+          ['t', 'test'],
+          ['t', 'powr']
+        );
+      } else if (eventKind === NostrEventKind.TEMPLATE) {
+        const uniqueId = `template-${timestamp}`;
+        tags.push(
+          ['d', uniqueId],
+          ['title', eventContent || 'Test Workout Template'],
+          ['type', 'strength'],
+          ['t', 'strength'],
+          ['t', 'legs'],
+          ['t', 'powr'],
+          // Add exercise references - these would normally reference real exercise events
+          ['exercise', `33401:exercise-${timestamp-1}`, '3', '10', 'normal']
+        );
+      } else if (eventKind === NostrEventKind.WORKOUT) {
+        const uniqueId = `workout-${timestamp}`;
+        const startTime = timestamp - 3600; // 1 hour ago
+        tags.push(
+          ['d', uniqueId],
+          ['title', eventContent || 'Test Workout Record'],
+          ['start', `${startTime}`],
+          ['end', `${timestamp}`],
+          ['completed', 'true'],
+          ['t', 'powr'],
+          // Add exercise data - these would normally reference real exercise events
+          ['exercise', `33401:exercise-${timestamp-1}`, '100', '10', '8', 'normal']
+        );
       }
       
-      // Hash and sign
-      event.id = getEventHash(event);
-      event.sig = signEvent(event, privateKey);
+      // Use the NDK store's publishEvent function
+      const event = await useNDKStore.getState().publishEvent(eventKind, eventContent, tags);
       
-      // Publish to relay
-      const message = JSON.stringify(['EVENT', event]);
-      socketRef.current.send(message);
-      
-      setStatusMessage('Event published successfully!');
-      setEventContent('');
-      setLoading(false);
+      if (event) {
+        // Add the published event to our display list
+        const displayEvent: DisplayEvent = {
+          id: event.id || '',
+          pubkey: event.pubkey,
+          kind: event.kind || eventKind, // Add fallback to eventKind if kind is undefined
+          created_at: event.created_at || Math.floor(Date.now() / 1000), // Add fallback timestamp
+          content: event.content,
+          tags: event.tags.map(tag => tag.map(item => String(item))),
+          sig: event.sig
+        };
+        
+        setEvents(prev => [displayEvent, ...prev]);
+        
+        // Clear content field
+        setEventContent('');
+        setStatusMessage('Event published successfully!');
+      } else {
+        setStatusMessage('Failed to publish event');
+      }
     } catch (error) {
-      setStatusMessage(`Error publishing event: ${error}`);
+      console.error('Error publishing event:', error);
+      setStatusMessage(`Error publishing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
       setLoading(false);
     }
   };
   
-  // Query events from relay
-  const queryEvents = () => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setStatusMessage('Not connected to a relay');
+  // Query events from NDK
+  const queryEvents = async () => {
+    if (!ndk) {
+      setStatusMessage('NDK not initialized');
       return;
     }
     
+    setLoading(true);
+    setEvents([]);
+    
     try {
-      setEvents([]);
-      setLoading(true);
+      // Create a filter for the specific kind
+      const filter = { kinds: [eventKind as number], limit: 20 };
       
-      // Create a new subscription for the selected event kind
-      const subscriptionId = 'query-' + Math.random().toString(36).substring(2, 15);
-      const subscription = JSON.stringify([
-        'REQ', 
-        subscriptionId,
-        { kinds: [eventKind], limit: 20 }
-      ]);
+      // Use the NDK store's fetchEventsByFilter function
+      const fetchedEvents = await useNDKStore.getState().fetchEventsByFilter(filter);
       
-      socketRef.current.send(subscription);
-      setStatusMessage(`Querying events of kind ${eventKind}...`);
-      
-      // Close this subscription after 5 seconds
-      setTimeout(() => {
-        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-          socketRef.current.send(JSON.stringify(['CLOSE', subscriptionId]));
-          setLoading(false);
-          setStatusMessage(`Completed query for kind ${eventKind}`);
-        }
-      }, 5000);
+      const displayEvents: DisplayEvent[] = [];
+      fetchedEvents.forEach(event => {
+        // Ensure we handle potentially undefined values
+        displayEvents.push({
+          id: event.id || '',
+          pubkey: event.pubkey,
+          kind: event.kind || eventKind, // Use eventKind as fallback
+          created_at: event.created_at || Math.floor(Date.now() / 1000), // Use current time as fallback
+          content: event.content,
+          // Convert tags to string[][]
+          tags: event.tags.map(tag => tag.map(item => String(item))),
+          sig: event.sig
+        });
+      });
+            
+      setEvents(displayEvents);
+      setStatusMessage(`Fetched ${displayEvents.length} events`);
     } catch (error) {
+      console.error('Error querying events:', error);
+      setStatusMessage(`Error querying: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
       setLoading(false);
-      setStatusMessage(`Error querying events: ${error}`);
     }
   };
   return (
@@ -548,7 +534,6 @@ export default function ProgramsScreen() {
           <Text className={activeTab === 'nostr' ? 'text-white' : 'text-foreground'}>Nostr</Text>
         </TouchableOpacity>
       </View>
-        
       {/* Tab Content */}
       {activeTab === 'database' && (
         <ScrollView className="flex-1 p-4">
@@ -688,102 +673,136 @@ export default function ProgramsScreen() {
           <View className="py-4 space-y-4">
             <Text className="text-lg font-semibold text-center mb-4">Nostr Integration Test</Text>
             
-            {/* Connection controls */}
+            {/* Connection status and controls */}
             <Card className="mb-4">
               <CardHeader>
                 <CardTitle className="flex-row items-center gap-2">
                   <Wifi size={20} className="text-foreground" />
-                  <Text className="text-lg font-semibold">Relay Connection</Text>
+                  <Text className="text-lg font-semibold">Nostr Connection</Text>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Input
-                  value={relayUrl}
-                  onChangeText={setRelayUrl}
-                  placeholder="wss://relay.example.com"
-                  className="mb-4"
-                />
-                
-                <View className="flex-row gap-4">
+                <View className="flex-row gap-4 mb-4">
                   <Button
-                    onPress={connectToRelay}
-                    disabled={connecting || connected}
                     className="flex-1"
+                    onPress={handleShowLogin}
+                    disabled={isAuthenticated || loading}
                   >
-                    {connecting ? (
-                      <><ActivityIndicator size="small" color="#fff" /><Text className="text-white ml-2">Connecting...</Text></>
-                    ) : (
-                      <Text className="text-white">Connect</Text>
-                    )}
+                    <Text className="text-primary-foreground">Login with Nostr</Text>
                   </Button>
                   
                   <Button
-                    onPress={disconnectFromRelay}
-                    disabled={!connected}
                     variant="destructive"
                     className="flex-1"
+                    onPress={handleLogout}
+                    disabled={!isAuthenticated || loading}
                   >
-                    <Text className="text-white">Disconnect</Text>
+                    <Text className="text-destructive-foreground">Logout</Text>
                   </Button>
                 </View>
                 
-                <Text className={`mt-2 ${connected ? 'text-green-500' : 'text-red-500'}`}>
-                  Status: {connected ? 'Connected' : 'Disconnected'}
+                <Text className={`mt-2 ${
+                  relayStatus === RelayStatus.CONNECTED 
+                    ? 'text-green-500' 
+                    : relayStatus === RelayStatus.ERROR 
+                      ? 'text-red-500'
+                      : 'text-yellow-500'
+                }`}>
+                  Status: {relayStatus}
                 </Text>
                 
                 {statusMessage ? (
-                  <Text className="mt-2 text-gray-500">{statusMessage}</Text>
+                  <Text className="mt-2 text-muted-foreground">{statusMessage}</Text>
                 ) : null}
+                
+                {isAuthenticated && currentUser && (
+                  <View className="mt-4 p-4 rounded-lg bg-muted">
+                    <Text className="font-medium">Logged in as:</Text>
+                    <Text className="text-sm text-muted-foreground mt-1" numberOfLines={1}>{currentUser.npub}</Text>
+                    {currentUser.profile?.displayName && (
+                      <Text className="text-sm mt-1">{currentUser.profile.displayName}</Text>
+                    )}
+                    
+                    {/* Display active relay */}
+                    <Text className="font-medium mt-3">Active Relay:</Text>
+                    <Text className="text-sm text-muted-foreground">wss://powr.duckdns.org</Text>
+                    <Text className="text-xs text-muted-foreground mt-1">
+                      Note: To publish to additional relays, uncomment them in stores/ndk.ts
+                    </Text>
+                  </View>
+                )}
               </CardContent>
             </Card>
             
-            {/* Keys */}
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle className="flex-row items-center gap-2">
-                  <Code size={20} className="text-foreground" />
-                  <Text className="text-lg font-semibold">Nostr Keys</Text>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <View className="flex-row items-center mb-4">
-                  <Switch
-                    checked={useGeneratedKeys}
-                    onCheckedChange={setUseGeneratedKeys}
-                    id="use-generated-keys"
-                  />
-                  <Label htmlFor="use-generated-keys" className="ml-2">Use generated keys</Label>
-                  <Button
-                    onPress={generateKeys}
-                    className="ml-auto"
-                    variant="outline"
-                    size="sm"
-                  >
-                    <Text>Generate New Keys</Text>
-                  </Button>
+            {/* Login Modal */}
+            <Modal
+              visible={isLoginSheetOpen}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={handleCloseLogin}
+            >
+              <View className="flex-1 justify-center items-center bg-black/50">
+                <View className="bg-background rounded-lg w-[90%] max-w-md p-4">
+                  <View className="flex-row justify-between items-center mb-4">
+                    <Text className="text-lg font-bold">Login with Nostr</Text>
+                    <TouchableOpacity onPress={handleCloseLogin}>
+                      <X size={24} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View className="space-y-4">
+                    <Text>Enter your Nostr private key (nsec)</Text>
+                    <Input
+                      placeholder="nsec1..."
+                      value={privateKey}
+                      onChangeText={setPrivateKey}
+                      secureTextEntry
+                      autoCapitalize="none"
+                    />
+                    
+                    {error && (
+                      <View className="p-3 bg-destructive/10 rounded-md border border-destructive">
+                        <Text className="text-destructive">{error}</Text>
+                      </View>
+                    )}
+                    
+                    <View className="flex-row space-x-2">
+                      <Button 
+                        variant="outline"
+                        onPress={handleGenerateKeys}
+                        disabled={loading}
+                        className="flex-1"
+                      >
+                        <Text>Generate New Keys</Text>
+                      </Button>
+                      
+                      <Button
+                        onPress={handleLogin}
+                        disabled={loading}
+                        className="flex-1"
+                      >
+                        {loading ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text className="text-primary-foreground">Login</Text>
+                        )}
+                      </Button>
+                    </View>
+                    
+                    <View className="bg-secondary/30 p-3 rounded-md mt-4">
+                      <View className="flex-row items-center mb-2">
+                        <Info size={16} className="mr-2 text-muted-foreground" />
+                        <Text className="font-semibold">What is a Nostr Key?</Text>
+                      </View>
+                      <Text className="text-sm text-muted-foreground">
+                        Nostr is a decentralized protocol where your private key (nsec) is your identity and password.
+                        Your private key is securely stored on your device and is never sent to any servers.
+                      </Text>
+                    </View>
+                  </View>
                 </View>
-                
-                <Text className="mb-1 font-medium">Public Key:</Text>
-                <Input
-                  value={publicKey}
-                  onChangeText={setPublicKey}
-                  placeholder="Public key (hex)"
-                  editable={!useGeneratedKeys}
-                  className={`mb-4 ${useGeneratedKeys ? 'opacity-70' : ''}`}
-                />
-                
-                <Text className="mb-1 font-medium">Private Key:</Text>
-                <Input
-                  value={privateKey}
-                  onChangeText={setPrivateKey}
-                  placeholder="Private key (hex)"
-                  editable={!useGeneratedKeys}
-                  className={`mb-2 ${useGeneratedKeys ? 'opacity-70' : ''}`}
-                />
-                <Text className="text-xs text-muted-foreground">Note: Never share your private key in a production app</Text>
-              </CardContent>
-            </Card>
-            
+              </View>
+            </Modal>
             {/* Create Event */}
             <Card className="mb-4">
               <CardHeader>
@@ -794,29 +813,37 @@ export default function ProgramsScreen() {
               </CardHeader>
               <CardContent>
                 <Text className="mb-1 font-medium">Event Kind:</Text>
-                <View className="flex-row gap-2 mb-4">
+                <View className="flex-row gap-2 mb-4 flex-wrap">
                   <Button
-                    variant={eventKind === EVENT_KIND_EXERCISE ? "default" : "outline"}
-                    onPress={() => setEventKind(EVENT_KIND_EXERCISE)}
+                    variant={eventKind === NostrEventKind.TEXT ? "default" : "outline"}
+                    onPress={() => setEventKind(NostrEventKind.TEXT)}
                     size="sm"
                   >
-                    <Text className={eventKind === EVENT_KIND_EXERCISE ? "text-white" : ""}>Exercise</Text>
+                    <Text className={eventKind === NostrEventKind.TEXT ? "text-white" : ""}>Text Note</Text>
                   </Button>
                   
                   <Button
-                    variant={eventKind === EVENT_KIND_WORKOUT_TEMPLATE ? "default" : "outline"}
-                    onPress={() => setEventKind(EVENT_KIND_WORKOUT_TEMPLATE)}
+                    variant={eventKind === NostrEventKind.EXERCISE ? "default" : "outline"}
+                    onPress={() => setEventKind(NostrEventKind.EXERCISE)}
                     size="sm"
                   >
-                    <Text className={eventKind === EVENT_KIND_WORKOUT_TEMPLATE ? "text-white" : ""}>Template</Text>
+                    <Text className={eventKind === NostrEventKind.EXERCISE ? "text-white" : ""}>Exercise</Text>
                   </Button>
                   
                   <Button
-                    variant={eventKind === EVENT_KIND_WORKOUT_RECORD ? "default" : "outline"}
-                    onPress={() => setEventKind(EVENT_KIND_WORKOUT_RECORD)}
+                    variant={eventKind === NostrEventKind.TEMPLATE ? "default" : "outline"}
+                    onPress={() => setEventKind(NostrEventKind.TEMPLATE)}
                     size="sm"
                   >
-                    <Text className={eventKind === EVENT_KIND_WORKOUT_RECORD ? "text-white" : ""}>Workout</Text>
+                    <Text className={eventKind === NostrEventKind.TEMPLATE ? "text-white" : ""}>Template</Text>
+                  </Button>
+                  
+                  <Button
+                    variant={eventKind === NostrEventKind.WORKOUT ? "default" : "outline"}
+                    onPress={() => setEventKind(NostrEventKind.WORKOUT)}
+                    size="sm"
+                  >
+                    <Text className={eventKind === NostrEventKind.WORKOUT ? "text-white" : ""}>Workout</Text>
                   </Button>
                 </View>
                 
@@ -832,8 +859,8 @@ export default function ProgramsScreen() {
                 
                 <View className="flex-row gap-4">
                   <Button
-                    onPress={publishEvent}
-                    disabled={!connected || loading}
+                    onPress={handlePublishEvent}
+                    disabled={!isAuthenticated || loading}
                     className="flex-1"
                   >
                     {loading ? (
@@ -845,7 +872,7 @@ export default function ProgramsScreen() {
                   
                   <Button
                     onPress={queryEvents}
-                    disabled={!connected || loading}
+                    disabled={!isAuthenticated || loading}
                     variant="outline"
                     className="flex-1"
                   >
@@ -874,13 +901,14 @@ export default function ProgramsScreen() {
                     <Text className="text-muted-foreground">No events yet</Text>
                   </View>
                 ) : (
-                  <ScrollView className="p-4" style={{ maxHeight: 200 }}>
+                  <ScrollView className="p-4" style={{ maxHeight: 300 }}>
                     {events.map((event, index) => (
                       <View key={event.id || index} className="mb-4">
                         <Text className="font-bold">
                           Kind: {event.kind} | Created: {new Date(event.created_at * 1000).toLocaleString()}
                         </Text>
                         <Text className="mb-1">ID: {event.id}</Text>
+                        <Text className="mb-1">Pubkey: {event.pubkey.slice(0, 8)}...</Text>
                         
                         {/* Display tags */}
                         {event.tags && event.tags.length > 0 && (
@@ -897,6 +925,13 @@ export default function ProgramsScreen() {
                         <Text className="font-medium">Content:</Text>
                         <Text className="ml-2 mb-2">{event.content}</Text>
                         
+                        {/* Display signature */}
+                        {event.sig && (
+                          <Text className="text-xs text-muted-foreground">
+                            Signature: {event.sig.slice(0, 16)}...
+                          </Text>
+                        )}
+                        
                         {index < events.length - 1 && <Separator className="my-2" />}
                       </View>
                     ))}
@@ -904,7 +939,6 @@ export default function ProgramsScreen() {
                 )}
               </CardContent>
             </Card>
-              
             {/* Event JSON Viewer */}
             <Card className="mb-4">
               <CardHeader>
@@ -932,7 +966,7 @@ export default function ProgramsScreen() {
               </CardContent>
             </Card>
               
-            {/* How To Use Guide */}
+            {/* Testing Guide */}
             <Card className="mb-4">
               <CardHeader>
                 <CardTitle className="flex-row items-center gap-2">
@@ -943,13 +977,13 @@ export default function ProgramsScreen() {
               <CardContent>
                 <Text className="font-medium mb-2">How to test Nostr integration:</Text>
                 <View className="space-y-2">
-                  <Text>1. Start local strfry relay using:</Text>
-                  <Text className="ml-4 font-mono bg-muted p-2 rounded">./strfry relay</Text>
-                  <Text>2. Connect to the relay (ws://localhost:7777)</Text>
-                  <Text>3. Generate or enter Nostr keys</Text>
-                  <Text>4. Create and publish test events</Text>
-                  <Text>5. Query for existing events</Text>
-                  <Text className="mt-2 text-muted-foreground">For details, see the Nostr Integration Testing Guide</Text>
+                  <Text>1. Click "Login with Nostr" to authenticate</Text>
+                  <Text>2. On the login sheet, click "Generate New Keys" to create a new Nostr identity</Text>
+                  <Text>3. Login with the generated keys</Text>
+                  <Text>4. Select an event kind (Exercise, Template, or Workout)</Text>
+                  <Text>5. Enter optional content and click "Publish"</Text>
+                  <Text>6. Use "Query Events" to fetch existing events of the selected kind</Text>
+                  <Text className="mt-2 text-muted-foreground">Using NDK for Nostr integration provides a more reliable experience than direct WebSocket connections.</Text>
                 </View>
               </CardContent>
             </Card>

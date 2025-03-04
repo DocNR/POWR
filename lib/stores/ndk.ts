@@ -1,54 +1,116 @@
-// lib/stores/ndk.ts
+// stores/ndk.ts
+import '@/lib/crypto-polyfill'; // Import crypto polyfill first
 import { create } from 'zustand';
-import NDK, { NDKEvent, NDKPrivateKeySigner, NDKUser } from '@nostr-dev-kit/ndk';
+import NDK, { NDKFilter, NDKEvent as NDKEventBase } from '@nostr-dev-kit/ndk';
+import { NDKUser } from '@nostr-dev-kit/ndk-mobile';
+import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 import * as SecureStore from 'expo-secure-store';
-import { nip19 } from 'nostr-tools';
+import { NDKMobilePrivateKeySigner, generateKeyPair } from '@/lib/mobile-signer';
+import { setupCryptoPolyfill } from '@/lib/crypto-polyfill';
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
 
 // Default relays
 const DEFAULT_RELAYS = [
-  'ws://localhost:8080',  // Add your local test relay
-  //'wss://relay.damus.io',
-  //'wss://relay.nostr.band',
-  //'wss://purplepag.es',
-  //'wss://nos.lol'
+  'wss://powr.duckdns.org',  // Your primary relay
+  'wss://relay.damus.io',
+  'wss://relay.nostr.band',
+  'wss://nos.lol'
 ];
-
-// Helper function to convert Array/Uint8Array to hex string
-function arrayToHex(array: number[] | Uint8Array): string {
-  return Array.from(array)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 type NDKStoreState = {
   ndk: NDK | null;
   currentUser: NDKUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  init: () => Promise<void>;
-  login: (privateKey: string) => Promise<boolean>;
-  logout: () => Promise<void>;
-  getPublicKey: () => Promise<string | null>;
+  error: Error | null;
+  relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected' | 'error'>;
 };
 
-export const useNDKStore = create<NDKStoreState>((set, get) => ({
+type NDKStoreActions = {
+  init: () => Promise<void>;
+  login: (privateKey?: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  generateKeys: () => { privateKey: string; publicKey: string; nsec: string; npub: string };
+  publishEvent: (kind: number, content: string, tags: string[][]) => Promise<NDKEvent | null>;
+  fetchEventsByFilter: (filter: NDKFilter) => Promise<NDKEvent[]>;
+};
+
+export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) => ({
+  // State properties
   ndk: null,
   currentUser: null,
-  isLoading: true,
+  isLoading: false,
   isAuthenticated: false,
-  
+  error: null,
+  relayStatus: {},
+
+  // Initialize NDK
   init: async () => {
     try {
       console.log('[NDK] Initializing...');
+      console.log('NDK init crypto polyfill check:', {
+        cryptoDefined: typeof global.crypto !== 'undefined',
+        getRandomValuesDefined: typeof global.crypto?.getRandomValues !== 'undefined'
+      });
+      
+      set({ isLoading: true, error: null });
+
+      // Initialize relay status tracking
+      const relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected' | 'error'> = {};
+      DEFAULT_RELAYS.forEach(r => {
+        relayStatus[r] = 'connecting';
+      });
+      set({ relayStatus });
+
       // Initialize NDK with relays
       const ndk = new NDK({
         explicitRelayUrls: DEFAULT_RELAYS
       });
       
+      // Connect to relays
       await ndk.connect();
+      
+      // Setup relay status updates
+      DEFAULT_RELAYS.forEach(url => {
+        const relay = ndk.pool.getRelay(url);
+        if (relay) {
+          relay.on('connect', () => {
+            set(state => ({
+              relayStatus: {
+                ...state.relayStatus,
+                [url]: 'connected'
+              }
+            }));
+          });
+          
+          relay.on('disconnect', () => {
+            set(state => ({
+              relayStatus: {
+                ...state.relayStatus,
+                [url]: 'disconnected'
+              }
+            }));
+          });
+          
+          // Set error status if not connected within timeout
+          setTimeout(() => {
+            set(state => {
+              if (state.relayStatus[url] === 'connecting') {
+                return {
+                  relayStatus: {
+                    ...state.relayStatus,
+                    [url]: 'error'
+                  }
+                };
+              }
+              return state;
+            });
+          }, 10000);
+        }
+      });
+      
       set({ ndk });
       
       // Check for saved private key
@@ -57,8 +119,8 @@ export const useNDKStore = create<NDKStoreState>((set, get) => ({
         console.log('[NDK] Found saved private key, initializing signer');
         
         try {
-          // Create signer with private key
-          const signer = new NDKPrivateKeySigner(privateKey);
+          // Create mobile-specific signer with private key
+          const signer = new NDKMobilePrivateKeySigner(privateKey);
           ndk.signer = signer;
           
           // Get user and profile
@@ -78,61 +140,41 @@ export const useNDKStore = create<NDKStoreState>((set, get) => ({
           await SecureStore.deleteItemAsync(PRIVATE_KEY_STORAGE_KEY);
         }
       }
+
+      set({ isLoading: false });
     } catch (error) {
       console.error('[NDK] Initialization error:', error);
-    } finally {
-      set({ isLoading: false });
+      set({ 
+        error: error instanceof Error ? error : new Error('Failed to initialize NDK'),
+        isLoading: false
+      });
     }
   },
   
-// lib/stores/ndk.ts - updated login method
-login: async (privateKey: string) => {
-    set({ isLoading: true });
+  login: async (privateKey?: string) => {
+    set({ isLoading: true, error: null });
     
     try {
       const { ndk } = get();
       if (!ndk) {
-        console.error('[NDK] NDK not initialized');
-        return false;
+        throw new Error('NDK not initialized');
       }
       
-      // Process the private key (handle nsec format)
-      let hexKey = privateKey;
-      
-      if (privateKey.startsWith('nsec1')) {
-        try {
-          const { type, data } = nip19.decode(privateKey);
-          if (type !== 'nsec') {
-            throw new Error('Invalid nsec key');
-          }
-          
-          // Handle different data types
-          if (typeof data === 'string') {
-            hexKey = data;
-          } else if (Array.isArray(data)) {
-            // Convert array to hex string
-            hexKey = arrayToHex(data);
-          } else if (data instanceof Uint8Array) {
-            // Convert Uint8Array to hex string
-            hexKey = arrayToHex(data);
-          } else {
-            throw new Error('Unsupported key format');
-          }
-        } catch (error) {
-          console.error('[NDK] Key decode error:', error);
-          throw new Error('Invalid private key format');
-        }
+      // If no private key is provided, generate one
+      let userPrivateKey = privateKey;
+      if (!userPrivateKey) {
+        const { privateKey: generatedKey } = get().generateKeys();
+        userPrivateKey = generatedKey;
       }
       
-      // Create signer with hex key
-      console.log('[NDK] Creating signer with key');
-      const signer = new NDKPrivateKeySigner(hexKey);
+      // Create mobile-specific signer with private key
+      const signer = new NDKMobilePrivateKeySigner(userPrivateKey);
       ndk.signer = signer;
       
       // Get user
       const user = await ndk.signer.user();
       if (!user) {
-        throw new Error('Failed to get user from signer');
+        throw new Error('Could not get user from signer');
       }
       
       // Fetch user profile
@@ -149,19 +191,22 @@ login: async (privateKey: string) => {
       }
       
       // Save the private key securely
-      await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, hexKey);
+      await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, userPrivateKey);
       
       set({ 
         currentUser: user,
-        isAuthenticated: true 
+        isAuthenticated: true,
+        isLoading: false
       });
       
       return true;
     } catch (error) {
       console.error('[NDK] Login error:', error);
+      set({
+        error: error instanceof Error ? error : new Error('Failed to login'),
+        isLoading: false
+      });
       return false;
-    } finally {
-      set({ isLoading: false });
     }
   },
   
@@ -176,7 +221,7 @@ login: async (privateKey: string) => {
         ndk.signer = undefined;
       }
       
-      // Completely reset the user state
+      // Reset the user state
       set({ 
         currentUser: null,
         isAuthenticated: false 
@@ -188,11 +233,98 @@ login: async (privateKey: string) => {
     }
   },
   
-  getPublicKey: async () => {
-    const { currentUser } = get();
-    if (currentUser) {
-      return currentUser.pubkey;
+  generateKeys: () => {
+    try {
+      return generateKeyPair();
+    } catch (error) {
+      console.error('[NDK] Error generating keys:', error);
+      set({ error: error instanceof Error ? error : new Error('Failed to generate keys') });
+      throw error;
     }
-    return null;
+  },
+  
+  // In your publishEvent function in ndk.ts:
+  publishEvent: async (kind: number, content: string, tags: string[][]) => {
+    try {
+      const { ndk, isAuthenticated, currentUser } = get();
+      
+      if (!ndk) {
+        throw new Error('NDK not initialized');
+      }
+      
+      if (!isAuthenticated || !currentUser) {
+        throw new Error('Not authenticated');
+      }
+      
+      // Define custom functions we'll use to override crypto
+      const customRandomBytes = (length: number): Uint8Array => {
+        console.log('Using custom randomBytes in event signing');
+        // Use type assertion to avoid TypeScript error
+        return (Crypto as any).getRandomBytes(length);
+      };
+      
+      // Create event
+      const event = new NDKEvent(ndk);
+      event.kind = kind;
+      event.content = content;
+      event.tags = tags;
+      
+      // Direct monkey-patching approach
+      try {
+        // Try to find and override the randomBytes function
+        const nostrTools = require('nostr-tools');
+        const nobleHashes = require('@noble/hashes/utils');
+        
+        // Backup original functions
+        const originalNobleRandomBytes = nobleHashes.randomBytes;
+        
+        // Override with our implementation
+        (nobleHashes as any).randomBytes = customRandomBytes;
+        
+        // Sign event
+        console.log('Signing event with patched libraries...');
+        await event.sign();
+        
+        // Restore original functions
+        (nobleHashes as any).randomBytes = originalNobleRandomBytes;
+        
+        console.log('Event signed successfully');
+      } catch (signError) {
+        console.error('Error signing event:', signError);
+        throw signError;
+      }
+      
+      // Publish the event
+      console.log('Publishing event...');
+      await event.publish();
+      
+      console.log('Event published successfully:', event.id);
+      return event;
+    } catch (error) {
+      console.error('Error publishing event:', error);
+      console.error('Error details:', error instanceof Error ? error.stack : 'Unknown error');
+      set({ error: error instanceof Error ? error : new Error('Failed to publish event') });
+      return null;
+    }
+  },
+
+  fetchEventsByFilter: async (filter: NDKFilter) => {
+    try {
+      const { ndk } = get();
+      
+      if (!ndk) {
+        throw new Error('NDK not initialized');
+      }
+      
+      // Fetch events
+      const events = await ndk.fetchEvents(filter);
+      
+      // Convert Set to Array
+      return Array.from(events);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      set({ error: error instanceof Error ? error : new Error('Failed to fetch events') });
+      return [];
+    }
   }
 }));

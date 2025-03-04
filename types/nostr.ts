@@ -10,6 +10,7 @@ export interface NostrEvent {
 }
 
 export enum NostrEventKind {
+  TEXT = 1,
   EXERCISE = 33401,
   TEMPLATE = 33402,
   WORKOUT = 1301  // Updated from 33403 to 1301

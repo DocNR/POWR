@@ -1,4 +1,5 @@
 // app/_layout.tsx
+import '../lib/crypto-polyfill'; // Import crypto polyfill first
 import '@/global.css';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
@@ -16,6 +17,8 @@ import { SettingsDrawerProvider } from '@/lib/contexts/SettingsDrawerContext';
 import SettingsDrawer from '@/components/SettingsDrawer';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { useWorkoutStore } from '@/stores/workoutStore';
+
+console.log('_layout.tsx loaded');
 
 const LIGHT_THEME = {
   ...DefaultTheme,
