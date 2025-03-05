@@ -17,7 +17,7 @@ import { ExerciseDisplay } from '@/types/exercise';
 import { generateId } from '@/utils/ids';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LibraryService } from '@/lib/db/services/LibraryService';
-import { ChevronLeft, ChevronRight, Dumbbell, Clock, RotateCw, List } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Dumbbell, Clock, RotateCw, List, Search } from 'lucide-react-native';
 
 interface NewTemplateSheetProps {
   isOpen: boolean;
@@ -27,6 +27,9 @@ interface NewTemplateSheetProps {
 
 // Steps in template creation
 type CreationStep = 'type' | 'info' | 'exercises' | 'config' | 'review';
+
+// Purple color used throughout the app
+const purpleColor = 'hsl(261, 90%, 66%)';
 
 // Step 0: Workout Type Selection
 interface WorkoutTypeStepProps {
@@ -78,9 +81,10 @@ function WorkoutTypeStep({ onSelectType, onCancel }: WorkoutTypeStepProps) {
                 <TouchableOpacity 
                   onPress={() => onSelectType(workout.type)}
                   className="flex-row justify-between items-center"
+                  activeOpacity={0.7}
                 >
                   <View className="flex-row items-center gap-3">
-                    <workout.icon size={24} className="text-foreground" />
+                    <workout.icon size={24} color={purpleColor} />
                     <View className="flex-1">
                       <Text className="text-lg font-semibold">{workout.title}</Text>
                       <Text className="text-sm text-muted-foreground mt-1">
@@ -89,7 +93,7 @@ function WorkoutTypeStep({ onSelectType, onCancel }: WorkoutTypeStepProps) {
                     </View>
                   </View>
                   <View className="pl-2 pr-1">
-                    <ChevronRight className="text-muted-foreground" size={20} />
+                    <ChevronRight color={purpleColor} size={20} />
                   </View>
                 </TouchableOpacity>
               ) : (
@@ -114,7 +118,7 @@ function WorkoutTypeStep({ onSelectType, onCancel }: WorkoutTypeStepProps) {
           ))}
         </View>
         
-        <Button variant="outline" onPress={onCancel} className="mt-4">
+        <Button variant="outline" onPress={onCancel} className="mt-4 py-4">
           <Text>Cancel</Text>
         </Button>
       </View>
@@ -157,6 +161,11 @@ function BasicInfoStep({
             placeholder="e.g., Full Body Strength"
             className="text-foreground"
           />
+          {!title && (
+            <Text className="text-xs text-muted-foreground mt-1 ml-1">
+              * Required field
+            </Text>
+          )}
         </View>
         
         <View>
@@ -166,7 +175,8 @@ function BasicInfoStep({
             onChangeText={onDescriptionChange}
             placeholder="Describe this workout..."
             numberOfLines={4}
-            className="bg-input placeholder:text-muted-foreground"
+            className="bg-input placeholder:text-muted-foreground min-h-24"
+            textAlignVertical="top"
           />
         </View>
         
@@ -178,8 +188,9 @@ function BasicInfoStep({
                 key={cat}
                 variant={category === cat ? 'default' : 'outline'}
                 onPress={() => onCategoryChange(cat)}
+                style={category === cat ? { backgroundColor: purpleColor } : {}}
               >
-                <Text className={category === cat ? 'text-primary-foreground' : ''}>
+                <Text className={category === cat ? 'text-white' : ''}>
                   {cat}
                 </Text>
               </Button>
@@ -191,8 +202,12 @@ function BasicInfoStep({
           <Button variant="outline" onPress={onCancel}>
             <Text>Cancel</Text>
           </Button>
-          <Button onPress={onNext} disabled={!title}>
-            <Text className="text-primary-foreground">Next</Text>
+          <Button 
+            onPress={onNext} 
+            disabled={!title}
+            style={!title ? {} : { backgroundColor: purpleColor }}
+          >
+            <Text className={!title ? '' : 'text-white'}>Next</Text>
           </Button>
         </View>
       </View>
@@ -236,12 +251,17 @@ function ExerciseSelectionStep({
   return (
     <View className="flex-1">
       <View className="px-4 pt-4 pb-2">
-        <Input
-          placeholder="Search exercises..."
-          value={search}
-          onChangeText={setSearch}
-          className="text-foreground"
-        />
+        <View className="relative">
+          <View className="absolute left-3 h-full justify-center z-10">
+            <Search size={18} className="text-muted-foreground" />
+          </View>
+          <Input
+            placeholder="Search exercises..."
+            value={search}
+            onChangeText={setSearch}
+            className="pl-10 bg-muted/50 border-0"
+          />
+        </View>
       </View>
       
       <ScrollView className="flex-1">
@@ -252,27 +272,43 @@ function ExerciseSelectionStep({
           
           <View className="gap-3">
             {filteredExercises.map(exercise => (
-              <View key={exercise.id} className="p-4 bg-card border border-border rounded-md">
-                <View className="flex-row justify-between items-start">
-                  <View className="flex-1">
-                    <Text className="text-lg font-semibold">{exercise.title}</Text>
-                    <Text className="text-sm text-muted-foreground mt-1">{exercise.category}</Text>
-                    {exercise.equipment && (
-                      <Text className="text-xs text-muted-foreground mt-0.5">{exercise.equipment}</Text>
-                    )}
+              <TouchableOpacity 
+                key={exercise.id} 
+                onPress={() => handleToggleSelection(exercise.id)}
+                activeOpacity={0.7}
+              >
+                <View 
+                  className="p-4 bg-card border border-border rounded-md"
+                  style={selectedIds.includes(exercise.id) ? { borderColor: purpleColor, borderWidth: 1.5 } : {}}
+                >
+                  <View className="flex-row justify-between items-start">
+                    <View className="flex-1">
+                      <Text className="text-lg font-semibold">{exercise.title}</Text>
+                      <Text className="text-sm text-muted-foreground mt-1">{exercise.category}</Text>
+                      {exercise.equipment && (
+                        <Text className="text-xs text-muted-foreground mt-0.5">{exercise.equipment}</Text>
+                      )}
+                    </View>
+                    <Button
+                      variant={selectedIds.includes(exercise.id) ? 'default' : 'outline'}
+                      onPress={() => handleToggleSelection(exercise.id)}
+                      size="sm"
+                      style={selectedIds.includes(exercise.id) ? { backgroundColor: purpleColor } : {}}
+                    >
+                      <Text className={selectedIds.includes(exercise.id) ? 'text-white' : ''}>
+                        {selectedIds.includes(exercise.id) ? 'Selected' : 'Add'}
+                      </Text>
+                    </Button>
                   </View>
-                  <Button
-                    variant={selectedIds.includes(exercise.id) ? 'default' : 'outline'}
-                    onPress={() => handleToggleSelection(exercise.id)}
-                    size="sm"
-                  >
-                    <Text className={selectedIds.includes(exercise.id) ? 'text-primary-foreground' : ''}>
-                      {selectedIds.includes(exercise.id) ? 'Selected' : 'Add'}
-                    </Text>
-                  </Button>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
+            
+            {filteredExercises.length === 0 && (
+              <View className="items-center justify-center py-12">
+                <Text className="text-muted-foreground">No exercises found</Text>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -284,8 +320,9 @@ function ExerciseSelectionStep({
         <Button
           onPress={handleContinue}
           disabled={selectedIds.length === 0}
+          style={selectedIds.length === 0 ? {} : { backgroundColor: purpleColor }}
         >
-          <Text className="text-primary-foreground">
+          <Text className={selectedIds.length === 0 ? '' : 'text-white'}>
             Continue with {selectedIds.length} Exercise{selectedIds.length !== 1 ? 's' : ''}
           </Text>
         </Button>
@@ -313,7 +350,7 @@ function ExerciseConfigStep({
   return (
     <View className="flex-1">
       <ScrollView className="flex-1">
-        <View className="px-4 gap-3">
+        <View className="px-4 gap-3 py-4">
           {exercises.map((exercise, index) => (
             <View key={exercise.id} className="p-4 bg-card border border-border rounded-md">
               <Text className="text-lg font-semibold mb-2">{exercise.title}</Text>
@@ -357,8 +394,11 @@ function ExerciseConfigStep({
         <Button variant="outline" onPress={onBack}>
           <Text>Back</Text>
         </Button>
-        <Button onPress={onNext}>
-          <Text className="text-primary-foreground">Review Template</Text>
+        <Button 
+          onPress={onNext}
+          style={{ backgroundColor: purpleColor }}
+        >
+          <Text className="text-white">Review Template</Text>
         </Button>
       </View>
     </View>
@@ -427,8 +467,11 @@ function ReviewStep({
         <Button variant="outline" onPress={onBack}>
           <Text>Back</Text>
         </Button>
-        <Button onPress={onSubmit}>
-          <Text className="text-primary-foreground">Create Template</Text>
+        <Button 
+          onPress={onSubmit}
+          style={{ backgroundColor: purpleColor }}
+        >
+          <Text className="text-white">Create Template</Text>
         </Button>
       </View>
     </View>

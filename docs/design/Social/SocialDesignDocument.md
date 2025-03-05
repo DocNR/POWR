@@ -8,6 +8,7 @@ POWR needs to integrate social features that leverage the Nostr protocol while m
 ### Functional Requirements
 - Custom Nostr event types for exercises, workout templates, and workout records
 - Social sharing of workout content via NIP-19 references
+- Content management including deletion requests
 - Comment system on exercises, templates, and workout records
 - Reactions and likes on shared content
 - App discovery through NIP-89 handlers
@@ -27,7 +28,7 @@ POWR needs to integrate social features that leverage the Nostr protocol while m
 ## Design Decisions
 
 ### 1. Custom Event Kinds vs. Standard Kinds
-**Approach**: Use custom event kinds (33401, 33402, 33403) for exercises, templates, and workout records rather than generic kind 1 events.
+**Approach**: Use custom event kinds (33401, 33402, 1301) for exercises, templates, and workout records rather than generic kind 1 events.
 
 **Rationale**:
 - Custom kinds enable clear data separation and easier filtering
@@ -86,6 +87,21 @@ POWR needs to integrate social features that leverage the Nostr protocol while m
 - Dependency on external wallet implementations
 - Requires careful error handling for payment flows
 
+### 5. Content Publishing and Deletion Workflow
+**Approach**: Implement a three-tier approach to content sharing with NIP-09 deletion requests.
+
+**Rationale**:
+- Gives users control over content visibility
+- Maintains local-first philosophy
+- Provides clear separation between private and public data
+- Follows Nostr standards for content management
+- Enables social sharing while maintaining specialized data format
+
+**Trade-offs**:
+- Deletion on Nostr is not guaranteed across all relays
+- Additional UI complexity to explain publishing/deletion states
+- Need to track content state across local storage and relays
+
 ## Technical Design
 
 ### Core Components
@@ -124,9 +140,9 @@ interface WorkoutTemplate extends NostrEvent {
   ]
 }
 
-// Workout Record Event (Kind 33403)
+// Workout Record Event (Kind 1301)
 interface WorkoutRecord extends NostrEvent {
-  kind: 33403;
+  kind: 1301;
   content: string; // Workout notes
   tags: [
     ["d", string], // Unique identifier
@@ -144,6 +160,34 @@ interface WorkoutRecord extends NostrEvent {
   ]
 }
 
+// Social Share (Kind 1)
+interface SocialShare extends NostrEvent {
+  kind: 1;
+  content: string; // Social post text
+  tags: [
+    // Quote reference to the exercise, template or workout
+    ["q", string, string, string], // event-id, relay-url, pubkey
+    // Mention author's pubkey
+    ["p", string], // pubkey of the event creator
+    // App handler registration (NIP-89)
+    ["client", string, string, string] // Name, 31990 reference, relay-url
+  ]
+}
+
+// Deletion Request (Kind 5) - NIP-09
+interface DeletionRequest extends NostrEvent {
+  kind: 5;
+  content: string; // Reason for deletion (optional)
+  tags: [
+    // Event reference(s) to delete
+    ["e", string], // event-id(s) to delete
+    // Or addressable event reference
+    ["a", string], // "<kind>:<pubkey>:<d-identifier>"
+    // Kind of the event being deleted
+    ["k", string] // kind number as string
+  ]
+}
+
 // Comment (Kind 1111 - as per NIP-22)
 interface WorkoutComment extends NostrEvent {
   kind: 1111;
@@ -151,7 +195,7 @@ interface WorkoutComment extends NostrEvent {
   tags: [
     // Root reference (exercise, template, or record)
     ["e", string, string, string], // id, relay, marker "root"
-    ["K", string], // Root kind (33401, 33402, or 33403)
+    ["K", string], // Root kind (33401, 33402, or 1301)
     ["P", string, string], // Root pubkey, relay
     
     // Parent comment (for replies)
@@ -178,7 +222,7 @@ interface AppHandler extends NostrEvent {
   tags: [
     ["k", "33401", "exercise-template"],
     ["k", "33402", "workout-template"],
-    ["k", "33403", "workout-record"],
+    ["k", "1301", "workout-record"],
     ["web", string], // App URL
     ["name", string], // App name
     ["description", string] // App description
@@ -234,21 +278,47 @@ class SocialService {
   async reactToEvent(
     event: NostrEvent,
     reaction: "+" | "🔥" | "👍"
-  ): Promise<NostrEvent> {
-    const reactionEvent = {
-      kind: 7,
-      content: reaction,
-      tags: [
-        ["e", event.id, "<relay-url>"],
-        ["p", event.pubkey]
-      ],
-      created_at: Math.floor(Date.now() / 1000)
-    };
-    
-    // Sign and publish the reaction
-    return await this.ndk.publish(reactionEvent);
-  }
+  ): Promise<NostrEvent>;
+  
+  // Request deletion of event
+  async requestDeletion(
+    eventId: string,
+    eventKind: number,
+    reason?: string
+  ): Promise<NostrEvent>;
+  
+  // Request deletion of addressable event
+  async requestAddressableDeletion(
+    kind: number, 
+    pubkey: string, 
+    dTag: string,
+    reason?: string
+  ): Promise<NostrEvent>;
 }
+```
+
+### Content Publishing Workflow
+
+```mermaid
+graph TD
+    A[Create Content] --> B{Publish to Relays?}
+    B -->|No| C[Local Storage Only]
+    B -->|Yes| D[Save to Local Storage]
+    D --> E[Publish to Relays]
+    E --> F{Share Socially?}
+    F -->|No| G[Done - Content on Relays]
+    F -->|Yes| H[Create kind:1 Social Post]
+    H --> I[Reference Original Event]
+    I --> J[Done - Content Shared]
+    
+    K[Delete Content] --> L{Delete from Relays?}
+    L -->|No| M[Delete from Local Only]
+    L -->|Yes| N[Create kind:5 Deletion Request]
+    N --> O[Publish Deletion Request]
+    O --> P{Delete Locally?}
+    P -->|No| Q[Done - Deletion Requested]
+    P -->|Yes| R[Delete from Local Storage]
+    R --> S[Done - Content Deleted]
 ```
 
 ### Data Flow Diagram
@@ -258,6 +328,7 @@ graph TD
     subgraph User
         A[Create Content] --> B[Local Storage]
         G[View Content] --> F[UI Components]
+        T[Request Deletion] --> U[Deletion Manager]
     end
     
     subgraph LocalStorage
@@ -268,6 +339,7 @@ graph TD
     subgraph NostrNetwork
         D -->|Publish| E[Relays]
         E -->|Subscribe| F
+        U -->|Publish| E
     end
     
     subgraph SocialInteractions
@@ -302,7 +374,7 @@ const templatesWithExerciseQuery = {
 
 // Find workout records for a specific template
 const workoutRecordsQuery = {
-  kinds: [33403],
+  kinds: [1301],
   "#template": [`33402:${pubkey}:${templateId}`]
 };
 
@@ -310,13 +382,13 @@ const workoutRecordsQuery = {
 const commentsQuery = {
   kinds: [1111],
   "#e": [workoutEventId],
-  "#K": ["33403"] // Root kind filter
+  "#K": ["1301"] // Root kind filter
 };
 
 // Find social posts (kind 1) that reference our workout events
 const socialReferencesQuery = {
   kinds: [1],
-  "#e": [workoutEventId]
+  "#q": [workoutEventId]
 };
 
 // Get reactions to a workout record
@@ -325,100 +397,241 @@ const reactionsQuery = {
   "#e": [workoutEventId]
 };
 
-// Find popular templates based on usage count
-async function findPopularTemplates() {
-  // First get all templates
-  const templates = await ndk.fetchEvents({
-    kinds: [33402],
-    limit: 100
+// Find deletion requests for an event
+const deletionRequestQuery = {
+  kinds: [5],
+  "#e": [eventId]
+};
+
+// Find deletion requests for an addressable event
+const addressableDeletionRequestQuery = {
+  kinds: [5],
+  "#a": [`${kind}:${pubkey}:${dTag}`]
+};
+```
+
+## Event Publishing and Deletion Implementation
+
+### Publishing Workflow
+
+POWR implements a three-tier approach to content publishing:
+
+1. **Local Only**
+   - Content is saved only to the device's local storage
+   - No Nostr events are published
+   - Content is completely private to the user
+
+2. **Publish to Relays**
+   - Content is saved locally and published to user-selected relays
+   - Published as appropriate Nostr events (33401, 33402, 1301)
+   - Content becomes discoverable by compatible apps via NIP-89
+   - Local copy is marked as "published to relays"
+
+3. **Social Sharing**
+   - Content is published to relays as in step 2
+   - Additionally, a kind:1 social post is created
+   - The social post quotes the specialized content
+   - Makes content visible in standard Nostr social clients
+   - Links back to the specialized content via NIP-19 references
+
+### Deletion Workflow
+
+POWR implements NIP-09 for deletion requests:
+
+1. **Local Deletion**
+   - Content is removed from local storage only
+   - No effect on previously published relay content
+   - User maintains control over local data independent of relay status
+
+2. **Relay Deletion Request**
+   - Creates a kind:5 deletion request event
+   - References the content to be deleted
+   - Includes the kind of content being deleted
+   - Published to relays that had the original content
+   - Original content may remain in local storage if desired
+
+3. **Complete Deletion**
+   - Combination of local deletion and relay deletion request
+   - Content is removed locally and requested for deletion from relays
+   - Any social shares remain unless specifically deleted
+
+### Example Implementation
+
+```typescript
+// Publishing Content
+async function publishExerciseTemplate(exercise) {
+  // Save locally first
+  const localId = await localDb.saveExercise(exercise);
+  
+  // If user wants to publish to relays
+  if (exercise.publishToRelays) {
+    // Create Nostr event
+    const event = {
+      kind: 33401,
+      pubkey: userPubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [
+        ["d", localId],
+        ["title", exercise.title],
+        ["format", ...Object.keys(exercise.format)],
+        ["format_units", ...formatUnitsToArray(exercise.format_units)],
+        ["equipment", exercise.equipment],
+        ...exercise.tags.map(tag => ["t", tag])
+      ],
+      content: exercise.description || ""
+    };
+    
+    // Sign and publish
+    event.id = getEventHash(event);
+    event.sig = signEvent(event, userPrivkey);
+    await publishToRelays(event);
+    
+    // Update local record to reflect published status
+    await localDb.markAsPublished(localId, event.id);
+    
+    // If user wants to share socially
+    if (exercise.shareAsSocialPost) {
+      await createSocialShare(event, exercise.socialShareText || "Check out this exercise!");
+    }
+    
+    return { localId, eventId: event.id };
+  }
+  
+  return { localId };
+}
+
+// Requesting Deletion
+async function requestDeletion(eventId, eventKind, options = {}) {
+  const { deleteLocally = false, reason = "" } = options;
+  
+  // Create deletion request
+  const deletionRequest = {
+    kind: 5,
+    pubkey: userPubkey,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [
+      ["e", eventId],
+      ["k", eventKind.toString()]
+    ],
+    content: reason
+  };
+  
+  // Sign and publish
+  deletionRequest.id = getEventHash(deletionRequest);
+  deletionRequest.sig = signEvent(deletionRequest, userPrivkey);
+  await publishToRelays(deletionRequest);
+  
+  // Update local storage
+  await localDb.markAsDeletedFromRelays(eventId);
+  
+  // Delete locally if requested
+  if (deleteLocally) {
+    await localDb.deleteContentLocally(eventId);
+  }
+  
+  return deletionRequest;
+}
+
+// Request deletion of addressable event
+async function requestAddressableDeletion(kind, pubkey, dTag, options = {}) {
+  const { deleteLocally = false, reason = "" } = options;
+  
+  const deletionRequest = {
+    kind: 5,
+    pubkey: userPubkey,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [
+      ["a", `${kind}:${pubkey}:${dTag}`],
+      ["k", kind.toString()]
+    ],
+    content: reason
+  };
+  
+  // Sign and publish
+  deletionRequest.id = getEventHash(deletionRequest);
+  deletionRequest.sig = signEvent(deletionRequest, userPrivkey);
+  await publishToRelays(deletionRequest);
+  
+  // Update local storage
+  await localDb.markAddressableEventAsDeletedFromRelays(kind, pubkey, dTag);
+  
+  // Delete locally if requested
+  if (deleteLocally) {
+    await localDb.deleteAddressableContentLocally(kind, pubkey, dTag);
+  }
+  
+  return deletionRequest;
+}
+
+// Check for deletion requests when viewing content
+async function checkDeletionStatus(eventId) {
+  const deletionRequests = await ndk.fetchEvents({
+    kinds: [5],
+    "#e": [eventId]
   });
   
-  // Then count associated workout records for each
-  const templateCounts = await Promise.all(
-    templates.map(async (template) => {
-      const dTag = template.tags.find(t => t[0] === 'd')?.[1];
-      if (!dTag) return { template, count: 0 };
-      
-      const records = await ndk.fetchEvents({
-        kinds: [33403],
-        "#template": [`33402:${template.pubkey}:${dTag}`]
-      });
-      
-      return {
-        template,
-        count: records.length
-      };
-    })
-  );
+  for (const request of deletionRequests) {
+    // Verify the deletion request is from the original author
+    if (request.pubkey === event.pubkey) {
+      return { isDeleted: true, request };
+    }
+  }
   
-  // Sort by usage count
-  return templateCounts.sort((a, b) => b.count - a.count);
+  return { isDeleted: false };
 }
 ```
 
-### Integration Points
+## User Interface Design
 
-#### Nostr Protocol Integration
-- NDK for Nostr event management and relay communication
-- NIP-19 for nevent URL encoding/decoding
-- NIP-22 for comment threading
-- NIP-25 for reactions and likes
-- NIP-47 for Nostr Wallet Connect
-- NIP-57 for zaps
-- NIP-89 for app handler registration
+### Content Status Indicators
 
-#### Application Integration
-- **Library Screen**: 
-  - Displays social metrics on exercise/template cards (usage count, likes, comments)
-  - Filters for trending/popular content
-  - Visual indicators for content source (local, POWR, Nostr)
+The UI should clearly indicate the status of fitness content:
 
-- **Detail Screens**: 
-  - Shows comments and reactions on exercises, templates, and workout records
-  - Displays creator information with follow option
-  - Presents usage statistics and popularity metrics
-  - Provides zap/tip options for content creators
+1. **Local Only**
+   - Visual indicator showing content is only on device
+   - Options to publish to relays or share socially
 
-- **Profile Screen**: 
-  - Displays user's created workouts, templates, and exercises
-  - Shows workout history and statistics visualization
-  - Presents achievements, PRs, and milestone tracking
-  - Includes user's social activity (comments, reactions)
-  - Provides analytics dashboard of workout progress and consistency
+2. **Published to Relays**
+   - Indicator showing content is published
+   - Display relay publishing status
+   - Option to create social share
 
-- **Settings Screen**:
-  - Nostr Wallet Connect management
-  - Relay configuration and connection management
-  - Social preferences (public/private sharing defaults)
-  - Notification settings for social interactions
-  - Mute and content filtering options
-  - Profile visibility and privacy controls
+3. **Socially Shared**
+   - Indicator showing content has been shared socially
+   - Link to view social post
+   - Stats on social engagement (comments, reactions)
 
-- **Share Sheet**: 
-  - Social sharing interface for workout records and achievements
-  - Options for including stats, images, or workout summaries
-  - Relay selection for content publishing
-  - Privacy option to share publicly or to specific relays only
+4. **Deletion Requested**
+   - Indicator showing deletion has been requested
+   - Option to delete locally if not already done
+   - Explanation that deletion from all relays cannot be guaranteed
 
-- **Comment UI**: 
-  - Thread-based comment creation and display
-  - Reply functionality with proper nesting
-  - Reaction options with count displays
-  - Comment filtering and sorting options
+### Deletion Interface
 
-#### External Dependencies
-- SQLite for local storage
-- NDK (Nostr Development Kit) for Nostr integration
-- NWC libraries for wallet connectivity
-- Lightning payment providers
+The UI for deletion should be clear and informative:
+
+1. **Deletion Options**
+   - "Delete Locally" - Removes from device only
+   - "Request Deletion from Relays" - Issues NIP-09 deletion request
+   - "Delete Completely" - Both local and relay deletion
+
+2. **Confirmation Dialog**
+   - Clear explanation of deletion scope
+   - Warning that relay deletion is not guaranteed
+   - Option to provide reason for deletion (for relay requests)
+
+3. **Deletion Status**
+   - Visual indicator for content with deletion requests
+   - Option to view deletion request details
+   - Ability to check status across relays
 
 ## Implementation Plan
 
 ### Phase 1: Core Nostr Event Structure
-1. Implement custom event kinds (33401, 33402, 33403)
-2. Create event validation and processing functions
-3. Build local-first storage with Nostr event structure
-4. Develop basic event publishing to relays
+1. Implement custom event kinds (33401, 33402, 1301)
+2. Create local storage schema with publishing status tracking
+3. Build basic event publishing to relays
+4. Implement NIP-09 deletion requests
 
 ### Phase 2: Social Interaction Foundation
 1. Implement NIP-22 comments system
@@ -445,73 +658,25 @@ async function findPopularTemplates() {
 
 ### Unit Tests
 - Event validation and processing tests
+- Deletion request handling tests
 - Comment threading logic tests
 - Wallet connection management tests
 - Relay communication tests
 - Social share URL generation tests
 
 ### Integration Tests
-- End-to-end comment flow testing
-- Reaction and like functionality testing
+- End-to-end publishing flow testing
+- Deletion request workflow testing
+- Comment and reaction functionality testing
 - Template usage tracking tests
 - Social sharing workflow tests
 - Zap flow testing
-- Cross-client compatibility testing
 
 ### User Testing
-- Usability of social sharing flows
-- Clarity of comment interfaces
+- Usability of publishing and deletion workflows
+- Clarity of content status indicators
 - Wallet connection experience
 - Performance on different devices and connection speeds
-
-## Observability
-
-### Logging
-- Social event publishing attempts and results
-- Relay connection status
-- Comment submission success/failure
-- Wallet connection events
-- Payment attempts and results
-
-### Metrics
-- Template popularity (usage counts)
-- Comment engagement rates
-- Social sharing frequency
-- Zaps received/sent
-- Relay response times
-- Offline content creation stats
-
-## Future Considerations
-
-### Potential Enhancements
-- Group fitness challenges with bounties
-- Subscription model for premium content
-- Coaching marketplace with Lightning payments
-- Team workout coordination
-- Custom fitness community creation
-- AI-powered workout recommendations based on social data
-
-### Known Limitations
-- Reliance on external Lightning wallets
-- Comment moderation limited to client-side filtering
-- Content discovery dependent on relay availability
-- Limited backward compatibility with generic Nostr clients
-
-## Dependencies
-
-### Runtime Dependencies
-- NDK (Nostr Development Kit)
-- SQLite database
-- Nostr relay connections
-- Lightning network (for zaps)
-- NWC-compatible wallets
-
-### Development Dependencies
-- TypeScript
-- React Native
-- Expo
-- Jest for testing
-- NativeWind for styling
 
 ## Security Considerations
 - Never store or request user private keys
@@ -521,61 +686,38 @@ async function findPopularTemplates() {
 - User control over content visibility
 - Protection against spam and abuse
 
-### Privacy Control Mechanisms
-
-The application implements several layers of privacy controls:
-
-1. **Publication Controls**:
-   - Per-content privacy settings (public, followers-only, private)
-   - Relay selection for each published event
-   - Option to keep all workout data local-only
-
-2. **Content Visibility**:
-   - Anonymous workout publishing (remove identifying data)
-   - Selective stat sharing (choose which metrics to publish)
-   - Time-delayed publishing (share workouts after a delay)
-
-3. **Technical Mechanisms**:
-   - Local-first storage ensures all data is usable offline
-   - Content encryption for sensitive information (using NIP-44)
-   - Private relay support for limited audience sharing
-   - Event expiration tags for temporary content
-
-4. **User Interface**:
-   - Clear visual indicators for public vs. private content
-   - Confirmation dialogs before publishing to relays
-   - Privacy setting presets (public account, private account, mixed)
-   - Granular permission controls for different content types
-
 ## Rollout Strategy
 
 ### Development Phase
 1. Implement custom event kinds and validation
-2. Create UI components for social interactions
+2. Create UI components for content publishing status
 3. Develop local-first storage with Nostr sync
-4. Build and test commenting system
+4. Build and test deletion request functionality
 5. Implement wallet connection interface
 6. Add documentation for Nostr integration
 
 ### Beta Testing
 1. Release to limited test group
 2. Monitor relay performance and sync issues
-3. Gather feedback on social interaction flows
+3. Gather feedback on publishing and deletion flows
 4. Test cross-client compatibility
 5. Evaluate Lightning payment reliability
 
 ### Production Deployment
 1. Deploy app handler registration
-2. Roll out social features progressively
+2. Roll out features progressively
 3. Monitor engagement and performance metrics
-4. Provide guides for social feature usage
+4. Provide guides for feature usage
 5. Establish relay connection recommendations
 6. Create nostr:// URI scheme handlers
 
 ## References
 - [Nostr NIPs Repository](https://github.com/nostr-protocol/nips)
+- [NIP-09 Event Deletion](https://github.com/nostr-protocol/nips/blob/master/09.md)
+- [NIP-10 Text Notes and Threads](https://github.com/nostr-protocol/nips/blob/master/10.md)
+- [NIP-19 bech32-encoded entities](https://github.com/nostr-protocol/nips/blob/master/19.md)
+- [NIP-22 Comment](https://github.com/nostr-protocol/nips/blob/master/22.md)
+- [NIP-89 Recommended Application Handlers](https://github.com/nostr-protocol/nips/blob/master/89.md)
 - [NDK Documentation](https://github.com/nostr-dev-kit/ndk)
-- [POWR Workout NIP Draft](nostr-exercise-nip.md)
 - [NIP-47 Wallet Connect](https://github.com/nostr-protocol/nips/blob/master/47.md)
 - [NIP-57 Lightning Zaps](https://github.com/nostr-protocol/nips/blob/master/57.md)
-- [NIP-89 App Handlers](https://github.com/nostr-protocol/nips/blob/master/89.md)

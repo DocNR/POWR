@@ -11,6 +11,7 @@ import { ExerciseDetails } from '@/components/exercises/ExerciseDetails';
 import { ExerciseDisplay, ExerciseType, BaseExercise, Equipment } from '@/types/exercise';
 import { useExercises } from '@/lib/hooks/useExercises';
 import { FilterSheet, type FilterOptions, type SourceType } from '@/components/library/FilterSheet';
+import { useWorkoutStore } from '@/stores/workoutStore';
 
 // Default available filters
 const availableFilters = {
@@ -33,6 +34,8 @@ export default function ExercisesScreen() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
   const [activeFilters, setActiveFilters] = useState(0);
+  const { isActive, isMinimized } = useWorkoutStore();
+  const shouldShowFAB = !isActive || !isMinimized;
 
   const {
     exercises,
@@ -167,10 +170,12 @@ export default function ExercisesScreen() {
       )}
 
       {/* FAB for adding new exercise */}
-      <FloatingActionButton
-        icon={Dumbbell}
-        onPress={() => setShowNewExercise(true)}
-      />
+      {shouldShowFAB && (
+        <FloatingActionButton
+          icon={Dumbbell}
+          onPress={() => setShowNewExercise(true)}
+        />
+      )}
 
       {/* New exercise sheet */}
       <NewExerciseSheet 

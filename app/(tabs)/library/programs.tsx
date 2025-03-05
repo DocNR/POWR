@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
 import { 
   AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2, 
   Code, Search, ListFilter, Wifi, Zap, FileJson, X, Info
@@ -79,8 +80,6 @@ export default function ProgramsScreen() {
   const [eventKind, setEventKind] = useState(NostrEventKind.EXERCISE);
   const [eventContent, setEventContent] = useState('');
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
-  const [privateKey, setPrivateKey] = useState('');
-  const [error, setError] = useState<string | null>(null);
   
   // Use the NDK hooks
   const { ndk, isLoading: ndkLoading } = useNDK();
@@ -269,44 +268,8 @@ export default function ProgramsScreen() {
     setIsLoginSheetOpen(true);
   };
   
-  // Close login sheet
   const handleCloseLogin = () => {
     setIsLoginSheetOpen(false);
-  };
-
-  // Handle key generation
-  const handleGenerateKeys = async () => {
-    try {
-      const { nsec } = generateKeys();
-      setPrivateKey(nsec);
-      setError(null);
-    } catch (err) {
-      setError('Failed to generate keys');
-      console.error('Key generation error:', err);
-    }
-  };
-
-  // Handle login
-  const handleLogin = async () => {
-    if (!privateKey.trim()) {
-      setError('Please enter your private key or generate a new one');
-      return;
-    }
-
-    setError(null);
-    try {
-      const success = await login(privateKey);
-      
-      if (success) {
-        setPrivateKey('');
-        handleCloseLogin();
-      } else {
-        setError('Failed to login with the provided key');
-      }
-    } catch (err) {
-      console.error('Login error:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-    }
   };
   
   // Handle logout
@@ -735,74 +698,11 @@ export default function ProgramsScreen() {
             </Card>
             
             {/* Login Modal */}
-            <Modal
-              visible={isLoginSheetOpen}
-              transparent={true}
-              animationType="slide"
-              onRequestClose={handleCloseLogin}
-            >
-              <View className="flex-1 justify-center items-center bg-black/50">
-                <View className="bg-background rounded-lg w-[90%] max-w-md p-4">
-                  <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-lg font-bold">Login with Nostr</Text>
-                    <TouchableOpacity onPress={handleCloseLogin}>
-                      <X size={24} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <View className="space-y-4">
-                    <Text>Enter your Nostr private key (nsec)</Text>
-                    <Input
-                      placeholder="nsec1..."
-                      value={privateKey}
-                      onChangeText={setPrivateKey}
-                      secureTextEntry
-                      autoCapitalize="none"
-                    />
-                    
-                    {error && (
-                      <View className="p-3 bg-destructive/10 rounded-md border border-destructive">
-                        <Text className="text-destructive">{error}</Text>
-                      </View>
-                    )}
-                    
-                    <View className="flex-row space-x-2">
-                      <Button 
-                        variant="outline"
-                        onPress={handleGenerateKeys}
-                        disabled={loading}
-                        className="flex-1"
-                      >
-                        <Text>Generate New Keys</Text>
-                      </Button>
-                      
-                      <Button
-                        onPress={handleLogin}
-                        disabled={loading}
-                        className="flex-1"
-                      >
-                        {loading ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text className="text-primary-foreground">Login</Text>
-                        )}
-                      </Button>
-                    </View>
-                    
-                    <View className="bg-secondary/30 p-3 rounded-md mt-4">
-                      <View className="flex-row items-center mb-2">
-                        <Info size={16} className="mr-2 text-muted-foreground" />
-                        <Text className="font-semibold">What is a Nostr Key?</Text>
-                      </View>
-                      <Text className="text-sm text-muted-foreground">
-                        Nostr is a decentralized protocol where your private key (nsec) is your identity and password.
-                        Your private key is securely stored on your device and is never sent to any servers.
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </Modal>
+            <NostrLoginSheet 
+              open={isLoginSheetOpen} 
+              onClose={handleCloseLogin} 
+            />
+            
             {/* Create Event */}
             <Card className="mb-4">
               <CardHeader>

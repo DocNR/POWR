@@ -1,11 +1,10 @@
 // app/(workout)/create.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { router, useNavigation } from 'expo-router';
 import { TabScreen } from '@/components/layout/TabScreen';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -26,13 +25,7 @@ import { formatTime } from '@/utils/formatTime';
 import { ParamListBase } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import SetInput from '@/components/workout/SetInput';
-
-// Define styles outside of component
-const styles = StyleSheet.create({
-  timerText: {
-    fontVariant: ['tabular-nums']
-  }
-});
+import { useColorScheme } from '@/lib/useColorScheme';
 
 export default function CreateWorkoutScreen() {
   const { 
@@ -54,6 +47,84 @@ export default function CreateWorkoutScreen() {
     minimizeWorkout,
     maximizeWorkout
   } = useWorkoutStore.getState();
+
+  // Get theme colors
+  const { isDarkColorScheme } = useColorScheme();
+
+  // Create dynamic styles based on theme
+  const dynamicStyles = StyleSheet.create({
+    timerText: {
+      fontVariant: ['tabular-nums']
+    },
+    cardContainer: {
+      marginBottom: 24,
+      backgroundColor: isDarkColorScheme ? '#1F1F23' : 'white',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDarkColorScheme ? '#333' : '#eee',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.2,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    cardHeader: {
+      padding: 16, 
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      borderBottomWidth: 1,
+      borderBottomColor: isDarkColorScheme ? '#333' : '#eee'
+    },
+    cardTitle: {
+      fontSize: 18, 
+      fontWeight: 'bold', 
+      color: '#8B5CF6' // Purple is used in both themes
+    },
+    setsInfo: {
+      paddingHorizontal: 16, 
+      paddingVertical: 4
+    },
+    setsInfoText: {
+      fontSize: 14, 
+      color: isDarkColorScheme ? '#999' : '#666'
+    },
+    headerRow: {
+      flexDirection: 'row', 
+      paddingHorizontal: 16,
+      paddingVertical: 4,
+      borderTopWidth: 1,
+      borderTopColor: isDarkColorScheme ? '#333' : '#eee',
+      backgroundColor: isDarkColorScheme ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'
+    },
+    headerCell: {
+      fontSize: 14, 
+      fontWeight: '500', 
+      color: isDarkColorScheme ? '#999' : '#666', 
+      textAlign: 'center'
+    },
+    setNumberCell: {
+      width: 32
+    },
+    prevCell: {
+      width: 80
+    },
+    valueCell: {
+      flex: 1
+    },
+    spacer: {
+      width: 44
+    },
+    setsList: {
+      padding: 0
+    },
+    actionButton: {
+      borderTopWidth: 1, 
+      borderTopColor: isDarkColorScheme ? '#333' : '#eee'
+    },
+    iconColor: {
+      color: isDarkColorScheme ? '#999' : '#666'
+    }
+  });
 
   type CreateScreenNavigationProp = NativeStackNavigationProp<ParamListBase>;
   const navigation = useNavigation<CreateScreenNavigationProp>();
@@ -165,7 +236,9 @@ export default function CreateWorkoutScreen() {
               variant="outline"
               onPress={() => useWorkoutStore.getState().extendRest(30)}
             >
-              <Plus className="mr-2 text-foreground" size={18} />
+              <View>
+                <Plus className="mr-2 text-foreground" size={18} />
+              </View>
               <Text>Add 30s</Text>
             </Button>
           </View>
@@ -190,7 +263,9 @@ export default function CreateWorkoutScreen() {
                 router.back();
               }}
             >
-              <ChevronLeft className="text-foreground" />
+              <View>
+                <ChevronLeft className="text-foreground" />
+              </View>
             </Button>
             <Text className="text-xl font-semibold ml-2">Back</Text>
           </View>
@@ -220,7 +295,7 @@ export default function CreateWorkoutScreen() {
         
         {/* Timer Display */}
         <View className="flex-row items-center px-4 pb-3 border-b border-border">
-          <Text style={styles.timerText} className={cn(
+          <Text style={dynamicStyles.timerText} className={cn(
             "text-2xl font-mono",
             status === 'paused' ? "text-muted-foreground" : "text-foreground"
           )}>
@@ -234,7 +309,9 @@ export default function CreateWorkoutScreen() {
               className="ml-2"
               onPress={pauseWorkout}
             >
-              <Pause className="text-foreground" />
+              <View>
+                <Pause className="text-foreground" />
+              </View>
             </Button>
           ) : (
             <Button
@@ -243,7 +320,9 @@ export default function CreateWorkoutScreen() {
               className="ml-2"
               onPress={resumeWorkout}
             >
-              <Play className="text-foreground" />
+              <View>
+                <Play className="text-foreground" />
+              </View>
             </Button>
           )}
         </View>
@@ -262,45 +341,37 @@ export default function CreateWorkoutScreen() {
             // Exercise List when exercises exist
             <>
               {activeWorkout.exercises.map((exercise, exerciseIndex) => (
-                <Card 
-                  key={exercise.id} 
-                  className="mb-6 overflow-hidden border border-border bg-card"
-                >
+                <View key={exercise.id} style={dynamicStyles.cardContainer}>
                   {/* Exercise Header */}
-                  <View className="flex-row justify-between items-center px-4 py-1 border-b border-border">
-                    <Text className="text-lg font-semibold text-[#8B5CF6]">
+                  <View style={dynamicStyles.cardHeader}>
+                    <Text style={dynamicStyles.cardTitle}>
                       {exercise.title}
                     </Text>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onPress={() => {
-                        // Open exercise options menu
-                        console.log('Open exercise options');
-                      }}
-                    >
-                      <MoreHorizontal className="text-muted-foreground" size={20} />
-                    </Button>
+                    <TouchableOpacity onPress={() => console.log('Open exercise options')}>
+                      <View>
+                        <MoreHorizontal size={20} color={isDarkColorScheme ? "#999" : "#666"} />
+                      </View>
+                    </TouchableOpacity>
                   </View>
                   
                   {/* Sets Info */}
-                  <View className="px-4 py-1">
-                    <Text className="text-sm text-muted-foreground">
+                  <View style={dynamicStyles.setsInfo}>
+                    <Text style={dynamicStyles.setsInfoText}>
                       {exercise.sets.filter(s => s.isCompleted).length} sets completed
                     </Text>
                   </View>
                   
                   {/* Set Headers */}
-                  <View className="flex-row px-4 py-1 border-t border-border bg-muted/30">
-                    <Text className="w-8 text-sm font-medium text-muted-foreground text-center">SET</Text>
-                    <Text className="w-20 text-sm font-medium text-muted-foreground text-center">PREV</Text>
-                    <Text className="flex-1 text-sm font-medium text-center text-muted-foreground">KG</Text>
-                    <Text className="flex-1 text-sm font-medium text-center text-muted-foreground">REPS</Text>
-                    <View style={{ width: 44 }} />  {/* Space for the checkmark/complete button */}
+                  <View style={dynamicStyles.headerRow}>
+                    <Text style={[dynamicStyles.headerCell, dynamicStyles.setNumberCell]}>SET</Text>
+                    <Text style={[dynamicStyles.headerCell, dynamicStyles.prevCell]}>PREV</Text>
+                    <Text style={[dynamicStyles.headerCell, dynamicStyles.valueCell]}>KG</Text>
+                    <Text style={[dynamicStyles.headerCell, dynamicStyles.valueCell]}>REPS</Text>
+                    <View style={dynamicStyles.spacer} />
                   </View>
                   
                   {/* Exercise Sets */}
-                  <CardContent className="p-0">
+                  <View style={dynamicStyles.setsList}>
                     {exercise.sets.map((set, setIndex) => {
                       const previousSet = setIndex > 0 ? exercise.sets[setIndex - 1] : undefined;
                       
@@ -317,18 +388,22 @@ export default function CreateWorkoutScreen() {
                         />
                       );
                     })}
-                  </CardContent>
+                  </View>
                   
                   {/* Add Set Button */}
-                  <Button
-                    variant="ghost"
-                    className="flex-row justify-center items-center py-2 border-t border-border"
-                    onPress={() => handleAddSet(exerciseIndex)}
-                  >
-                    <Plus size={18} className="text-foreground mr-2" />
-                    <Text className="text-foreground">Add Set</Text>
-                  </Button>
-                </Card>
+                  <View style={dynamicStyles.actionButton}>
+                    <Button
+                      variant="ghost"
+                      className="flex-row justify-center items-center py-2"
+                      onPress={() => handleAddSet(exerciseIndex)}
+                    >
+                      <View>
+                        <Plus size={18} className="text-foreground mr-2" />
+                      </View>
+                      <Text className="text-foreground">Add Set</Text>
+                    </Button>
+                  </View>
+                </View>
               ))}
               
               {/* Add Exercises Button */}
@@ -352,7 +427,9 @@ export default function CreateWorkoutScreen() {
           ) : (
             // Empty State with nice message and icon
             <View className="flex-1 justify-center items-center px-4">
-              <Dumbbell className="text-muted-foreground mb-6" size={80} />
+              <View>
+                <Dumbbell className="text-muted-foreground mb-6" size={80} />
+              </View>
               <Text className="text-xl font-semibold text-center mb-2">
                 No exercises added
               </Text>

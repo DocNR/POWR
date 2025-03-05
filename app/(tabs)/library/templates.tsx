@@ -71,6 +71,8 @@ export default function TemplatesScreen() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
   const [activeFilters, setActiveFilters] = useState(0);
+  const { isActive, isMinimized } = useWorkoutStore();
+  const shouldShowFAB = !isActive || !isMinimized;
   
   const handleDelete = (id: string) => {
     setTemplates(current => current.filter(t => t.id !== id));
@@ -266,10 +268,12 @@ export default function TemplatesScreen() {
         <View className="h-20" />
       </ScrollView>
 
-      <FloatingActionButton
-        icon={Plus}
-        onPress={() => setShowNewTemplate(true)}
-      />
+      {shouldShowFAB && (
+        <FloatingActionButton
+          icon={Plus}
+          onPress={() => setShowNewTemplate(true)}
+        />
+      )}
 
       <NewTemplateSheet 
         isOpen={showNewTemplate}
