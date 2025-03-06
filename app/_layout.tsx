@@ -1,4 +1,5 @@
 // app/_layout.tsx
+import 'expo-dev-client';
 import '../lib/crypto-polyfill'; // Import crypto polyfill first
 import '@/global.css';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
