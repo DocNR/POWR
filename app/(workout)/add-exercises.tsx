@@ -13,7 +13,7 @@ import { TabScreen } from '@/components/layout/TabScreen';
 import { ChevronLeft, Search, Plus } from 'lucide-react-native';
 import { BaseExercise } from '@/types/exercise';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NewExerciseSheet } from '@/components/library/NewExerciseSheet';
+import { ExerciseSheet } from '@/components/library/ExerciseSheet';
 
 export default function AddExercisesScreen() {
   const db = useSQLiteContext();
@@ -178,7 +178,7 @@ export default function AddExercisesScreen() {
         </View>
 
         {/* New Exercise Sheet */}
-        <NewExerciseSheet 
+        <ExerciseSheet 
           isOpen={isNewExerciseSheetOpen}
           onClose={() => setIsNewExerciseSheetOpen(false)}
           onSubmit={handleNewExerciseSubmit}

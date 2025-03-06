@@ -1,7 +1,6 @@
 // components/templates/TemplateCard.tsx
 import React from 'react';
 import { View, TouchableOpacity, Platform } from 'react-native';
-import { router } from 'expo-router'; // Add this import
 import { Text } from '@/components/ui/text';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,13 +54,23 @@ export function TemplateCard({
     setShowDeleteAlert(false);
   };
 
-  // Handle navigation to template details
-  const handleTemplatePress = () => {
-    router.push(`/template/${id}`);
+  // Prevent event propagation when clicking on action buttons
+  const handleStartWorkout = (e: any) => {
+    if (e && e.stopPropagation) {
+      e.stopPropagation();
+    }
+    onStartWorkout();
+  };
+
+  const handleFavorite = (e: any) => {
+    if (e && e.stopPropagation) {
+      e.stopPropagation();
+    }
+    onFavorite();
   };
 
   return (
-    <TouchableOpacity onPress={handleTemplatePress} activeOpacity={0.7}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
       <Card className="mx-4">
         <CardContent className="p-4">
           <View className="flex-row justify-between items-start">
@@ -134,7 +143,7 @@ export function TemplateCard({
               <Button 
                 variant="ghost" 
                 size="icon"
-                onPress={onStartWorkout}
+                onPress={handleStartWorkout}
                 className="native:h-10 native:w-10"
                 accessibilityLabel="Start workout"
               >
@@ -143,7 +152,7 @@ export function TemplateCard({
               <Button 
                 variant="ghost" 
                 size="icon"
-                onPress={onFavorite}
+                onPress={handleFavorite}
                 className="native:h-10 native:w-10"
                 accessibilityLabel={isFavorite ? "Remove from favorites" : "Add to favorites"}
               >

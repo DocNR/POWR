@@ -5,13 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Dumbbell, ListFilter } from 'lucide-react-native';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
-import { NewExerciseSheet } from '@/components/library/NewExerciseSheet';
+import { ExerciseSheet } from '@/components/library/ExerciseSheet';
 import { SimplifiedExerciseList } from '@/components/exercises/SimplifiedExerciseList';
-import { ExerciseDetails } from '@/components/exercises/ExerciseDetails';
+import { ModalExerciseDetails } from '@/components/exercises/ModalExerciseDetails';
 import { ExerciseDisplay, ExerciseType, BaseExercise, Equipment } from '@/types/exercise';
 import { useExercises } from '@/lib/hooks/useExercises';
 import { FilterSheet, type FilterOptions, type SourceType } from '@/components/library/FilterSheet';
 import { useWorkoutStore } from '@/stores/workoutStore';
+import { generateId } from '@/utils/ids';
+import { useNDKStore } from '@/lib/stores/ndk';
 
 // Default available filters
 const availableFilters = {
@@ -28,13 +30,23 @@ const initialFilters: FilterOptions = {
 };
 
 export default function ExercisesScreen() {
-  const [showNewExercise, setShowNewExercise] = useState(false);
+  // Basic state
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedExercise, setSelectedExercise] = useState<ExerciseDisplay | null>(null);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
   const [activeFilters, setActiveFilters] = useState(0);
+  
+  // Exercise sheet state
+  const [showExerciseSheet, setShowExerciseSheet] = useState(false);
+  const [exerciseToEdit, setExerciseToEdit] = useState<ExerciseDisplay | undefined>(undefined);
+  const [editMode, setEditMode] = useState<'create' | 'edit' | 'fork'>('create');
+  
+  // Exercise details state
+  const [selectedExercise, setSelectedExercise] = useState<ExerciseDisplay | null>(null);
+  
+  // Other hooks
   const { isActive, isMinimized } = useWorkoutStore();
+  const { currentUser } = useNDKStore();
   const shouldShowFAB = !isActive || !isMinimized;
 
   const {
@@ -43,6 +55,7 @@ export default function ExercisesScreen() {
     error,
     createExercise,
     deleteExercise,
+    updateExercise, 
     refreshExercises,
     updateFilters,
     clearFilters
@@ -61,22 +74,98 @@ export default function ExercisesScreen() {
     setSelectedExercise(exercise);
   };
 
-  const handleEdit = async () => {
-    // TODO: Implement edit functionality
-    setSelectedExercise(null);
+  // Mock exercise update function
+  const handleUpdateExercise = async (id: string, updatedData: Partial<BaseExercise>): Promise<void> => {
+    try {
+      // Since we don't have a real update function, we'll fake it with delete + create
+      // In a real app, this would be replaced with an actual update API call
+      console.log(`Updating exercise ${id} with data:`, updatedData);
+      
+      // Delete the old exercise
+      await deleteExercise(id);
+      
+      // Create a new exercise with the same ID and updated data
+      await createExercise({
+        ...updatedData,
+        availability: updatedData.availability || { source: ['local'] }
+      } as Omit<BaseExercise, 'id'>);
+      
+      // Refresh the exercise list
+      refreshExercises();
+    } catch (error) {
+      console.error('Error updating exercise:', error);
+    }
   };
 
-  const handleCreateExercise = async (exerciseData: BaseExercise) => {
-    // Convert BaseExercise to include required source information
-    const exerciseWithSource: Omit<BaseExercise, 'id'> = {
-      ...exerciseData,
-      availability: {
-        source: ['local']
-      }
-    };
+  // Handle editing an exercise
+  const handleEdit = () => {
+    if (!selectedExercise) return;
     
-    await createExercise(exerciseWithSource);
-    setShowNewExercise(false);
+    // Close the details modal
+    setSelectedExercise(null);
+    
+    // Determine if we should edit or fork based on Nostr ownership
+    const isNostrExercise = selectedExercise.source === 'nostr';
+    const isCurrentUserAuthor = isNostrExercise && 
+      selectedExercise.availability?.lastSynced?.nostr?.metadata?.pubkey === currentUser?.pubkey;
+    
+    const mode = isNostrExercise && !isCurrentUserAuthor ? 'fork' : 'edit';
+    
+    // Set up edit state
+    setEditMode(mode);
+    setExerciseToEdit(selectedExercise);
+    
+    // Open the exercise sheet
+    setShowExerciseSheet(true);
+  };
+
+  // Handle creating a new exercise
+  const handleCreateExercise = () => {
+    setEditMode('create');
+    setExerciseToEdit(undefined);
+    setShowExerciseSheet(true);
+  };
+
+  // Handle submitting exercise form (create, edit, or fork)
+  const handleSubmitExercise = async (exerciseData: BaseExercise) => {
+    try {
+      if (editMode === 'create') {
+        // For new exercises, ensure the availability is set
+        const exerciseWithSource: Omit<BaseExercise, 'id'> = {
+          ...exerciseData,
+          availability: {
+            source: ['local']
+          }
+        };
+        // Remove the ID from the data for new creation
+        delete (exerciseWithSource as any).id;
+        
+        await createExercise(exerciseWithSource);
+      } 
+      else if (editMode === 'edit') {
+        // Use the new updateExercise function directly
+        await updateExercise(exerciseData.id, exerciseData);
+      } 
+      else if (editMode === 'fork') {
+        // For forking, create a new exercise but keep the original data
+        const { id: _, ...forkedExerciseData } = exerciseData;
+        const forkedExercise: Omit<BaseExercise, 'id'> = {
+          ...forkedExerciseData,
+          availability: {
+            source: ['local'] // Start as a local exercise
+          }
+        };
+        await createExercise(forkedExercise);
+      }
+      
+      // Refresh the exercise list after changes
+      refreshExercises();
+    } catch (error) {
+      console.error('Error handling exercise submission:', error);
+    }
+    
+    // Close the sheet regardless of success/failure
+    setShowExerciseSheet(false);
   };
 
   const handleApplyFilters = (filters: FilterOptions) => {
@@ -158,30 +247,28 @@ export default function ExercisesScreen() {
       />
 
       {/* Exercise details sheet */}
-      {selectedExercise && (
-        <ExerciseDetails
-          exercise={selectedExercise}
-          open={!!selectedExercise}
-          onOpenChange={(open) => {
-            if (!open) setSelectedExercise(null);
-          }}
-          onEdit={handleEdit}
-        />
-      )}
+      <ModalExerciseDetails
+        exercise={selectedExercise} // This can now be null
+        open={!!selectedExercise}
+        onClose={() => setSelectedExercise(null)}
+        onEdit={handleEdit}
+      />
 
       {/* FAB for adding new exercise */}
       {shouldShowFAB && (
         <FloatingActionButton
           icon={Dumbbell}
-          onPress={() => setShowNewExercise(true)}
+          onPress={handleCreateExercise}
         />
       )}
 
-      {/* New exercise sheet */}
-      <NewExerciseSheet 
-        isOpen={showNewExercise}
-        onClose={() => setShowNewExercise(false)}
-        onSubmit={handleCreateExercise}
+      {/* Exercise sheet for create/edit/fork */}
+      <ExerciseSheet 
+        isOpen={showExerciseSheet}
+        onClose={() => setShowExerciseSheet(false)}
+        onSubmit={handleSubmitExercise}
+        exerciseToEdit={exerciseToEdit}
+        mode={editMode}
       />
     </View>
   );

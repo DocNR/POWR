@@ -1,11 +1,10 @@
 // components/library/NewTemplateSheet.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, TouchableOpacity } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { 
   Template, 
@@ -17,7 +16,8 @@ import { ExerciseDisplay } from '@/types/exercise';
 import { generateId } from '@/utils/ids';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LibraryService } from '@/lib/db/services/LibraryService';
-import { ChevronLeft, ChevronRight, Dumbbell, Clock, RotateCw, List, Search } from 'lucide-react-native';
+import { ChevronLeft, Dumbbell, Clock, RotateCw, List, Search, X } from 'lucide-react-native';
+import { useColorScheme } from '@/lib/useColorScheme';
 
 interface NewTemplateSheetProps {
   isOpen: boolean;
@@ -71,7 +71,7 @@ function WorkoutTypeStep({ onSelectType, onCancel }: WorkoutTypeStepProps) {
 
   return (
     <ScrollView className="flex-1">
-      <View className="gap-4 py-4">
+      <View className="gap-4 py-4 px-4">
         <Text className="text-base mb-4">Select the type of workout template you want to create:</Text>
         
         <View className="gap-3">
@@ -91,9 +91,6 @@ function WorkoutTypeStep({ onSelectType, onCancel }: WorkoutTypeStepProps) {
                         {workout.description}
                       </Text>
                     </View>
-                  </View>
-                  <View className="pl-2 pr-1">
-                    <ChevronRight color={purpleColor} size={20} />
                   </View>
                 </TouchableOpacity>
               ) : (
@@ -117,10 +114,6 @@ function WorkoutTypeStep({ onSelectType, onCancel }: WorkoutTypeStepProps) {
             </View>
           ))}
         </View>
-        
-        <Button variant="outline" onPress={onCancel} className="mt-4 py-4">
-          <Text>Cancel</Text>
-        </Button>
       </View>
     </ScrollView>
   );
@@ -152,7 +145,7 @@ function BasicInfoStep({
   
   return (
     <ScrollView className="flex-1">
-      <View className="gap-4 py-4">
+      <View className="gap-4 py-4 px-4">
         <View>
           <Text className="text-base font-medium mb-2">Workout Name</Text>
           <Input
@@ -199,9 +192,6 @@ function BasicInfoStep({
         </View>
         
         <View className="flex-row justify-end gap-3 mt-4">
-          <Button variant="outline" onPress={onCancel}>
-            <Text>Cancel</Text>
-          </Button>
           <Button 
             onPress={onNext} 
             disabled={!title}
@@ -314,13 +304,11 @@ function ExerciseSelectionStep({
       </ScrollView>
       
       <View className="p-4 flex-row justify-between border-t border-border">
-        <Button variant="outline" onPress={onBack}>
-          <Text>Back</Text>
-        </Button>
         <Button
           onPress={handleContinue}
           disabled={selectedIds.length === 0}
           style={selectedIds.length === 0 ? {} : { backgroundColor: purpleColor }}
+          className="w-full"
         >
           <Text className={selectedIds.length === 0 ? '' : 'text-white'}>
             Continue with {selectedIds.length} Exercise{selectedIds.length !== 1 ? 's' : ''}
@@ -390,13 +378,11 @@ function ExerciseConfigStep({
         </View>
       </ScrollView>
       
-      <View className="p-4 flex-row justify-between border-t border-border">
-        <Button variant="outline" onPress={onBack}>
-          <Text>Back</Text>
-        </Button>
+      <View className="p-4 border-t border-border">
         <Button 
           onPress={onNext}
           style={{ backgroundColor: purpleColor }}
+          className="w-full"
         >
           <Text className="text-white">Review Template</Text>
         </Button>
@@ -463,13 +449,11 @@ function ReviewStep({
         </View>
       </ScrollView>
       
-      <View className="p-4 flex-row justify-between border-t border-border">
-        <Button variant="outline" onPress={onBack}>
-          <Text>Back</Text>
-        </Button>
+      <View className="p-4 border-t border-border">
         <Button 
           onPress={onSubmit}
           style={{ backgroundColor: purpleColor }}
+          className="w-full"
         >
           <Text className="text-white">Create Template</Text>
         </Button>
@@ -486,6 +470,7 @@ export function NewTemplateSheet({ isOpen, onClose, onSubmit }: NewTemplateSheet
   const [exercises, setExercises] = useState<ExerciseDisplay[]>([]);
   const [selectedExercises, setSelectedExercises] = useState<ExerciseDisplay[]>([]);
   const [configuredExercises, setConfiguredExercises] = useState<Template['exercises']>([]);
+  const { isDarkColorScheme } = useColorScheme();
 
   // Template info
   const [templateInfo, setTemplateInfo] = useState<{
@@ -519,16 +504,21 @@ export function NewTemplateSheet({ isOpen, onClose, onSubmit }: NewTemplateSheet
   // Reset state when sheet closes
   useEffect(() => {
     if (!isOpen) {
-      setStep('type');
-      setWorkoutType('strength');
-      setSelectedExercises([]);
-      setConfiguredExercises([]);
-      setTemplateInfo({
-        title: '',
-        description: '',
-        category: 'Full Body',
-        tags: ['strength']
-      });
+      // Add a delay to ensure the closing animation completes first
+      const timer = setTimeout(() => {
+        setStep('type');
+        setWorkoutType('strength');
+        setSelectedExercises([]);
+        setConfiguredExercises([]);
+        setTemplateInfo({
+          title: '',
+          description: '',
+          category: 'Full Body',
+          tags: ['strength']
+        });
+      }, 300);
+      
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
@@ -594,11 +584,28 @@ export function NewTemplateSheet({ isOpen, onClose, onSubmit }: NewTemplateSheet
       isFavorite: false
     };
     
-    onSubmit(newTemplate);
+    // Close first, then submit with a small delay
     onClose();
+    setTimeout(() => {
+      onSubmit(newTemplate);
+    }, 50);
   };
 
-  // Render different content based on current step
+  // Get title based on current step
+  const getStepTitle = () => {
+    switch (step) {
+      case 'type': return 'Select Workout Type';
+      case 'info': return `New ${workoutType.charAt(0).toUpperCase() + workoutType.slice(1)} Workout`;
+      case 'exercises': return 'Select Exercises';
+      case 'config': return 'Configure Exercises';
+      case 'review': return 'Review Template';
+    }
+  };
+
+  // Show back button for all steps except the first
+  const showBackButton = step !== 'type';
+
+  // Render content based on current step
   const renderContent = () => {
     switch (step) {
       case 'type':
@@ -658,40 +665,45 @@ export function NewTemplateSheet({ isOpen, onClose, onSubmit }: NewTemplateSheet
     }
   };
 
-  // Get title based on current step
-  const getStepTitle = () => {
-    switch (step) {
-      case 'type': return 'Select Workout Type';
-      case 'info': return `New ${workoutType.charAt(0).toUpperCase() + workoutType.slice(1)} Workout`;
-      case 'exercises': return 'Select Exercises';
-      case 'config': return 'Configure Exercises';
-      case 'review': return 'Review Template';
-    }
-  };
-
-  // Show back button for all steps except the first
-  const showBackButton = step !== 'type';
+  // Return null if not open
+  if (!isOpen) return null;
 
   return (
-    <Sheet isOpen={isOpen} onClose={onClose}>
-      <SheetHeader>
-        <View className="flex-row items-center">
-          {showBackButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="mr-2"
-              onPress={handleGoBack}
-            >
-              <ChevronLeft className="text-foreground" size={20} />
-            </Button>
-          )}
-          <SheetTitle>{getStepTitle()}</SheetTitle>
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-center items-center bg-black/70">
+        <View 
+          className={`bg-background ${isDarkColorScheme ? 'bg-card border border-border' : ''} rounded-lg w-[95%] h-[85%] max-w-xl shadow-xl overflow-hidden`}
+          style={{ maxHeight: 700 }}
+        >
+          {/* Header */}
+          <View className="flex-row justify-between items-center p-4 border-b border-border">
+            <View className="flex-row items-center">
+              {showBackButton && (
+                <TouchableOpacity 
+                  onPress={handleGoBack}
+                  className="mr-2 p-1"
+                >
+                  <ChevronLeft size={24} />
+                </TouchableOpacity>
+              )}
+              <Text className="text-xl font-bold text-foreground">{getStepTitle()}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} className="p-1">
+              <X size={24} />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Content */}
+          <View className="flex-1">
+            {renderContent()}
+          </View>
         </View>
-      </SheetHeader>
-      <SheetContent>
-        {renderContent()}
-      </SheetContent>
-    </Sheet>
+      </View>
+    </Modal>
   );
 }

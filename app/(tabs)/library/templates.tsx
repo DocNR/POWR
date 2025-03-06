@@ -10,6 +10,7 @@ import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NewTemplateSheet } from '@/components/library/NewTemplateSheet';
 import { FilterSheet, type FilterOptions, type SourceType } from '@/components/library/FilterSheet';
 import { TemplateCard } from '@/components/templates/TemplateCard';
+import { ModalTemplateDetails } from '@/components/templates/ModalTemplateDetails';
 import { Button } from '@/components/ui/button';
 import { 
   Template, 
@@ -74,12 +75,21 @@ export default function TemplatesScreen() {
   const { isActive, isMinimized } = useWorkoutStore();
   const shouldShowFAB = !isActive || !isMinimized;
   
+  // State for the modal template details
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  
   const handleDelete = (id: string) => {
     setTemplates(current => current.filter(t => t.id !== id));
   };
 
   const handleTemplatePress = (template: Template) => {
-    router.push(`/template/${template.id}`);
+    // Just open the modal without navigating to a route
+    setSelectedTemplateId(template.id);
+    setShowTemplateModal(true);
+    
+    // We're no longer using this:
+    // router.push(`/template/${template.id}`);
   };
 
   const handleStartWorkout = async (template: Template) => {
@@ -125,6 +135,23 @@ export default function TemplatesScreen() {
       0
     );
     setActiveFilters(totalFilters);
+  };
+
+  // Handle modal close
+  const handleModalClose = () => {
+    setShowTemplateModal(false);
+  };
+
+  // Handle favorite change from modal
+  const handleModalFavoriteChange = (templateId: string, isFavorite: boolean) => {
+    // Update local state to reflect change
+    setTemplates(current =>
+      current.map(t =>
+        t.id === templateId
+          ? { ...t, isFavorite }
+          : t
+      )
+    );
   };
 
   useFocusEffect(
@@ -275,6 +302,15 @@ export default function TemplatesScreen() {
         />
       )}
 
+      {/* Template Details Modal */}
+      <ModalTemplateDetails
+        templateId={selectedTemplateId || ''}
+        open={showTemplateModal}
+        onClose={handleModalClose}
+        onFavoriteChange={handleModalFavoriteChange}
+      />
+
+      {/* New Template Sheet */}
       <NewTemplateSheet 
         isOpen={showNewTemplate}
         onClose={() => setShowNewTemplate(false)}

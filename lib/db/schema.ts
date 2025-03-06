@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 4; // Updated to version 4 for user_profiles table
+export const SCHEMA_VERSION = 5; // Updated to version 5 for publication queue table
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -208,6 +208,41 @@ class Schema {
         );
         
         console.log('[Schema] Version 4 upgrade completed');
+      }
+
+      // Update to version 5 if needed - Publication Queue
+      if (currentVersion < 5) {
+        console.log('[Schema] Upgrading to version 5');
+
+        // Create publication queue table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS publication_queue (
+            event_id TEXT PRIMARY KEY,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            last_attempt INTEGER,
+            payload TEXT NOT NULL,
+            FOREIGN KEY(event_id) REFERENCES nostr_events(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_publication_queue_created 
+          ON publication_queue(created_at ASC);
+        `);
+
+        // Create app status table for tracking connectivity
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS app_status (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+        `);
+
+        await db.runAsync(
+          'INSERT INTO schema_version (version, updated_at) VALUES (?, ?)',
+          [5, Date.now()]
+        );
+        
+        console.log('[Schema] Version 5 upgrade completed');
       }
 
       // Verify final schema

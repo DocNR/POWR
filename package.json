@@ -30,6 +30,7 @@
     "@nostr-dev-kit/ndk-mobile": "^0.4.1",
     "@radix-ui/react-alert-dialog": "^1.1.6",
     "@react-native-clipboard/clipboard": "^1.16.1",
+    "@react-native-community/netinfo": "^11.4.1",
     "@react-navigation/material-top-tabs": "^7.1.0",
     "@react-navigation/native": "^7.0.0",
     "@rn-primitives/accordion": "^1.1.0",

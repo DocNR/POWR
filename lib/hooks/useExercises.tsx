@@ -161,6 +161,44 @@ export function useExercises() {
     }
   }, [libraryService, loadExercises]);
 
+  // Update an exercise
+  const updateExercise = useCallback(async (id: string, updateData: Partial<BaseExercise>) => {
+    try {
+      // Get the existing exercise first
+      const existingExercises = await libraryService.getExercises();
+      const existingExercise = existingExercises.find(ex => ex.id === id);
+      
+      if (!existingExercise) {
+        throw new Error(`Exercise with ID ${id} not found`);
+      }
+      
+      // Delete the old exercise
+      await libraryService.deleteExercise(id);
+      
+      // Prepare the updated exercise data (without id since it's Omit<ExerciseDisplay, "id">)
+      const updatedExercise: Omit<ExerciseDisplay, 'id'> = {
+        ...existingExercise,
+        ...updateData,
+        source: existingExercise.source || 'local',
+        isFavorite: existingExercise.isFavorite || false
+      };
+      
+      // Remove id property since it's not allowed in this type
+      const { id: _, ...exerciseWithoutId } = updatedExercise as any;
+      
+      // Add the updated exercise with the same ID
+      await libraryService.addExercise(exerciseWithoutId);
+      
+      // Reload exercises to get the updated list
+      await loadExercises();
+      
+      return id;
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to update exercise'));
+      throw err;
+    }
+  }, [libraryService, loadExercises]);
+
   // Update filters
   const updateFilters = useCallback((newFilters: Partial<ExerciseFilters>) => {
     setFilters(current => ({
@@ -189,6 +227,7 @@ export function useExercises() {
     clearFilters,
     createExercise,
     deleteExercise,
+    updateExercise, 
     refreshExercises: loadExercises
   };
 }

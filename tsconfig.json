@@ -2,6 +2,7 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "moduleResolution": "bundler",
+    "module": "esnext",
     "strict": true,
     "baseUrl": ".",
     "paths": {

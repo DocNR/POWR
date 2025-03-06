@@ -9,6 +9,7 @@ import NDK, { NDKFilter } from '@nostr-dev-kit/ndk';
 import { NDKEvent, NDKUser } from '@nostr-dev-kit/ndk-mobile';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import { openDatabaseSync } from 'expo-sqlite';
 import { NDKMobilePrivateKeySigner, generateKeyPair } from '@/lib/mobile-signer';
 
 // Constants for SecureStore
@@ -37,6 +38,9 @@ type NDKStoreActions = {
   logout: () => Promise<void>;
   generateKeys: () => { privateKey: string; publicKey: string; nsec: string; npub: string };
   publishEvent: (kind: number, content: string, tags: string[][]) => Promise<NDKEvent | null>;
+  createEvent: (kind: number, content: string, tags: string[][]) => Promise<NDKEvent | null>;
+  queueEventForPublishing: (event: NDKEvent) => Promise<boolean>;
+  processPublicationQueue: () => Promise<void>;
   fetchEventsByFilter: (filter: NDKFilter) => Promise<NDKEvent[]>;
 };
 
@@ -150,6 +154,26 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
           // Remove invalid key
           await SecureStore.deleteItemAsync(PRIVATE_KEY_STORAGE_KEY);
         }
+      }
+
+      // Set up connectivity monitoring to process publication queue
+      try {
+        const { ConnectivityService } = await import('@/lib/db/services/ConnectivityService');
+        
+        // Process queue on initial connection
+        if (ConnectivityService.getInstance().getConnectionStatus()) {
+          get().processPublicationQueue();
+        }
+        
+        // Add listener to process queue when coming online
+        ConnectivityService.getInstance().addListener((isOnline) => {
+          if (isOnline) {
+            console.log('[NDK] Connection restored, processing publication queue');
+            get().processPublicationQueue();
+          }
+        });
+      } catch (error) {
+        console.error('[NDK] Error setting up connectivity monitoring:', error);
       }
 
       set({ isLoading: false });
@@ -327,6 +351,210 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       console.error('Error details:', error instanceof Error ? error.stack : 'Unknown error');
       set({ error: error instanceof Error ? error : new Error('Failed to publish event') });
       return null;
+    }
+  },
+
+  // Create and sign a Nostr event without publishing it
+  createEvent: async (kind: number, content: string, tags: string[][]): Promise<NDKEvent | null> => {
+    try {
+      const { ndk, isAuthenticated, currentUser } = get();
+      
+      if (!ndk) {
+        throw new Error('NDK not initialized');
+      }
+      
+      if (!isAuthenticated || !currentUser) {
+        throw new Error('Not authenticated');
+      }
+      
+      // Create event
+      const event = new NDKEvent(ndk);
+      event.kind = kind;
+      event.content = content;
+      event.tags = tags;
+      
+      // Define custom function for random bytes generation
+      const customRandomBytes = (length: number): Uint8Array => {
+        console.log('Using custom randomBytes in event signing');
+        return (Crypto as any).getRandomBytes(length);
+      };
+      
+      // Try to find and override the randomBytes function
+      const nostrTools = require('nostr-tools');
+      const nobleHashes = require('@noble/hashes/utils');
+      
+      // Backup original functions
+      const originalNobleRandomBytes = nobleHashes.randomBytes;
+      
+      // Override with our implementation
+      (nobleHashes as any).randomBytes = customRandomBytes;
+      
+      // Sign the event but don't publish
+      try {
+        await event.sign();
+      } finally {
+        // Restore original functions
+        (nobleHashes as any).randomBytes = originalNobleRandomBytes;
+      }
+      
+      return event;
+    } catch (error) {
+      console.error('Error creating event:', error);
+      set({ error: error instanceof Error ? error : new Error('Failed to create event') });
+      return null;
+    }
+  },
+
+  // Queue an event for publishing when online
+  queueEventForPublishing: async (event: NDKEvent): Promise<boolean> => {
+    try {
+      // Only proceed if the event has an ID and signature
+      if (!event.id || !event.sig) {
+        throw new Error('Event must be signed before queueing');
+      }
+
+      // First cache the event itself
+      try {
+        const EventCache = (await import('@/lib/db/services/EventCache')).EventCache;
+        const db = openDatabaseSync('powr.db');
+        const cache = new EventCache(db);
+        
+        // Convert NDKEvent to NostrEvent for caching
+        await cache.setEvent({
+          id: event.id,
+          pubkey: event.pubkey,
+          kind: event.kind || 0,
+          created_at: event.created_at || Math.floor(Date.now() / 1000),
+          content: event.content,
+          tags: event.tags.map(tag => tag.map(item => String(item))),
+          sig: event.sig
+        });
+        
+        // Then add to publication queue
+        await db.runAsync(
+          `INSERT OR REPLACE INTO publication_queue 
+           (event_id, attempts, created_at, payload) 
+           VALUES (?, ?, ?, ?)`,
+          [
+            event.id, 
+            0, 
+            Date.now(), 
+            JSON.stringify({
+              id: event.id,
+              pubkey: event.pubkey,
+              kind: event.kind,
+              created_at: event.created_at,
+              content: event.content,
+              tags: event.tags,
+              sig: event.sig
+            })
+          ]
+        );
+      } catch (cacheError) {
+        console.error('Error caching event:', cacheError);
+        // Continue to try publishing even if caching fails
+      }
+      
+      // Try to publish immediately if online
+      try {
+        const ConnectivityService = (await import('@/lib/db/services/ConnectivityService')).ConnectivityService;
+        
+        if (ConnectivityService.getInstance().getConnectionStatus()) {
+          try {
+            await event.publish();
+            
+            // Remove from queue if successful
+            const db = openDatabaseSync('powr.db');
+            await db.runAsync(
+              `DELETE FROM publication_queue WHERE event_id = ?`,
+              [event.id]
+            );
+            
+            console.log('Event published successfully:', event.id);
+            return true;
+          } catch (publishError) {
+            console.log('Event queued for later publishing:', event.id);
+            return false;
+          }
+        } else {
+          console.log('Event queued for later publishing (offline):', event.id);
+          return false;
+        }
+      } catch (connectivityError) {
+        console.error('Error checking connectivity:', connectivityError);
+        // Assume offline if connectivity service fails
+        return false;
+      }
+    } catch (error) {
+      console.error('Error queueing event for publishing:', error);
+      return false;
+    }
+  },
+
+  // Process the publication queue
+  processPublicationQueue: async (): Promise<void> => {
+    try {
+      const { ndk } = get();
+      if (!ndk) return;
+      
+      const db = openDatabaseSync('powr.db');
+      
+      // Get all queued events that haven't exceeded max attempts
+      const queuedEvents = await db.getAllAsync<{
+        event_id: string;
+        attempts: number;
+        payload: string;
+      }>(
+        `SELECT event_id, attempts, payload 
+         FROM publication_queue 
+         WHERE attempts < 5 
+         ORDER BY created_at ASC`
+      );
+      
+      console.log(`Processing publication queue: ${queuedEvents.length} events`);
+      
+      for (const item of queuedEvents) {
+        try {
+          // Update attempt count and timestamp
+          await db.runAsync(
+            `UPDATE publication_queue 
+             SET attempts = attempts + 1, 
+                 last_attempt = ? 
+             WHERE event_id = ?`,
+            [Date.now(), item.event_id]
+          );
+          
+          // Parse the event from payload
+          const eventData = JSON.parse(item.payload);
+          
+          // Create a new NDKEvent
+          const event = new NDKEvent(ndk);
+          
+          // Copy properties
+          event.id = eventData.id;
+          event.pubkey = eventData.pubkey;
+          event.kind = eventData.kind;
+          event.created_at = eventData.created_at;
+          event.content = eventData.content;
+          event.tags = eventData.tags;
+          event.sig = eventData.sig;
+          
+          // Publish the event
+          await event.publish();
+          
+          // Remove from queue on success
+          await db.runAsync(
+            `DELETE FROM publication_queue WHERE event_id = ?`,
+            [item.event_id]
+          );
+          
+          console.log(`Published queued event: ${item.event_id}`);
+        } catch (error) {
+          console.error(`Error publishing queued event ${item.event_id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing publication queue:', error);
     }
   },
 
