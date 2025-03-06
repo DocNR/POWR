@@ -1,25 +1,24 @@
 // lib/stores/ndk.ts
-// IMPORTANT: 'react-native-get-random-values' must be the first import to ensure
-// proper crypto polyfill application before other libraries are loaded
 import 'react-native-get-random-values';
-import { Platform } from 'react-native';
 import { create } from 'zustand';
-// Using standard NDK types but importing NDKEvent from ndk-mobile for compatibility
-import NDK, { NDKFilter } from '@nostr-dev-kit/ndk';
-import { NDKEvent, NDKUser } from '@nostr-dev-kit/ndk-mobile';
+import NDK, { 
+  NDKEvent, 
+  NDKUser,
+  NDKRelay,
+  NDKPrivateKeySigner
+} from '@nostr-dev-kit/ndk';
+import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import * as SecureStore from 'expo-secure-store';
-import * as Crypto from 'expo-crypto';
-import { openDatabaseSync } from 'expo-sqlite';
-import { NDKMobilePrivateKeySigner, generateKeyPair } from '@/lib/mobile-signer';
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
 
 // Default relays
 const DEFAULT_RELAYS = [
-  'wss://powr.duckdns.org',  // Your primary relay
+  'wss://powr.duckdns.org',
   'wss://relay.damus.io',
   'wss://relay.nostr.band',
+  'wss://purplepag.es',
   'wss://nos.lol'
 ];
 
@@ -29,7 +28,7 @@ type NDKStoreState = {
   isLoading: boolean;
   isAuthenticated: boolean;
   error: Error | null;
-  relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected' | 'error'>;
+  relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected'>;
 };
 
 type NDKStoreActions = {
@@ -38,14 +37,27 @@ type NDKStoreActions = {
   logout: () => Promise<void>;
   generateKeys: () => { privateKey: string; publicKey: string; nsec: string; npub: string };
   publishEvent: (kind: number, content: string, tags: string[][]) => Promise<NDKEvent | null>;
-  createEvent: (kind: number, content: string, tags: string[][]) => Promise<NDKEvent | null>;
-  queueEventForPublishing: (event: NDKEvent) => Promise<boolean>;
-  processPublicationQueue: () => Promise<void>;
-  fetchEventsByFilter: (filter: NDKFilter) => Promise<NDKEvent[]>;
+  fetchUserProfile: (pubkey: string) => Promise<NDKUser | null>;
+  fetchEventsByFilter: (filter: any) => Promise<NDKEvent[]>;
 };
 
+// Helper to convert byte array to hex string
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Helper to convert hex string to byte array
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
 export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) => ({
-  // State properties
   ndk: null,
   currentUser: null,
   isLoading: false,
@@ -53,127 +65,58 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
   error: null,
   relayStatus: {},
 
-  // Initialize NDK
   init: async () => {
     try {
       console.log('[NDK] Initializing...');
-      console.log('NDK init crypto polyfill check:', {
-        cryptoDefined: typeof global.crypto !== 'undefined',
-        getRandomValuesDefined: typeof global.crypto?.getRandomValues !== 'undefined'
-      });
-      
       set({ isLoading: true, error: null });
 
-      // Initialize relay status tracking
-      const relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected' | 'error'> = {};
-      DEFAULT_RELAYS.forEach(r => {
-        relayStatus[r] = 'connecting';
-      });
-      set({ relayStatus });
-
-      // IMPORTANT: Due to the lack of an Expo config plugin for ndk-mobile,
-      // we're using a standard NDK initialization approach rather than trying to use
-      // ndk-mobile's native modules, which require a custom build.
-      //
-      // When an Expo plugin becomes available for ndk-mobile, we can remove this
-      // fallback approach and use the initializeNDK() function directly.
-      console.log('[NDK] Using standard NDK initialization');
-      
       // Initialize NDK with relays
       const ndk = new NDK({
         explicitRelayUrls: DEFAULT_RELAYS
       });
       
-      // Connect to relays
-      await ndk.connect();
-      
-      // Setup relay status updates
+      // Setup relay status tracking
+      const relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected'> = {};
       DEFAULT_RELAYS.forEach(url => {
-        const relay = ndk.pool.getRelay(url);
-        if (relay) {
-          relay.on('connect', () => {
-            set(state => ({
-              relayStatus: {
-                ...state.relayStatus,
-                [url]: 'connected'
-              }
-            }));
-          });
-          
-          relay.on('disconnect', () => {
-            set(state => ({
-              relayStatus: {
-                ...state.relayStatus,
-                [url]: 'disconnected'
-              }
-            }));
-          });
-          
-          // Set error status if not connected within timeout
-          setTimeout(() => {
-            set(state => {
-              if (state.relayStatus[url] === 'connecting') {
-                return {
-                  relayStatus: {
-                    ...state.relayStatus,
-                    [url]: 'error'
-                  }
-                };
-              }
-              return state;
-            });
-          }, 10000);
-        }
+        relayStatus[url] = 'connecting';
       });
       
-      set({ ndk });
+      // Monitor relay connections
+      ndk.pool.on('relay:connect', (relay: NDKRelay) => {
+        console.log(`[NDK] Relay connected: ${relay.url}`);
+        set(state => ({
+          relayStatus: {
+            ...state.relayStatus,
+            [relay.url]: 'connected'
+          }
+        }));
+      });
+      
+      ndk.pool.on('relay:disconnect', (relay: NDKRelay) => {
+        console.log(`[NDK] Relay disconnected: ${relay.url}`);
+        set(state => ({
+          relayStatus: {
+            ...state.relayStatus,
+            [relay.url]: 'disconnected'
+          }
+        }));
+      });
+      
+      await ndk.connect();
+      set({ ndk, relayStatus });
       
       // Check for saved private key
-      const privateKey = await SecureStore.getItemAsync(PRIVATE_KEY_STORAGE_KEY);
-      if (privateKey) {
+      const privateKeyHex = await SecureStore.getItemAsync(PRIVATE_KEY_STORAGE_KEY);
+      if (privateKeyHex) {
         console.log('[NDK] Found saved private key, initializing signer');
         
         try {
-          // Create mobile-specific signer with private key
-          const signer = new NDKMobilePrivateKeySigner(privateKey);
-          ndk.signer = signer;
-          
-          // Get user and profile
-          const user = await ndk.signer.user();
-          
-          if (user) {
-            console.log('[NDK] User authenticated:', user.pubkey);
-            await user.fetchProfile();
-            set({ 
-              currentUser: user,
-              isAuthenticated: true 
-            });
-          }
+          await get().login(privateKeyHex);
         } catch (error) {
           console.error('[NDK] Error initializing with saved key:', error);
           // Remove invalid key
           await SecureStore.deleteItemAsync(PRIVATE_KEY_STORAGE_KEY);
         }
-      }
-
-      // Set up connectivity monitoring to process publication queue
-      try {
-        const { ConnectivityService } = await import('@/lib/db/services/ConnectivityService');
-        
-        // Process queue on initial connection
-        if (ConnectivityService.getInstance().getConnectionStatus()) {
-          get().processPublicationQueue();
-        }
-        
-        // Add listener to process queue when coming online
-        ConnectivityService.getInstance().addListener((isOnline) => {
-          if (isOnline) {
-            console.log('[NDK] Connection restored, processing publication queue');
-            get().processPublicationQueue();
-          }
-        });
-      } catch (error) {
-        console.error('[NDK] Error setting up connectivity monitoring:', error);
       }
 
       set({ isLoading: false });
@@ -186,7 +129,7 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
     }
   },
   
-  login: async (privateKey?: string) => {
+  login: async (privateKeyInput?: string) => {
     set({ isLoading: true, error: null });
     
     try {
@@ -196,14 +139,28 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       }
       
       // If no private key is provided, generate one
-      let userPrivateKey = privateKey;
-      if (!userPrivateKey) {
-        const { privateKey: generatedKey } = get().generateKeys();
-        userPrivateKey = generatedKey;
+      let privateKeyHex = privateKeyInput;
+      if (!privateKeyHex) {
+        const { privateKey } = get().generateKeys();
+        privateKeyHex = privateKey;
       }
       
-      // Create mobile-specific signer with private key
-      const signer = new NDKMobilePrivateKeySigner(userPrivateKey);
+      // Handle nsec format
+      if (privateKeyHex.startsWith('nsec')) {
+        try {
+          const decoded = nip19.decode(privateKeyHex);
+          if (decoded.type === 'nsec') {
+            // Get the data as hex
+            privateKeyHex = bytesToHex(decoded.data as any);
+          }
+        } catch (error) {
+          console.error('Error decoding nsec:', error);
+          throw new Error('Invalid nsec format');
+        }
+      }
+      
+      // Create signer with private key
+      const signer = new NDKPrivateKeySigner(privateKeyHex);
       ndk.signer = signer;
       
       // Get user
@@ -225,8 +182,8 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
         console.log('[NDK] User profile loaded:', user.profile);
       }
       
-      // Save the private key securely
-      await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, userPrivateKey);
+      // Save the private key hex string securely
+      await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, privateKeyHex);
       
       set({ 
         currentUser: user,
@@ -270,7 +227,25 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
   
   generateKeys: () => {
     try {
-      return generateKeyPair();
+      // Generate a new secret key (returns Uint8Array)
+      const secretKeyBytes = generateSecretKey();
+      
+      // Convert to hex for storage
+      const privateKey = bytesToHex(secretKeyBytes);
+      
+      // Get public key
+      const publicKey = getPublicKey(secretKeyBytes);
+      
+      // Generate nsec and npub 
+      const nsec = nip19.nsecEncode(secretKeyBytes);
+      const npub = nip19.npubEncode(publicKey);
+      
+      return {
+        privateKey,
+        publicKey,
+        nsec,
+        npub
+      };
     } catch (error) {
       console.error('[NDK] Error generating keys:', error);
       set({ error: error instanceof Error ? error : new Error('Failed to generate keys') });
@@ -278,15 +253,6 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
     }
   },
   
-  // IMPORTANT: This method uses monkey patching to make event signing work
-  // in React Native environment. This is necessary because the underlying
-  // Nostr libraries expect Web Crypto API to be available.
-  //
-  // When ndk-mobile gets proper Expo support, this function can be simplified to:
-  // 1. Create the event
-  // 2. Call event.sign() directly
-  // 3. Call event.publish()
-  // without the monkey patching code.
   publishEvent: async (kind: number, content: string, tags: string[][]) => {
     try {
       const { ndk, isAuthenticated, currentUser } = get();
@@ -300,276 +266,54 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       }
       
       // Create event
-      console.log('Creating event...');
       const event = new NDKEvent(ndk);
       event.kind = kind;
       event.content = content;
       event.tags = tags;
       
-      // MONKEY PATCHING APPROACH:
-      // This is needed because the standard NDK doesn't properly work with
-      // React Native's crypto implementation. When ndk-mobile adds proper Expo
-      // support, this can be removed.
-      try {
-        // Define custom function for random bytes generation
-        const customRandomBytes = (length: number): Uint8Array => {
-          console.log('Using custom randomBytes in event signing');
-          return (Crypto as any).getRandomBytes(length);
-        };
-        
-        // Try to find and override the randomBytes function
-        const nostrTools = require('nostr-tools');
-        const nobleHashes = require('@noble/hashes/utils');
-        
-        // Backup original functions
-        const originalNobleRandomBytes = nobleHashes.randomBytes;
-        
-        // Override with our implementation
-        (nobleHashes as any).randomBytes = customRandomBytes;
-        
-        // Sign event
-        console.log('Signing event with patched libraries...');
-        await event.sign();
-        
-        // Restore original functions
-        (nobleHashes as any).randomBytes = originalNobleRandomBytes;
-        
-        console.log('Event signed successfully');
-      } catch (signError) {
-        console.error('Error signing event:', signError);
-        throw signError;
-      }
-      
-      // Publish the event
-      console.log('Publishing event...');
+      // Sign and publish
+      await event.sign();
       await event.publish();
       
       console.log('Event published successfully:', event.id);
       return event;
     } catch (error) {
       console.error('Error publishing event:', error);
-      console.error('Error details:', error instanceof Error ? error.stack : 'Unknown error');
       set({ error: error instanceof Error ? error : new Error('Failed to publish event') });
       return null;
     }
   },
-
-  // Create and sign a Nostr event without publishing it
-  createEvent: async (kind: number, content: string, tags: string[][]): Promise<NDKEvent | null> => {
+  
+  // Fetch profile for any user
+  fetchUserProfile: async (pubkey: string) => {
     try {
-      const { ndk, isAuthenticated, currentUser } = get();
-      
+      const { ndk } = get();
       if (!ndk) {
         throw new Error('NDK not initialized');
       }
       
-      if (!isAuthenticated || !currentUser) {
-        throw new Error('Not authenticated');
-      }
+      const user = ndk.getUser({ pubkey });
+      await user.fetchProfile();
       
-      // Create event
-      const event = new NDKEvent(ndk);
-      event.kind = kind;
-      event.content = content;
-      event.tags = tags;
-      
-      // Define custom function for random bytes generation
-      const customRandomBytes = (length: number): Uint8Array => {
-        console.log('Using custom randomBytes in event signing');
-        return (Crypto as any).getRandomBytes(length);
-      };
-      
-      // Try to find and override the randomBytes function
-      const nostrTools = require('nostr-tools');
-      const nobleHashes = require('@noble/hashes/utils');
-      
-      // Backup original functions
-      const originalNobleRandomBytes = nobleHashes.randomBytes;
-      
-      // Override with our implementation
-      (nobleHashes as any).randomBytes = customRandomBytes;
-      
-      // Sign the event but don't publish
-      try {
-        await event.sign();
-      } finally {
-        // Restore original functions
-        (nobleHashes as any).randomBytes = originalNobleRandomBytes;
-      }
-      
-      return event;
+      return user;
     } catch (error) {
-      console.error('Error creating event:', error);
-      set({ error: error instanceof Error ? error : new Error('Failed to create event') });
+      console.error('Error fetching user profile:', error);
+      set({ error: error instanceof Error ? error : new Error('Failed to fetch user profile') });
       return null;
     }
   },
-
-  // Queue an event for publishing when online
-  queueEventForPublishing: async (event: NDKEvent): Promise<boolean> => {
-    try {
-      // Only proceed if the event has an ID and signature
-      if (!event.id || !event.sig) {
-        throw new Error('Event must be signed before queueing');
-      }
-
-      // First cache the event itself
-      try {
-        const EventCache = (await import('@/lib/db/services/EventCache')).EventCache;
-        const db = openDatabaseSync('powr.db');
-        const cache = new EventCache(db);
-        
-        // Convert NDKEvent to NostrEvent for caching
-        await cache.setEvent({
-          id: event.id,
-          pubkey: event.pubkey,
-          kind: event.kind || 0,
-          created_at: event.created_at || Math.floor(Date.now() / 1000),
-          content: event.content,
-          tags: event.tags.map(tag => tag.map(item => String(item))),
-          sig: event.sig
-        });
-        
-        // Then add to publication queue
-        await db.runAsync(
-          `INSERT OR REPLACE INTO publication_queue 
-           (event_id, attempts, created_at, payload) 
-           VALUES (?, ?, ?, ?)`,
-          [
-            event.id, 
-            0, 
-            Date.now(), 
-            JSON.stringify({
-              id: event.id,
-              pubkey: event.pubkey,
-              kind: event.kind,
-              created_at: event.created_at,
-              content: event.content,
-              tags: event.tags,
-              sig: event.sig
-            })
-          ]
-        );
-      } catch (cacheError) {
-        console.error('Error caching event:', cacheError);
-        // Continue to try publishing even if caching fails
-      }
-      
-      // Try to publish immediately if online
-      try {
-        const ConnectivityService = (await import('@/lib/db/services/ConnectivityService')).ConnectivityService;
-        
-        if (ConnectivityService.getInstance().getConnectionStatus()) {
-          try {
-            await event.publish();
-            
-            // Remove from queue if successful
-            const db = openDatabaseSync('powr.db');
-            await db.runAsync(
-              `DELETE FROM publication_queue WHERE event_id = ?`,
-              [event.id]
-            );
-            
-            console.log('Event published successfully:', event.id);
-            return true;
-          } catch (publishError) {
-            console.log('Event queued for later publishing:', event.id);
-            return false;
-          }
-        } else {
-          console.log('Event queued for later publishing (offline):', event.id);
-          return false;
-        }
-      } catch (connectivityError) {
-        console.error('Error checking connectivity:', connectivityError);
-        // Assume offline if connectivity service fails
-        return false;
-      }
-    } catch (error) {
-      console.error('Error queueing event for publishing:', error);
-      return false;
-    }
-  },
-
-  // Process the publication queue
-  processPublicationQueue: async (): Promise<void> => {
+  
+  // Fetch events by filter
+  fetchEventsByFilter: async (filter: any) => {
     try {
       const { ndk } = get();
-      if (!ndk) return;
-      
-      const db = openDatabaseSync('powr.db');
-      
-      // Get all queued events that haven't exceeded max attempts
-      const queuedEvents = await db.getAllAsync<{
-        event_id: string;
-        attempts: number;
-        payload: string;
-      }>(
-        `SELECT event_id, attempts, payload 
-         FROM publication_queue 
-         WHERE attempts < 5 
-         ORDER BY created_at ASC`
-      );
-      
-      console.log(`Processing publication queue: ${queuedEvents.length} events`);
-      
-      for (const item of queuedEvents) {
-        try {
-          // Update attempt count and timestamp
-          await db.runAsync(
-            `UPDATE publication_queue 
-             SET attempts = attempts + 1, 
-                 last_attempt = ? 
-             WHERE event_id = ?`,
-            [Date.now(), item.event_id]
-          );
-          
-          // Parse the event from payload
-          const eventData = JSON.parse(item.payload);
-          
-          // Create a new NDKEvent
-          const event = new NDKEvent(ndk);
-          
-          // Copy properties
-          event.id = eventData.id;
-          event.pubkey = eventData.pubkey;
-          event.kind = eventData.kind;
-          event.created_at = eventData.created_at;
-          event.content = eventData.content;
-          event.tags = eventData.tags;
-          event.sig = eventData.sig;
-          
-          // Publish the event
-          await event.publish();
-          
-          // Remove from queue on success
-          await db.runAsync(
-            `DELETE FROM publication_queue WHERE event_id = ?`,
-            [item.event_id]
-          );
-          
-          console.log(`Published queued event: ${item.event_id}`);
-        } catch (error) {
-          console.error(`Error publishing queued event ${item.event_id}:`, error);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing publication queue:', error);
-    }
-  },
-
-  fetchEventsByFilter: async (filter: NDKFilter) => {
-    try {
-      const { ndk } = get();
-      
       if (!ndk) {
         throw new Error('NDK not initialized');
       }
       
-      // Fetch events
+      // Fetch events using NDK
       const events = await ndk.fetchEvents(filter);
       
-      // Convert Set to Array
       return Array.from(events);
     } catch (error) {
       console.error('Error fetching events:', error);
@@ -578,3 +322,38 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
     }
   }
 }));
+
+// Export hooks for using the store
+export function useNDK() {
+  return useNDKStore(state => ({
+    ndk: state.ndk,
+    isLoading: state.isLoading,
+    error: state.error,
+    init: state.init
+  }));
+}
+
+export function useNDKCurrentUser() {
+  return useNDKStore(state => ({
+    currentUser: state.currentUser,
+    isAuthenticated: state.isAuthenticated,
+    isLoading: state.isLoading
+  }));
+}
+
+export function useNDKAuth() {
+  return useNDKStore(state => ({
+    login: state.login,
+    logout: state.logout,
+    generateKeys: state.generateKeys,
+    isAuthenticated: state.isAuthenticated,
+    isLoading: state.isLoading
+  }));
+}
+
+export function useNDKEvents() {
+  return useNDKStore(state => ({
+    publishEvent: state.publishEvent,
+    fetchEventsByFilter: state.fetchEventsByFilter
+  }));
+}

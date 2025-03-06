@@ -1,6 +1,6 @@
 // app/(tabs)/library/programs.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, TextInput, ActivityIndicator, Platform, TouchableOpacity, Modal } from 'react-native';
+import { View, ScrollView, TextInput, ActivityIndicator, Platform, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
 import { 
   AlertCircle, CheckCircle2, Database, RefreshCcw, Trash2, 
-  Code, Search, ListFilter, Wifi, Zap, FileJson, X, Info
+  Code, Search, ListFilter, Wifi, Zap, FileJson
 } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNDK, useNDKAuth, useNDKCurrentUser } from '@/lib/hooks/useNDK';
@@ -50,6 +50,7 @@ const initialFilters: FilterOptions = {
   tags: [],
   source: []
 };
+
 export default function ProgramsScreen() {
   const db = useSQLiteContext();
   
@@ -77,7 +78,7 @@ export default function ProgramsScreen() {
   const [statusMessage, setStatusMessage] = useState('');
   const [events, setEvents] = useState<DisplayEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  const [eventKind, setEventKind] = useState(NostrEventKind.EXERCISE);
+  const [eventKind, setEventKind] = useState(NostrEventKind.TEXT);
   const [eventContent, setEventContent] = useState('');
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
   
@@ -87,7 +88,8 @@ export default function ProgramsScreen() {
   const { login, logout, generateKeys } = useNDKAuth();
   
   // Tab state
-  const [activeTab, setActiveTab] = useState('database');
+  const [activeTab, setActiveTab] = useState('nostr'); // Default to nostr tab for testing
+  
   useEffect(() => {
     // Check database status
     checkDatabase();
@@ -261,6 +263,7 @@ export default function ProgramsScreen() {
     setActiveFilters(totalFilters);
     // Implement filtering logic for programs when available
   };
+  
   // NOSTR FUNCTIONS
 
   // Handle login dialog
@@ -317,15 +320,6 @@ export default function ProgramsScreen() {
           setEventContent('Hello from POWR App - Test Note');
         }
       } else if (eventKind === NostrEventKind.EXERCISE) {
-        // Your existing exercise event code
-        const uniqueId = `exercise-${timestamp}`;
-        tags.push(
-          ['d', uniqueId],
-          ['title', eventContent || 'Test Exercise'],
-          // Rest of your tags...
-        );
-      } 
-      if (eventKind === NostrEventKind.EXERCISE) {
         const uniqueId = `exercise-${timestamp}`;
         tags.push(
           ['d', uniqueId],
@@ -366,7 +360,8 @@ export default function ProgramsScreen() {
       }
       
       // Use the NDK store's publishEvent function
-      const event = await useNDKStore.getState().publishEvent(eventKind, eventContent, tags);
+      const content = eventContent || `Test ${eventKind === NostrEventKind.TEXT ? 'note' : 'event'} from POWR App`;
+      const event = await useNDKStore.getState().publishEvent(eventKind, content, tags);
       
       if (event) {
         // Add the published event to our display list
@@ -410,7 +405,7 @@ export default function ProgramsScreen() {
       // Create a filter for the specific kind
       const filter = { kinds: [eventKind as number], limit: 20 };
       
-      // Use the NDK store's fetchEventsByFilter function
+      // Get events using NDK
       const fetchedEvents = await useNDKStore.getState().fetchEventsByFilter(filter);
       
       const displayEvents: DisplayEvent[] = [];
@@ -437,6 +432,7 @@ export default function ProgramsScreen() {
       setLoading(false);
     }
   };
+
   return (
     <View className="flex-1 bg-background">
       {/* Search bar with filter button */}
@@ -497,6 +493,7 @@ export default function ProgramsScreen() {
           <Text className={activeTab === 'nostr' ? 'text-white' : 'text-foreground'}>Nostr</Text>
         </TouchableOpacity>
       </View>
+        
       {/* Tab Content */}
       {activeTab === 'database' && (
         <ScrollView className="flex-1 p-4">
@@ -690,14 +687,14 @@ export default function ProgramsScreen() {
                     <Text className="font-medium mt-3">Active Relay:</Text>
                     <Text className="text-sm text-muted-foreground">wss://powr.duckdns.org</Text>
                     <Text className="text-xs text-muted-foreground mt-1">
-                      Note: To publish to additional relays, uncomment them in stores/ndk.ts
+                      Note: To publish to additional relays, update them in stores/ndk.ts
                     </Text>
                   </View>
                 )}
               </CardContent>
             </Card>
             
-            {/* Login Modal */}
+            {/* NostrLoginSheet component */}
             <NostrLoginSheet 
               open={isLoginSheetOpen} 
               onClose={handleCloseLogin} 
@@ -839,6 +836,7 @@ export default function ProgramsScreen() {
                 )}
               </CardContent>
             </Card>
+              
             {/* Event JSON Viewer */}
             <Card className="mb-4">
               <CardHeader>
@@ -878,12 +876,12 @@ export default function ProgramsScreen() {
                 <Text className="font-medium mb-2">How to test Nostr integration:</Text>
                 <View className="space-y-2">
                   <Text>1. Click "Login with Nostr" to authenticate</Text>
-                  <Text>2. On the login sheet, click "Generate New Keys" to create a new Nostr identity</Text>
+                  <Text>2. On the login sheet, click "Generate Key" to create a new Nostr identity</Text>
                   <Text>3. Login with the generated keys</Text>
-                  <Text>4. Select an event kind (Exercise, Template, or Workout)</Text>
+                  <Text>4. Select an event kind (Text Note, Exercise, Template, or Workout)</Text>
                   <Text>5. Enter optional content and click "Publish"</Text>
                   <Text>6. Use "Query Events" to fetch existing events of the selected kind</Text>
-                  <Text className="mt-2 text-muted-foreground">Using NDK for Nostr integration provides a more reliable experience than direct WebSocket connections.</Text>
+                  <Text className="mt-2 text-muted-foreground">Using NDK Mobile for Nostr integration provides a more reliable experience with proper cryptographic operations.</Text>
                 </View>
               </CardContent>
             </Card>

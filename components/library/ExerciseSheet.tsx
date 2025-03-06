@@ -18,8 +18,9 @@ import {
   ExerciseDisplay
 } from '@/types/exercise';
 import { StorageSource } from '@/types/shared';
+import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 import { useNDKStore } from '@/lib/stores/ndk';
-import { useEventCache } from '@/components/DatabaseProvider';
+import { useExerciseService, usePublicationQueue } from '@/components/DatabaseProvider';
 
 interface ExerciseSheetProps {
   isOpen: boolean;
@@ -67,7 +68,7 @@ export function ExerciseSheet({ isOpen, onClose, onSubmit, exerciseToEdit, mode:
   const { isDarkColorScheme } = useColorScheme();
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
   const ndkStore = useNDKStore();
-  const eventCache = useEventCache();
+  const publicationQueue = usePublicationQueue();
   
   // Determine if we're in edit, create, or fork mode
   const hasExercise = !!exerciseToEdit;
@@ -170,11 +171,15 @@ export function ExerciseSheet({ isOpen, onClose, onSubmit, exerciseToEdit, mode:
         }
 
         // Create and attempt to publish the event
-        const event = await ndkStore.createEvent(33401, exercise.description || '', nostrTags);
+        const event = new NDKEvent(ndkStore.ndk || undefined);
+        event.kind = 33401; // Or whatever kind you need
+        event.content = exercise.description || '';
+        event.tags = nostrTags;
+        await event.sign();
 
         if (event) {
           // Queue for publication (this will publish immediately if online)
-          await ndkStore.queueEventForPublishing(event);
+          await publicationQueue.queueEvent(event);
           
           // If this is a new exercise, add nostr to sources
           if (!exerciseToEdit) {

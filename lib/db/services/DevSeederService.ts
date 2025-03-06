@@ -1,23 +1,25 @@
 // lib/db/services/DevSeederService.ts
 import { SQLiteDatabase } from 'expo-sqlite';
 import { ExerciseService } from './ExerciseService';
-import { EventCache } from './EventCache';
 import { logDatabaseInfo } from '../debug';
 import { mockExerciseEvents, convertNostrToExercise } from '../../mocks/exercises';
+import NDK, { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 
 export class DevSeederService {
   private db: SQLiteDatabase;
   private exerciseService: ExerciseService;
-  private eventCache: EventCache;
+  private ndk: NDK | null = null;
 
   constructor(
     db: SQLiteDatabase, 
-    exerciseService: ExerciseService,
-    eventCache: EventCache
+    exerciseService: ExerciseService
   ) {
     this.db = db;
     this.exerciseService = exerciseService;
-    this.eventCache = eventCache;
+  }
+
+  setNDK(ndk: NDK) {
+    this.ndk = ndk;
   }
 
   async seedDatabase() {
@@ -42,10 +44,36 @@ export class DevSeederService {
         console.log('Seeding mock exercises...');
 
         // Process all events within the same transaction
-        for (const event of mockExerciseEvents) {
-          // Pass true to indicate we're in a transaction
-          await this.eventCache.setEvent(event, true);
-          const exercise = convertNostrToExercise(event);
+        for (const eventData of mockExerciseEvents) {
+          if (this.ndk) {
+            // If NDK is available, use it to cache the event
+            const event = new NDKEvent(this.ndk);
+            Object.assign(event, eventData);
+            
+            // Cache the event in NDK
+            if (this.ndk) {
+              const ndkEvent = new NDKEvent(this.ndk);
+              
+              // Copy event properties
+              ndkEvent.kind = eventData.kind;
+              ndkEvent.content = eventData.content;
+              ndkEvent.created_at = eventData.created_at;
+              ndkEvent.tags = eventData.tags;
+              
+              // If we have mock signatures, use them
+              if (eventData.sig) {
+                ndkEvent.sig = eventData.sig;
+                ndkEvent.id = eventData.id || '';  
+                ndkEvent.pubkey = eventData.pubkey || '';  
+              } else if (this.ndk.signer) {
+                // Otherwise sign if possible
+                await ndkEvent.sign();
+              }
+            }
+          }
+          
+          // Create exercise from the mock data regardless of NDK availability
+          const exercise = convertNostrToExercise(eventData);
           await this.exerciseService.createExercise(exercise, true);
         }
 
@@ -73,7 +101,8 @@ export class DevSeederService {
           'exercise_tags',
           'nostr_events',
           'event_tags',
-          'cache_metadata'
+          'cache_metadata',
+          'ndk_cache' // Add the NDK Mobile cache table
         ];
 
         for (const table of tables) {

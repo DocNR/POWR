@@ -5,25 +5,47 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 6, 2025
+
+## Added
+- NDK mobile integration for Nostr functionality
+  - Added event publishing and subscription capabilities 
+  - Implemented proper type safety for NDK interactions
+  - Created testing components for NDK functionality verification
+- Enhanced exercise management with Nostr support
+  - Implemented exercise creation, editing, and forking workflows
+  - Added support for custom exercise event kinds (33401)
+  - Built exercise publication queue for offline-first functionality
+- User profile integration
+  - Added profile fetching and caching
+  - Implemented profile-based permissions for content editing
+  - Fixed type definitions for NDK user profiles
+- Robust workout state management
+  - Fixed favorites persistence in SQLite
+  - Added template-based workout initialization
+  - Implemented workout tracking with real-time updates
+
+## Fixed
+- TypeScript errors across multiple components:
+  - Resolved NDK-related type errors in ExerciseSheet component
+  - Fixed FavoritesService reference errors in workoutStore
+  - Corrected null/undefined handling in NDKEvent initialization
+  - Fixed profile type compatibility in useProfile hook
+  - Added proper type definitions for NDK UserProfile
+- Dependency errors in PublicationQueue and DevSeeder services
+- Source and authorization checks for exercise editing permissions
+- Component interoperability with NDK mobile
+
+## Improved
+- Refactored code for better type safety
+- Enhanced error handling with proper type checking
+- Improved Nostr event creation workflow with NDK
+- Streamlined user authentication process
+- Enhanced development environment with better type checking
+
 ## [Unreleased]
 
 ### Added
-- Comprehensive exercise management features
-  - Added exercise editing functionality
-  - Implemented exercise forking for Nostr exercises
-  - Created local-first editing with offline support
-  - Added publication queue for deferred Nostr publishing
-  - Built robust exercise update workflow
-  - Implemented source-aware editing permissions
-- Connectivity service for network state management
-  - Added real-time connectivity monitoring
-  - Implemented persistence for offline state
-  - Built automatic retry system for failed requests
-  - Created hook-based connectivity API for components
-- Extended database schema for publication queuing
-  - Added publication_queue table
-  - Implemented attempt tracking and rate limiting
-  - Added app_status table for system-wide states
 - Successful Nostr protocol integration
   - Implemented NDK-mobile for React Native compatibility
   - Added secure key management with Expo SecureStore
@@ -43,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added secure random number generation
   - Built robust key management system
   - Developed signer implementation for Nostr
+- Zustand workout store for state management
+  - Created comprehensive workout state store with Zustand
+  - Implemented selectors for efficient state access
+  - Added workout persistence and recovery
+  - Built automatic timer management with background support
+  - Developed minimization and maximization functionality
 - Zustand workout store for state management
   - Created comprehensive workout state store with Zustand
   - Implemented selectors for efficient state access
@@ -95,24 +123,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved workout history visualization
 
 ### Changed
-- Enhanced exercise detail viewer
-  - Replaced bottom sheet with full-screen modal
-  - Added tabbed interface for information organization
-  - Implemented edit capability with ownership detection
-  - Added fork functionality for Nostr exercises from other users
-  - Improved progress visualization with charts
-- Redesigned exercise editor
-  - Created multi-purpose editor for create/edit/fork workflows
-  - Added context-aware UI based on exercise source
-  - Implemented specialized buttons based on workflow type
-  - Added better form validation and feedback
-  - Improved keyboard handling across platforms
-- Improved workflow architecture for model context protocol
-  - Implemented offline-first editing paradigm
-  - Added cryptographic signing before submission
-  - Built local caching with deferred publishing
-  - Created connectivity-aware operation queueing
-  - Added proper error recovery and retry mechanisms
 - Improved workout screen navigation consistency
   - Standardized screen transitions and gestures
   - Added back buttons for clearer navigation
@@ -156,12 +166,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced visual separation between template metadata and content
 
 ### Fixed
-- Exercise update functionality using delete-recreate pattern
-- Exercise data type handling in forking operation
-- TypeScript errors in exercise component interfaces
-- Nostr event queuing and retry mechanism
-- Exercise ownership detection for edit vs fork workflows
-- Connectivity monitoring edge cases
 - Workout navigation gesture handling issues
 - Workout timer inconsistency during app background state
 - Exercise deletion functionality
@@ -178,22 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content rendering issues in bottom sheet components
 
 ### Technical Details
-1. Exercise Management:
-   - Implemented edit/fork/create workflows with unified interface
-   - Built local-first editing pattern with offline support
-   - Added publication queue for deferred Nostr submissions
-   - Created robust update mechanism in useExercises hook
-   - Implemented source-aware editing permissions
-   - Added ownership detection for exercise operations
-
-2. Connectivity Management:
-   - Implemented singleton ConnectivityService for app-wide monitoring
-   - Added NetInfo integration for real-time status detection
-   - Built React hook for component-level connectivity awareness
-   - Created database persistence for connectivity state
-   - Implemented event-based notification system
-
-3. Nostr Integration:
+1. Nostr Integration:
    - Implemented @nostr-dev-kit/ndk-mobile package for React Native compatibility
    - Created dedicated NDK store using Zustand for state management
    - Built secure key storage and retrieval using Expo SecureStore
@@ -201,65 +190,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Added relay connection management with status tracking
    - Developed proper error handling for network operations
 
-4. Cryptographic Implementation:
+2. Cryptographic Implementation:
    - Integrated react-native-get-random-values for crypto API polyfill
    - Implemented NDKMobilePrivateKeySigner for key operations
    - Added proper key format handling (hex, nsec)
    - Created secure key generation functionality
    - Built robust error handling for cryptographic operations
 
-5. Programs Testing Component:
+3. Programs Testing Component:
    - Developed dual-purpose interface for Database and Nostr testing
    - Implemented login system with key generation and secure storage
    - Built event creation interface with multiple event kinds
    - Added event querying and display functionality
    - Created detailed event inspection with tag visualization
    - Added relay status monitoring
-
-6. Database Schema Enforcement:
+4.  Database Schema Enforcement:
    - Added CHECK constraints for equipment types
    - Added CHECK constraints for exercise types
    - Added CHECK constraints for categories
    - Proper handling of foreign key constraints
-
-7. Input Validation:
+5. Input Validation:
    - Equipment options: bodyweight, barbell, dumbbell, kettlebell, machine, cable, other
    - Exercise types: strength, cardio, bodyweight
    - Categories: Push, Pull, Legs, Core
    - Difficulty levels: beginner, intermediate, advanced
    - Movement patterns: push, pull, squat, hinge, carry, rotation
-
-8. Error Handling:
+6. Error Handling:
    - Added SQLite error type definitions
    - Improved error propagation in LibraryService
    - Added transaction rollback on constraint violations
-
-9. Database Services:
+7. Database Services:
    - Added EventCache service for Nostr events
    - Improved ExerciseService with transaction awareness
    - Added DevSeederService for development data
    - Enhanced error handling and logging
-
-10. Workout State Management with Zustand:
-    - Implemented selector pattern for performance optimization
-    - Added module-level timer references for background operation
-    - Created workout persistence with auto-save functionality
-    - Developed state recovery for crash protection
-    - Added support for future Nostr integration
-    - Implemented workout minimization for multi-tasking
-
-11. Template Details UI Architecture:
-    - Implemented MaterialTopTabNavigator for content organization
-    - Created screen-specific components for each tab
-    - Developed conditional rendering based on template source
-    - Implemented context-aware action buttons
-    - Added proper navigation state handling
+8. Workout State Management with Zustand:
+   - Implemented selector pattern for performance optimization
+   - Added module-level timer references for background operation
+   - Created workout persistence with auto-save functionality
+   - Developed state recovery for crash protection
+   - Added support for future Nostr integration
+   - Implemented workout minimization for multi-tasking
+9. Template Details UI Architecture:
+   - Implemented MaterialTopTabNavigator for content organization
+   - Created screen-specific components for each tab
+   - Developed conditional rendering based on template source
+   - Implemented context-aware action buttons
+   - Added proper navigation state handling
 
 ### Migration Notes
-- Exercise editing now follows an offline-first approach with Nostr awareness
-- ExerciseSheet component replaces separate create/edit components
-- Exercise updates require proper source and metadata handling
-- Publication queue provides automatic retry for Nostr events
 - Exercise creation now enforces schema constraints
 - Input validation prevents invalid data entry
 - Enhanced error messages provide better debugging information

@@ -1,24 +1,15 @@
 // lib/hooks/useSubscribe.ts
-import { useEffect, useState, useRef } from 'react';
-import { NDKFilter, NDKSubscription } from '@nostr-dev-kit/ndk';
-import { NDKEvent, NDKUser } from '@nostr-dev-kit/ndk-mobile';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { NDKEvent, NDKFilter, NDKSubscription, NDKSubscriptionOptions } from '@nostr-dev-kit/ndk-mobile';
 import { useNDK } from './useNDK';
 
-interface UseSubscribeOptions {
+interface UseSubscribeOptions extends Partial<NDKSubscriptionOptions> {
   enabled?: boolean;
-  closeOnEose?: boolean;
   deduplicate?: boolean;
 }
 
-/**
- * Hook to subscribe to Nostr events
- * 
- * @param filters The NDK filter or array of filters
- * @param options Optional configuration options
- * @returns Object containing events, loading state, and EOSE status
- */
 export function useSubscribe(
-  filters: NDKFilter | NDKFilter[] | false,
+  filters: NDKFilter[] | false,
   options: UseSubscribeOptions = {}
 ) {
   const { ndk } = useNDK();
@@ -31,40 +22,46 @@ export function useSubscribe(
   const { 
     enabled = true, 
     closeOnEose = false,
-    deduplicate = true 
+    deduplicate = true,
+    ...subscriptionOptions
   } = options;
   
-  useEffect(() => {
-    // Clean up previous subscription if exists
+  // Function to clear all events
+  const clearEvents = useCallback(() => {
+    setEvents([]);
+  }, []);
+  
+  // Function to manually resubscribe
+  const resubscribe = useCallback(() => {
     if (subscriptionRef.current) {
       subscriptionRef.current.stop();
       subscriptionRef.current = null;
     }
-    
-    // Reset state when filters change
     setEvents([]);
     setEose(false);
-    
-    // Check prerequisites
+    setIsLoading(true);
+  }, []);
+  
+  useEffect(() => {
     if (!ndk || !filters || !enabled) {
       setIsLoading(false);
       return;
     }
     
     setIsLoading(true);
+    setEose(false);
     
     try {
-      // Convert single filter to array if needed
-      const filterArray = Array.isArray(filters) ? filters : [filters];
+      // Create subscription with NDK Mobile
+      const subscription = ndk.subscribe(filters, {
+        closeOnEose,
+        ...subscriptionOptions
+      });
       
-      // Create subscription
-      const subscription = ndk.subscribe(filterArray);
       subscriptionRef.current = subscription;
       
-      // Handle incoming events
       subscription.on('event', (event: NDKEvent) => {
         setEvents(prev => {
-          // Deduplicate events if enabled
           if (deduplicate && prev.some(e => e.id === event.id)) {
             return prev;
           }
@@ -72,15 +69,9 @@ export function useSubscribe(
         });
       });
       
-      // Handle end of stored events
       subscription.on('eose', () => {
         setIsLoading(false);
         setEose(true);
-        
-        if (closeOnEose && subscriptionRef.current) {
-          subscriptionRef.current.stop();
-          subscriptionRef.current = null;
-        }
       });
     } catch (error) {
       console.error('[useSubscribe] Error:', error);
@@ -94,20 +85,14 @@ export function useSubscribe(
         subscriptionRef.current = null;
       }
     };
-  }, [ndk, enabled, closeOnEose, deduplicate, JSON.stringify(filters)]);
+  }, [ndk, enabled, closeOnEose, JSON.stringify(filters), JSON.stringify(subscriptionOptions)]);
   
   return { 
     events, 
     isLoading, 
-    eose,
-    resubscribe: () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.stop();
-        subscriptionRef.current = null;
-      }
-      setEvents([]);
-      setEose(false);
-      setIsLoading(true);
-    }
+    eose, 
+    clearEvents, 
+    resubscribe,
+    subscription: subscriptionRef.current 
   };
 }

@@ -19,6 +19,8 @@ import type {
 } from '@/types/templates';
 import type { BaseExercise } from '@/types/exercise';
 import { openDatabaseSync } from 'expo-sqlite';
+import { FavoritesService } from '@/lib/db/services/FavoritesService';
+
 
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
@@ -500,27 +502,12 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
   // Favorite Management with SQLite persistence - IMPROVED VERSION
   loadFavorites: async () => {
     try {
+      // Get the favorites service through a local import trick since we can't use hooks here
       const db = openDatabaseSync('powr.db');
+      const favoritesService = new FavoritesService(db);
       
-      // Ensure favorites table exists
-      await db.execAsync(`
-        CREATE TABLE IF NOT EXISTS favorites (
-          id TEXT PRIMARY KEY,
-          content_type TEXT NOT NULL,
-          content_id TEXT NOT NULL,
-          content TEXT NOT NULL,
-          created_at INTEGER NOT NULL,
-          UNIQUE(content_type, content_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_favorites_content ON favorites(content_type, content_id);
-      `);
-      
-      // Load just the IDs from SQLite
-      const result = await db.getAllAsync<{
-        content_id: string
-      }>(`SELECT content_id FROM favorites WHERE content_type = 'template'`);
-      
-      const favoriteIds = result.map(item => item.content_id);
+      // Load just the IDs 
+      const favoriteIds = await favoritesService.getFavoriteIds('template');
       
       set({ 
         favoriteIds, 
@@ -528,7 +515,6 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       });
       
       console.log(`Loaded ${favoriteIds.length} favorite IDs from database`);
-      // Don't return anything (void)
     } catch (error) {
       console.error('Error loading favorites:', error);
       set({ favoritesLoaded: true }); // Mark as loaded even on error
@@ -548,52 +534,24 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       return [];
     }
     
-    // Query the full content from SQLite
     try {
       const db = openDatabaseSync('powr.db');
+      const favoritesService = new FavoritesService(db);
       
-      // Generate placeholders for the SQL query
-      const placeholders = get().favoriteIds.map(() => '?').join(',');
-      
-      // Get full content for all favorited templates
-      const result = await db.getAllAsync<{
-        id: string,
-        content_type: string,
-        content_id: string,
-        content: string,
-        created_at: number
-      }>(`SELECT * FROM favorites WHERE content_type = 'template' AND content_id IN (${placeholders})`,
-        get().favoriteIds
-      );
-      
-      return result.map(item => ({
-        id: item.content_id,
-        content: JSON.parse(item.content),
-        addedAt: item.created_at
-      }));
+      return await favoritesService.getFavorites('template');
     } catch (error) {
       console.error('Error fetching favorites content:', error);
       return [];
     }
   },
-
+  
   addFavorite: async (template: WorkoutTemplate) => {
     try {
       const db = openDatabaseSync('powr.db');
-      const now = Date.now();
+      const favoritesService = new FavoritesService(db);
       
-      // Add to SQLite database
-      await db.runAsync(
-        `INSERT OR REPLACE INTO favorites (id, content_type, content_id, content, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          generateId('local'), // Generate a unique ID for the favorite entry
-          'template',
-          template.id,
-          JSON.stringify(template),
-          now
-        ]
-      );
+      // Add to favorites database
+      await favoritesService.addFavorite('template', template.id, template);
       
       // Update just the ID in memory state
       set(state => {
@@ -610,16 +568,14 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       throw error;
     }
   },
-
+  
   removeFavorite: async (templateId: string) => {
     try {
       const db = openDatabaseSync('powr.db');
+      const favoritesService = new FavoritesService(db);
       
-      // Remove from SQLite database
-      await db.runAsync(
-        `DELETE FROM favorites WHERE content_type = 'template' AND content_id = ?`,
-        [templateId]
-      );
+      // Remove from favorites database
+      await favoritesService.removeFavorite('template', templateId);
       
       // Update IDs in memory state
       set(state => ({

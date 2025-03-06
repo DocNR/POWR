@@ -1,15 +1,18 @@
 // lib/db/services/PublicationQueueService.ts
 import { SQLiteDatabase } from 'expo-sqlite';
+import NDK, { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 import { NostrEvent } from '@/types/nostr';
-import { EventCache } from './EventCache';
 
 export class PublicationQueueService {
   private db: SQLiteDatabase;
-  private eventCache: EventCache;
+  private ndk: NDK | null = null;
 
-  constructor(db: SQLiteDatabase, eventCache: EventCache) {
+  constructor(db: SQLiteDatabase) {
     this.db = db;
-    this.eventCache = eventCache;
+  }
+
+  setNDK(ndk: NDK) {
+    this.ndk = ndk;
   }
 
   /**
@@ -17,27 +20,36 @@ export class PublicationQueueService {
    * @param event The Nostr event to queue
    * @returns Promise that resolves when the event is queued
    */
-  async queueEvent(event: NostrEvent): Promise<void> {
+  async queueEvent(event: NostrEvent | NDKEvent): Promise<void> {
     try {
-      // First, ensure the event is cached
-      await this.eventCache.setEvent(event);
+      // Convert to the right format for storage
+      const eventId = event instanceof NDKEvent ? event.id : event.id || '';
+      const payload = event instanceof NDKEvent ? 
+        JSON.stringify(event.rawEvent()) : 
+        JSON.stringify(event);
       
-      // Then add to publication queue
-      const payload = JSON.stringify(event);
+      // Cache the event if NDK is available
+      if (this.ndk && event instanceof NDKEvent) {
+        // NDK handles caching internally during sign and publish
+        if (!event.sig) {
+          await event.sign();
+        }
+      }
       
+      // Add to publication queue
       await this.db.runAsync(
         `INSERT OR REPLACE INTO publication_queue 
          (event_id, attempts, created_at, payload) 
          VALUES (?, ?, ?, ?)`,
         [
-          event.id || '', // Add default empty string if undefined
+          eventId,
           0, 
           Date.now(), 
-          JSON.stringify(event)
+          payload
         ]
       );
       
-      console.log(`[Queue] Event ${event.id} queued for publishing`);
+      console.log(`[Queue] Event ${eventId} queued for publishing`);
     } catch (error) {
       console.error('[Queue] Error queueing event:', error);
       throw error;
@@ -79,6 +91,52 @@ export class PublicationQueueService {
     } catch (error) {
       console.error('[Queue] Error getting pending events:', error);
       return [];
+    }
+  }
+
+  /**
+   * Process pending events using NDK
+   * @returns Promise that resolves when processing is complete
+   */
+  async processQueue(): Promise<void> {
+    if (!this.ndk) {
+      console.log('[Queue] NDK not available, skipping queue processing');
+      return;
+    }
+    
+    try {
+      const pendingEvents = await this.getPendingEvents();
+      console.log(`[Queue] Processing ${pendingEvents.length} pending events`);
+      
+      for (const item of pendingEvents) {
+        try {
+          // Update attempt count
+          await this.incrementAttempt(item.id);
+          
+          // Create NDK event and publish
+          const event = new NDKEvent(this.ndk);
+          const rawEvent = item.payload;
+          
+          // Copy properties from raw event
+          event.id = rawEvent.id || '';
+          event.pubkey = rawEvent.pubkey || '';
+          event.kind = rawEvent.kind || 0;
+          event.created_at = rawEvent.created_at || Math.floor(Date.now() / 1000);
+          event.content = rawEvent.content || '';
+          event.tags = rawEvent.tags || [];
+          event.sig = rawEvent.sig || '';
+          
+          // Publish
+          await event.publish();
+          
+          // Remove from queue on success
+          await this.removeEvent(item.id);
+        } catch (error) {
+          console.error(`[Queue] Failed to publish event ${item.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('[Queue] Error processing queue:', error);
     }
   }
 

@@ -1,18 +1,15 @@
 // lib/hooks/useNDK.ts
 import { useEffect } from 'react';
 import { useNDKStore } from '@/lib/stores/ndk';
-import type { NDKUser } from '@nostr-dev-kit/ndk';
+import type { NDKUser, NDKEvent, NDKFilter } from '@nostr-dev-kit/ndk-mobile';
 
-/**
- * Hook to access NDK instance and initialization status
- */
+// Core hook for NDK access
 export function useNDK() {
-  const { ndk, isLoading, error, init, relayStatus } = useNDKStore(state => ({
+  const { ndk, isLoading, error, init } = useNDKStore(state => ({
     ndk: state.ndk,
     isLoading: state.isLoading,
     error: state.error,
-    init: state.init,
-    relayStatus: state.relayStatus
+    init: state.init
   }));
   
   useEffect(() => {
@@ -21,22 +18,11 @@ export function useNDK() {
     }
   }, [ndk, isLoading, init]);
   
-  return { 
-    ndk, 
-    isLoading, 
-    error,
-    relayStatus
-  };
+  return { ndk, isLoading, error };
 }
 
-/**
- * Hook to access current NDK user information
- */
-export function useNDKCurrentUser(): { 
-  currentUser: NDKUser | null;
-  isAuthenticated: boolean;
-  isLoading: boolean; 
-} {
+// Hook for current user info
+export function useNDKCurrentUser() {
   const { currentUser, isAuthenticated, isLoading } = useNDKStore(state => ({
     currentUser: state.currentUser,
     isAuthenticated: state.isAuthenticated,
@@ -50,16 +36,14 @@ export function useNDKCurrentUser(): {
   };
 }
 
-/**
- * Hook to access NDK authentication methods
- */
+// Hook for authentication actions
 export function useNDKAuth() {
-  const { login, logout, isAuthenticated, isLoading, generateKeys } = useNDKStore(state => ({
+  const { login, logout, generateKeys, isAuthenticated, isLoading } = useNDKStore(state => ({
     login: state.login,
     logout: state.logout,
+    generateKeys: state.generateKeys,
     isAuthenticated: state.isAuthenticated,
-    isLoading: state.isLoading,
-    generateKeys: state.generateKeys
+    isLoading: state.isLoading
   }));
   
   return {
@@ -71,9 +55,7 @@ export function useNDKAuth() {
   };
 }
 
-/**
- * Hook for direct access to Nostr event actions
- */
+// New hook for event operations
 export function useNDKEvents() {
   const { publishEvent, fetchEventsByFilter } = useNDKStore(state => ({
     publishEvent: state.publishEvent,

@@ -3,22 +3,27 @@ import { View, ActivityIndicator, Text } from 'react-native';
 import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
 import { schema } from '@/lib/db/schema';
 import { ExerciseService } from '@/lib/db/services/ExerciseService';
-import { EventCache } from '@/lib/db/services/EventCache';
 import { DevSeederService } from '@/lib/db/services/DevSeederService';
+import { PublicationQueueService } from '@/lib/db/services/PublicationQueueService';
+import { FavoritesService } from '@/lib/db/services/FavoritesService';
 import { logDatabaseInfo } from '@/lib/db/debug';
+import { useNDKStore } from '@/lib/stores/ndk';
 
 // Create context for services
 interface DatabaseServicesContextValue {
   exerciseService: ExerciseService | null;
-  eventCache: EventCache | null;
   devSeeder: DevSeederService | null;
-  // Remove NostrService since we're using the hooks-based approach now
+  publicationQueue: PublicationQueueService | null;
+  favoritesService: FavoritesService | null;
+  db: SQLiteDatabase | null;
 }
 
 const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue>({
   exerciseService: null,
-  eventCache: null,
   devSeeder: null,
+  publicationQueue: null,
+  favoritesService: null,
+  db: null,
 });
 
 interface DatabaseProviderProps {
@@ -30,9 +35,22 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [services, setServices] = React.useState<DatabaseServicesContextValue>({
     exerciseService: null,
-    eventCache: null,
     devSeeder: null,
+    publicationQueue: null,
+    favoritesService: null,
+    db: null,
   });
+  
+  // Get NDK from store to provide to services
+  const ndk = useNDKStore(state => state.ndk);
+  
+  // Effect to set NDK on services when it becomes available
+  React.useEffect(() => {
+    if (ndk && services.devSeeder && services.publicationQueue) {
+      services.devSeeder.setNDK(ndk);
+      services.publicationQueue.setNDK(ndk);
+    }
+  }, [ndk, services]);
 
   React.useEffect(() => {
     async function initDatabase() {
@@ -45,15 +63,27 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
 
         // Initialize services
         console.log('[DB] Initializing services...');
-        const eventCache = new EventCache(db);
         const exerciseService = new ExerciseService(db);
-        const devSeeder = new DevSeederService(db, exerciseService, eventCache);
+        const devSeeder = new DevSeederService(db, exerciseService);
+        const publicationQueue = new PublicationQueueService(db);
+        const favoritesService = new FavoritesService(db);
+        
+        // Initialize the favorites service
+        await favoritesService.initialize();
+        
+        // Initialize NDK on services if available
+        if (ndk) {
+          devSeeder.setNDK(ndk);
+          publicationQueue.setNDK(ndk);
+        }
 
         // Set services
         setServices({
           exerciseService,
-          eventCache,
           devSeeder,
+          publicationQueue,
+          favoritesService,
+          db,
         });
 
         // Seed development database
@@ -110,18 +140,34 @@ export function useExerciseService() {
   return context.exerciseService;
 }
 
-export function useEventCache() {
-  const context = React.useContext(DatabaseServicesContext);
-  if (!context.eventCache) {
-    throw new Error('Event cache not initialized');
-  }
-  return context.eventCache;
-}
-
 export function useDevSeeder() {
   const context = React.useContext(DatabaseServicesContext);
   if (!context.devSeeder) {
     throw new Error('Dev seeder not initialized');
   }
   return context.devSeeder;
+}
+
+export function usePublicationQueue() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.publicationQueue) {
+    throw new Error('Publication queue not initialized');
+  }
+  return context.publicationQueue;
+}
+
+export function useFavoritesService() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.favoritesService) {
+    throw new Error('Favorites service not initialized');
+  }
+  return context.favoritesService;
+}
+
+export function useDatabase() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.db) {
+    throw new Error('Database not initialized');
+  }
+  return context.db;
 }
