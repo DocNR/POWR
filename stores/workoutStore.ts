@@ -1,5 +1,20 @@
 // stores/workoutStore.ts
 
+/**
+ * Workout Store
+ * 
+ * This store manages the state for active workouts including:
+ * - Starting, pausing, and completing workouts
+ * - Managing exercise sets and completion status
+ * - Handling workout timing and duration tracking
+ * - Publishing workout data to Nostr when requested
+ * - Tracking favorite templates
+ * 
+ * The store uses a timestamp-based approach for duration tracking,
+ * capturing start and end times to accurately represent workout duration
+ * even when accounting for time spent in completion flow.
+ */
+
 import { create } from 'zustand';
 import { createSelectors } from '@/utils/createSelectors';
 import { generateId } from '@/utils/ids';
@@ -76,8 +91,8 @@ interface ExtendedWorkoutActions extends WorkoutActions {
   startWorkout: (workout: Partial<Workout>) => void;
   pauseWorkout: () => void;
   resumeWorkout: () => void;
-  completeWorkout: () => void;
-  cancelWorkout: () => void;
+  completeWorkout: (options?: WorkoutCompletionOptions) => Promise<void>;
+  cancelWorkout: () => Promise<void>;
   reset: () => void;
   publishEvent: (event: NostrEvent) => Promise<any>;
 
@@ -142,6 +157,9 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
 
   // Core Workout Flow
   startWorkout: (workoutData: Partial<Workout> = {}) => {
+    // First stop any existing timer to avoid duplicate timers
+    get().stopWorkoutTimer();
+    
     const workout: Workout = {
       id: generateId('local'),
       title: workoutData.title || 'Quick Workout',
@@ -174,6 +192,9 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     const { status, activeWorkout } = get();
     if (status !== 'active' || !activeWorkout) return;
 
+    // Stop the timer interval when pausing
+    get().stopWorkoutTimer();
+    
     set({ status: 'paused' });
     // Auto-save when pausing
     saveWorkout(activeWorkout);
@@ -184,29 +205,30 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     if (status !== 'paused' || !activeWorkout) return;
 
     set({ status: 'active' });
+    
+    // Restart the timer when resuming
+    get().startWorkoutTimer();
   },
 
-  // Update completeWorkout in workoutStore.ts
   completeWorkout: async (options?: WorkoutCompletionOptions) => {
     const { activeWorkout } = get();
     if (!activeWorkout) return;
-
-    // Stop the workout timer
+  
+    // Ensure workout timer is stopped
     get().stopWorkoutTimer();
-
+  
     // If no options were provided, show the completion flow
     if (!options) {
       // Navigate to the completion flow screen
       router.push('/(workout)/complete');
       return;
     }
-
+  
     const completedWorkout = {
       ...activeWorkout,
       isCompleted: true,
-      endTime: Date.now(),
       lastUpdated: Date.now()
-    };
+    };  
 
     try {
       // Save workout locally regardless of storage option
@@ -291,13 +313,20 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
         }
       }
 
+      // Make sure workout timer is stopped again (just to be extra safe)
+      get().stopWorkoutTimer();
+
       // Finally update the app state
       set({
         status: 'completed',
-        activeWorkout: completedWorkout,
+        activeWorkout: null, // Set to null to fully clear the workout
         isActive: false,
         isMinimized: false
       });
+      
+      // Ensure we fully reset the state
+      get().reset();
+      
     } catch (error) {
       console.error('Error completing workout:', error);
       // Consider showing an error message to the user
@@ -336,7 +365,7 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     const { activeWorkout } = get();
     if (!activeWorkout) return;
   
-    // Stop the workout timer
+    // Ensure workout timer is stopped
     get().stopWorkoutTimer();
     
     // Prepare canceled workout with proper metadata
@@ -545,7 +574,7 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     }
   },
   
-  // Workout timer management - new functions
+  // Workout timer management - improved for reliability
   startWorkoutTimer: () => {
     // Clear any existing timer first to prevent duplicates
     if (workoutTimerInterval) {
@@ -555,6 +584,7 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     
     // Start a new timer that continues to run even when components unmount
     workoutTimerInterval = setInterval(() => {
+      // Get fresh state reference to avoid stale closures
       const { status } = useWorkoutStoreBase.getState();
       if (status === 'active') {
         useWorkoutStoreBase.getState().tick(1000);
@@ -720,13 +750,28 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
   endWorkout: async () => {
     const { activeWorkout } = get();
     if (!activeWorkout) return;
-
-    await get().completeWorkout();
+  
+    // Set the end time right when entering completion flow
+    set({
+      activeWorkout: {
+        ...activeWorkout,
+        endTime: Date.now(),
+        lastUpdated: Date.now()
+      }
+    });
+  
+    // Make sure to stop the timer before navigating
+    get().stopWorkoutTimer();
+    
+    // Navigate to completion screen
+    router.push('/(workout)/complete');
   },
 
   clearAutoSave: async () => {
     // TODO: Implement clearing autosave from storage
-    get().stopWorkoutTimer(); // Make sure to stop the timer
+    
+    // Make sure to stop the timer
+    get().stopWorkoutTimer(); 
     
     // Preserve favorites when resetting
     const favoriteIds = get().favoriteIds;
@@ -749,7 +794,8 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
   },
 
   reset: () => {
-    get().stopWorkoutTimer(); // Make sure to stop the timer
+    // Make sure to stop the timer
+    get().stopWorkoutTimer();
     
     // Preserve favorites when resetting
     const favoriteIds = get().favoriteIds;
@@ -792,8 +838,9 @@ async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> 
 
 async function saveWorkout(workout: Workout): Promise<void> {
   try {
+    // Make sure we're capturing the duration properly in what's saved
+    console.log('Saving workout with endTime:', workout.endTime);
     // TODO: Implement actual save logic using our database service
-    console.log('Saving workout:', workout);
   } catch (error) {
     console.error('Error saving workout:', error);
   }

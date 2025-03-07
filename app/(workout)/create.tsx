@@ -26,6 +26,7 @@ import { ParamListBase } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import SetInput from '@/components/workout/SetInput';
 import { useColorScheme } from '@/lib/useColorScheme';
+import { WorkoutAlertDialog } from '@/components/workout/WorkoutAlertDialog';
 
 export default function CreateWorkoutScreen() {
   const { 
@@ -152,6 +153,7 @@ export default function CreateWorkoutScreen() {
     return unsubscribe;
   }, [navigation, activeWorkout, isMinimized, minimizeWorkout]);
 
+  const [showFinishDialog, setShowFinishDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -273,7 +275,7 @@ export default function CreateWorkoutScreen() {
           <Button
             variant="purple"
             className="px-4"
-            onPress={() => router.push('/(workout)/complete')}
+            onPress={() => setShowFinishDialog(true)}
             disabled={!hasExercises}
           >
             <Text className="text-white font-medium">Finish</Text>
@@ -458,6 +460,28 @@ export default function CreateWorkoutScreen() {
           )}
         </ScrollView>
       </View>
+
+      {/* Finish Workout Dialog */}
+      <WorkoutAlertDialog
+        open={showFinishDialog}
+        onOpenChange={setShowFinishDialog}
+        onConfirm={() => {
+          setShowFinishDialog(false);
+          // Set the end time before navigating
+          useWorkoutStore.setState(state => ({
+            activeWorkout: state.activeWorkout ? {
+              ...state.activeWorkout,
+              endTime: Date.now(),
+              lastUpdated: Date.now()
+            } : null
+          }));
+          // Navigate to completion screen
+          router.push('/(workout)/complete');
+        }}
+        title="Complete Workout?"
+        description="Are you sure you want to finish this workout? This will end your current session."
+        confirmText="Complete Workout"
+      />
 
       {/* Cancel Workout Dialog */}
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>

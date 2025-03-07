@@ -1,5 +1,5 @@
-// app/(workout)/complete.tsx - revised version
-import React from 'react';
+// app/(workout)/complete.tsx
+import React, { useEffect } from 'react';
 import { View, Modal, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { Text } from '@/components/ui/text';
@@ -9,132 +9,47 @@ import { WorkoutCompletionFlow } from '@/components/workout/WorkoutCompletionFlo
 import { WorkoutCompletionOptions } from '@/types/workout';
 import { useColorScheme } from '@/lib/useColorScheme';
 
+/**
+ * Workout Completion Screen
+ * 
+ * This modal screen is presented when a user chooses to complete their workout.
+ * It serves as a container for the multi-step completion flow, handling:
+ * - Modal presentation and dismissal
+ * - Delegating completion logic to the WorkoutCompletionFlow component
+ * 
+ * The screen acts primarily as a UI wrapper, with the core completion logic
+ * handled by the WorkoutStore and the step-by-step flow managed by the
+ * WorkoutCompletionFlow component.
+ * 
+ * Note: Workout timing is already stopped at this point, as the end time
+ * was set when the user confirmed finishing in the create screen.
+ */
 export default function CompleteWorkoutScreen() {
-  const { resumeWorkout } = useWorkoutStore.getState();
+  const { resumeWorkout, activeWorkout } = useWorkoutStore();
   const { isDarkColorScheme } = useColorScheme();
   
-// Handle complete with options
-const handleComplete = async (options: WorkoutCompletionOptions) => {
-    // Get a fresh reference to completeWorkout and other functions
-    const { completeWorkout, activeWorkout } = useWorkoutStore.getState();
+  // Check if we have a workout to complete
+  if (!activeWorkout) {
+    // If there's no active workout, redirect back to the home screen
+    router.replace('/(tabs)');
+    return null;
+  }
+  
+  // Handle complete with options
+  const handleComplete = async (options: WorkoutCompletionOptions) => {
+    // Get a fresh reference to completeWorkout
+    const { completeWorkout } = useWorkoutStore.getState();
     
-    // 1. Complete the workout locally first
-    await completeWorkout();
-    
-    // 2. If publishing to Nostr is selected, create and publish workout event
-    let workoutEventId = null;
-    if (options.storageType !== 'local_only' && activeWorkout) {
-      try {
-        const ndkStore = require('@/lib/stores/ndk').useNDKStore.getState();
-        
-        // Create workout tags based on NIP-4e
-        const workoutTags = [
-          ['d', activeWorkout.id], // Unique identifier
-          ['title', activeWorkout.title],
-          ['type', activeWorkout.type],
-          ['start', Math.floor(activeWorkout.startTime / 1000).toString()],
-          ['end', Math.floor(Date.now() / 1000).toString()],
-          ['completed', 'true']
-        ];
-        
-        // Add exercise tags
-        activeWorkout.exercises.forEach(exercise => {
-          // Add exercise tags following NIP-4e format
-          exercise.sets.forEach(set => {
-            if (set.isCompleted) {
-              workoutTags.push([
-                'exercise', 
-                `33401:${exercise.id}`, 
-                '', // relay URL can be empty for now
-                set.weight?.toString() || '',
-                set.reps?.toString() || '',
-                set.rpe?.toString() || '',
-                set.type || 'normal'
-              ]);
-            }
-          });
-        });
-        
-        // Add template reference if workout was based on a template
-        if (activeWorkout.templateId) {
-          workoutTags.push(['template', `33402:${activeWorkout.templateId}`, '']);
-        }
-        
-        // Add hashtags
-        workoutTags.push(['t', 'workout'], ['t', 'fitness']);
-        
-        // Attempt to publish the workout event
-        console.log("Publishing workout event with tags:", workoutTags);
-        const workoutEvent = await ndkStore.publishEvent(
-          1301, // Use kind 1301 for workout records
-          activeWorkout.notes || "Completed workout", // Content is workout notes
-          workoutTags
-        );
-        
-        if (workoutEvent) {
-          workoutEventId = workoutEvent.id;
-          console.log("Successfully published workout event:", workoutEventId);
-        }
-      } catch (error) {
-        console.error("Error publishing workout event:", error);
-      }
-    }
-    
-    // 3. If social sharing is enabled, create a reference to the workout event
-    if (options.shareOnSocial && options.socialMessage && workoutEventId) {
-        try {
-          const ndkStore = require('@/lib/stores/ndk').useNDKStore.getState();
-          
-          // Create social post tags
-          const socialTags = [
-            ['t', 'workout'],
-            ['t', 'fitness'],
-            ['t', 'powr'],
-            ['client', 'POWR']
-          ];
-          
-          // Get current user pubkey
-          const currentUserPubkey = ndkStore.currentUser?.pubkey;
-          
-          // Add quote reference to the workout event using 'q' tag
-          if (workoutEventId) {
-            // Format: ["q", "<event-id>", "<relay-url>", "<author-pubkey>"]
-            socialTags.push(['q', workoutEventId, '', currentUserPubkey || '']);
-          }
-          
-          // Publish social post
-          await ndkStore.publishEvent(1, options.socialMessage, socialTags);
-          console.log("Successfully published social post quoting workout");
-        } catch (error) {
-          console.error("Error publishing social post:", error);
-        }
-      }
-    
-    // 4. Handle template updates if needed
-    if (activeWorkout?.templateId && options.templateAction !== 'keep_original') {
-      try {
-        const TemplateService = require('@/lib/db/services/TemplateService').TemplateService;
-        
-        if (options.templateAction === 'update_existing') {
-          await TemplateService.updateExistingTemplate(activeWorkout);
-        } else if (options.templateAction === 'save_as_new' && options.newTemplateName) {
-          await TemplateService.saveAsNewTemplate(activeWorkout, options.newTemplateName);
-        }
-      } catch (error) {
-        console.error('Error handling template action:', error);
-      }
-    }
-    
-    // Navigate to home or history page
-    router.replace('/(tabs)/history');
+    // Complete the workout with the provided options
+    await completeWorkout(options);
   };
   
-  // Handle cancellation
+  // Handle cancellation (go back to workout)
   const handleCancel = () => {
-    resumeWorkout();
+    // Go back to the workout screen
     router.back();
   };
-
+  
   return (
     <Modal
       visible={true}

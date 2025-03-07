@@ -1,4 +1,4 @@
-// components/workout/WorkoutCompletionFlow.tsx - streamlined with celebration
+// components/workout/WorkoutCompletionFlow.tsx
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
@@ -17,11 +17,29 @@ import {
   Clock,
   Dumbbell,
   Trophy,
-  Share,
   Cog
 } from 'lucide-react-native';
 import { TemplateService } from '@/lib/db/services/TemplateService';
 import Confetti from '@/components/Confetti';
+
+/**
+ * Workout Completion Flow Component
+ * 
+ * This component manages the multi-step process of completing a workout:
+ * 1. Storage Options - How the workout data should be stored (local/published)
+ * 2. Summary - Displaying workout statistics before finalizing
+ * 3. Celebration - Confirming completion and providing sharing options
+ * 
+ * Key features:
+ * - Step-based navigation with back/next functionality
+ * - Nostr sharing options for completed workouts
+ * - Template management options if workout was based on a template
+ * 
+ * This component handles UI state and user input, but delegates the actual
+ * workout completion to the parent component via the onComplete callback.
+ * The Nostr publishing happens in the WorkoutStore after receiving the
+ * selected options from this flow.
+ */
 
 // Storage options component
 function StorageOptionsTab({ 
@@ -57,10 +75,6 @@ function StorageOptionsTab({
   // Check if the workout is based on a template
   const { activeWorkout } = useWorkoutStore();
   
-  // Add debug logging
-  console.log('Active workout:', activeWorkout?.id);
-  console.log('Template ID:', activeWorkout?.templateId);
-  
   // Use a try-catch block for more resilience
   let hasTemplateChanges = false;
   try {
@@ -70,9 +84,6 @@ function StorageOptionsTab({
   } catch (error) {
     console.error('Error checking template changes:', error);
   }
-  
-  console.log('Has template changes:', hasTemplateChanges);
-  console.log('Template action:', options.templateAction);
   
   return (
     <ScrollView className="flex-1 px-2">
@@ -298,15 +309,10 @@ function SummaryTab({
       : `${minutes}m ${seconds % 60}s`;
   };
   
+  // Get workout duration using timestamps
   const getDuration = (): number => {
-    if (!activeWorkout) return 0;
-    
-    if (activeWorkout.endTime && activeWorkout.startTime) {
-      return activeWorkout.endTime - activeWorkout.startTime;
-    }
-    
-    // If no end time, use current time
-    return Date.now() - activeWorkout.startTime;
+    if (!activeWorkout || !activeWorkout.endTime) return 0;
+    return activeWorkout.endTime - activeWorkout.startTime;
   };
   
   const getTotalSets = (): number => {
@@ -494,141 +500,141 @@ function SummaryTab({
 
 // Celebration component with share option
 function CelebrationTab({
-    options,
-    onComplete
-  }: {
-    options: WorkoutCompletionOptions,
-    onComplete: (options: WorkoutCompletionOptions) => void
-  }) {
-    const { isAuthenticated } = useNDKCurrentUser();
-    const { activeWorkout } = useWorkoutStore(); // Move hook usage to component level
-    const [showConfetti, setShowConfetti] = useState(true);
-    const [shareMessage, setShareMessage] = useState('');
+  options,
+  onComplete
+}: {
+  options: WorkoutCompletionOptions,
+  onComplete: (options: WorkoutCompletionOptions) => void
+}) {
+  const { isAuthenticated } = useNDKCurrentUser();
+  const { activeWorkout } = useWorkoutStore();
+  const [showConfetti, setShowConfetti] = useState(true);
+  const [shareMessage, setShareMessage] = useState('');
+  
+  // Purple color used throughout the app
+  const purpleColor = 'hsl(261, 90%, 66%)';
+  
+  // Generate default share message
+  useEffect(() => {
+    // Create default message based on workout data
+    let message = "Just completed a workout! 💪";
     
-    // Purple color used throughout the app
-    const purpleColor = 'hsl(261, 90%, 66%)';
-    
-    // Generate default share message
-    useEffect(() => {
-      // Create default message based on workout data
-      let message = "Just completed a workout! 💪";
+    if (activeWorkout) {
+      const exerciseCount = activeWorkout.exercises.length;
+      const completedSets = activeWorkout.exercises.reduce(
+        (total, exercise) => total + exercise.sets.filter(set => set.isCompleted).length, 0
+      );
       
-      if (activeWorkout) {
-        const exerciseCount = activeWorkout.exercises.length;
-        const completedSets = activeWorkout.exercises.reduce(
-          (total, exercise) => total + exercise.sets.filter(set => set.isCompleted).length, 0
-        );
-        
-        // Add workout details
-        message = `Just completed a workout with ${exerciseCount} exercises and ${completedSets} sets! 💪`;
-        
-        // Add mock PR info
-        if (Math.random() > 0.5) {
-          message += " Hit some new PRs today! 🏆";
-        }
+      // Add workout details
+      message = `Just completed a workout with ${exerciseCount} exercises and ${completedSets} sets! 💪`;
+      
+      // Add mock PR info
+      if (Math.random() > 0.5) {
+        message += " Hit some new PRs today! 🏆";
       }
-      
-      setShareMessage(message);
-    }, [activeWorkout]);
+    }
     
-    const handleShare = () => {
-      // This will trigger a kind 1 note creation via the onComplete handler
-      onComplete({
-        ...options,
-        shareOnSocial: true,
-        socialMessage: shareMessage
-      });
-    };
-    
-    const handleSkip = () => {
-      // Complete the workout without sharing
-      onComplete({
-        ...options,
-        shareOnSocial: false
-      });
-    };
-    
-    return (
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-        <View className="flex-1 items-center justify-center px-4 py-8">
-          {showConfetti && (
-            <Confetti onComplete={() => setShowConfetti(false)} />
+    setShareMessage(message);
+  }, [activeWorkout]);
+  
+  const handleShare = () => {
+    // This will trigger a kind 1 note creation via the onComplete handler
+    onComplete({
+      ...options,
+      shareOnSocial: true,
+      socialMessage: shareMessage
+    });
+  };
+  
+  const handleSkip = () => {
+    // Complete the workout without sharing
+    onComplete({
+      ...options,
+      shareOnSocial: false
+    });
+  };
+  
+  return (
+    <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+      <View className="flex-1 items-center justify-center px-4 py-8">
+        {showConfetti && (
+          <Confetti onComplete={() => setShowConfetti(false)} />
+        )}
+        
+        <View className="w-full max-w-md">
+          {/* Trophy and heading */}
+          <View className="items-center mb-8">
+            <Trophy size={60} color="#F59E0B" />
+            <Text className="text-2xl font-bold text-center mt-4 mb-2">
+              Workout Complete! 
+            </Text>
+            <Text className="text-center text-muted-foreground">
+              Great job on finishing your workout!
+            </Text>
+          </View>
+          
+          {/* Show sharing options for Nostr if appropriate */}
+          {isAuthenticated && options.storageType !== 'local_only' && (
+            <>
+              <Separator className="my-4" />
+              
+              <View className="mb-4">
+                <Text className="text-lg font-semibold mb-3">
+                  Share Your Achievement
+                </Text>
+                
+                <Text className="text-muted-foreground mb-3">
+                  Share your workout with your followers on Nostr
+                </Text>
+                
+                <Input
+                  multiline
+                  numberOfLines={4}
+                  value={shareMessage}
+                  onChangeText={setShareMessage}
+                  className="min-h-[120px] p-3 mb-4"
+                />
+                
+                <Button
+                  className="w-full mb-3"
+                  style={{ backgroundColor: purpleColor }}
+                  onPress={handleShare}
+                >
+                  <Text className="text-white font-medium">
+                    Share to Nostr
+                  </Text>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onPress={handleSkip}
+                >
+                  <Text>
+                    Skip Sharing
+                  </Text>
+                </Button>
+              </View>
+            </>
           )}
           
-          <View className="w-full max-w-md">
-            {/* Trophy and heading */}
-            <View className="items-center mb-8">
-              <Trophy size={60} color="#F59E0B" />
-              <Text className="text-2xl font-bold text-center mt-4 mb-2">
-                Workout Complete! 
+          {/* If local-only or not authenticated */}
+          {(options.storageType === 'local_only' || !isAuthenticated) && (
+            <Button
+              className="w-full mt-4"
+              style={{ backgroundColor: purpleColor }}
+              onPress={handleSkip}
+            >
+              <Text className="text-white font-medium">
+                Continue
               </Text>
-              <Text className="text-center text-muted-foreground">
-                Great job on finishing your workout!
-              </Text>
-            </View>
-            
-            {/* Show sharing options for Nostr if appropriate */}
-            {isAuthenticated && options.storageType !== 'local_only' && (
-              <>
-                <Separator className="my-4" />
-                
-                <View className="mb-4">
-                  <Text className="text-lg font-semibold mb-3">
-                    Share Your Achievement
-                  </Text>
-                  
-                  <Text className="text-muted-foreground mb-3">
-                    Share your workout with your followers on Nostr
-                  </Text>
-                  
-                  <Input
-                    multiline
-                    numberOfLines={4}
-                    value={shareMessage}
-                    onChangeText={setShareMessage}
-                    className="min-h-[120px] p-3 mb-4"
-                  />
-                  
-                  <Button
-                    className="w-full mb-3"
-                    style={{ backgroundColor: purpleColor }}
-                    onPress={handleShare}
-                  >
-                    <Text className="text-white font-medium">
-                      Share to Nostr
-                    </Text>
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onPress={handleSkip}
-                  >
-                    <Text>
-                      Skip Sharing
-                    </Text>
-                  </Button>
-                </View>
-              </>
-            )}
-            
-            {/* If local-only or not authenticated */}
-            {(options.storageType === 'local_only' || !isAuthenticated) && (
-              <Button
-                className="w-full mt-4"
-                style={{ backgroundColor: purpleColor }}
-                onPress={handleSkip}
-              >
-                <Text className="text-white font-medium">
-                  Continue
-                </Text>
-              </Button>
-            )}
-          </View>
+            </Button>
+          )}
         </View>
-      </ScrollView>
-    );
-  }
+      </View>
+    </ScrollView>
+  );
+}   
 
 export function WorkoutCompletionFlow({ 
   onComplete, 
@@ -637,8 +643,6 @@ export function WorkoutCompletionFlow({
   onComplete: (options: WorkoutCompletionOptions) => void;
   onCancel: () => void;
 }) {
-  const { stopWorkoutTimer } = useWorkoutStore();
-  
   // States
   const [options, setOptions] = useState<WorkoutCompletionOptions>({
     storageType: 'local_only',
@@ -658,9 +662,6 @@ export function WorkoutCompletionFlow({
   };
   
   const handleFinish = () => {
-    // Stop workout timer when finishing
-    stopWorkoutTimer();
-    
     // Move to celebration screen
     setStep('celebration');
   };
