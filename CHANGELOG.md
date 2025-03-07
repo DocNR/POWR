@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # Changelog - March 6, 2025
 
 ## Added
+- Comprehensive workout completion flow
+  - Implemented three-tier storage approach (Local Only, Publish Complete, Publish Limited)
+  - Added support for template modifications with options to keep original, update, or save as new
+  - Created celebration screen with confetti animation
+  - Integrated social sharing capabilities for Nostr
+  - Built detailed workout summary with achievement tracking
+  - Added workout statistics including duration, volume, and set completion
+  - Implemented privacy-focused publishing options
+  - Added template attribution and modification tracking
 - NDK mobile integration for Nostr functionality
   - Added event publishing and subscription capabilities 
   - Implemented proper type safety for NDK interactions
@@ -37,6 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Component interoperability with NDK mobile
 
 ## Improved
+- Enhanced relay connection management
+  - Added timeout-based connection attempts
+  - Implemented better connection status tracking
+  - Added relay connectivity verification before publishing
+  - Improved error handling for publishing failures
+- Workout completion UI
+  - Added scrollable interfaces for better content accessibility
+  - Enhanced visual feedback for selected options
+  - Improved button placement and visual hierarchy
+  - Added clearer visual indicators for selected storage options
 - Refactored code for better type safety
 - Enhanced error handling with proper type checking
 - Improved Nostr event creation workflow with NDK

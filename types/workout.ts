@@ -76,6 +76,22 @@ export interface Workout extends SyncableContent {
 }
 
 /**
+ * Options for completing a workout
+ */
+export interface WorkoutCompletionOptions {
+  // Storage option
+  storageType: 'local_only' | 'publish_complete' | 'publish_limited';
+  
+  // Social sharing option
+  shareOnSocial: boolean;
+  socialMessage?: string;
+  
+  // Template update options
+  templateAction: 'keep_original' | 'update_existing' | 'save_as_new';
+  newTemplateName?: string;
+}
+
+/**
  * Personal Records
  */
 export interface PersonalRecord {

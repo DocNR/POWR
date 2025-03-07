@@ -10,7 +10,8 @@ import type {
   RestTimer,
   WorkoutSet,
   WorkoutSummary,
-  WorkoutExercise
+  WorkoutExercise,
+  WorkoutCompletionOptions
 } from '@/types/workout';
 import type {
   WorkoutTemplate,
@@ -20,7 +21,12 @@ import type {
 import type { BaseExercise } from '@/types/exercise';
 import { openDatabaseSync } from 'expo-sqlite';
 import { FavoritesService } from '@/lib/db/services/FavoritesService';
-
+import { router } from 'expo-router';
+import { useNDKStore } from '@/lib/stores/ndk';
+import { NostrWorkoutService } from '@/lib/db/services/NostrWorkoutService';
+import { TemplateService } from '@/lib//db/services/TemplateService';
+import { NostrEvent } from '@/types/nostr';
+import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
@@ -73,6 +79,7 @@ interface ExtendedWorkoutActions extends WorkoutActions {
   completeWorkout: () => void;
   cancelWorkout: () => void;
   reset: () => void;
+  publishEvent: (event: NostrEvent) => Promise<any>;
 
   // Exercise and Set Management from original implementation
   updateSet: (exerciseIndex: number, setIndex: number, data: Partial<WorkoutSet>) => void;
@@ -179,12 +186,20 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     set({ status: 'active' });
   },
 
-  completeWorkout: async () => {
+  // Update completeWorkout in workoutStore.ts
+  completeWorkout: async (options?: WorkoutCompletionOptions) => {
     const { activeWorkout } = get();
     if (!activeWorkout) return;
 
     // Stop the workout timer
     get().stopWorkoutTimer();
+
+    // If no options were provided, show the completion flow
+    if (!options) {
+      // Navigate to the completion flow screen
+      router.push('/(workout)/complete');
+      return;
+    }
 
     const completedWorkout = {
       ...activeWorkout,
@@ -193,19 +208,128 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       lastUpdated: Date.now()
     };
 
-    // Save final workout state
-    await saveWorkout(completedWorkout);
+    try {
+      // Save workout locally regardless of storage option
+      await saveWorkout(completedWorkout);
+      
+      // Calculate and save summary statistics
+      const summary = calculateWorkoutSummary(completedWorkout);
+      await saveSummary(summary);
+      
+      // Handle Nostr publishing if selected and user is authenticated
+      if (options.storageType !== 'local_only') {
+        try {
+          const { ndk, isAuthenticated } = useNDKStore.getState();
+          
+          if (ndk && isAuthenticated) {
+            // Create appropriate Nostr event data
+            const eventData = options.storageType === 'publish_complete'
+              ? NostrWorkoutService.createCompleteWorkoutEvent(completedWorkout)
+              : NostrWorkoutService.createLimitedWorkoutEvent(completedWorkout);
+              
+            // Use NDK to publish
+            try {
+              // Create a new event
+              const event = new NDKEvent(ndk as any);
+              
+              // Set the properties
+              event.kind = eventData.kind;
+              event.content = eventData.content;
+              event.tags = eventData.tags || [];
+              event.created_at = eventData.created_at;
+              
+              // Sign and publish
+              await event.sign();
+              await event.publish();
+              
+              console.log('Successfully published workout event');
+              
+              // Handle social share if selected
+              if (options.shareOnSocial && options.socialMessage) {
+                const socialEventData = NostrWorkoutService.createSocialShareEvent(
+                  event.id,
+                  options.socialMessage
+                );
+                
+                // Create an NDK event for the social share
+                const socialEvent = new NDKEvent(ndk as any);
+                socialEvent.kind = socialEventData.kind;
+                socialEvent.content = socialEventData.content;
+                socialEvent.tags = socialEventData.tags || [];
+                socialEvent.created_at = socialEventData.created_at;
+                
+                // Sign and publish
+                await socialEvent.sign();
+                await socialEvent.publish();
+                
+                console.log('Successfully published social share');
+              }
+            } catch (publishError) {
+              console.error('Error publishing to Nostr:', publishError);
+            }
+          }
+        } catch (error) {
+          console.error('Error preparing Nostr events:', error);
+          // Continue anyway to preserve local data
+        }
+      }
+      
+      // Handle template updates if needed
+      if (completedWorkout.templateId && options.templateAction !== 'keep_original') {
+        try {
+          if (options.templateAction === 'update_existing') {
+            await TemplateService.updateExistingTemplate(completedWorkout);
+          } else if (options.templateAction === 'save_as_new' && options.newTemplateName) {
+            await TemplateService.saveAsNewTemplate(
+              completedWorkout, 
+              options.newTemplateName
+            );
+          }
+        } catch (error) {
+          console.error('Error updating template:', error);
+          // Continue anyway to preserve workout data
+        }
+      }
 
-    // Calculate and save summary statistics
-    const summary = calculateWorkoutSummary(completedWorkout);
-    await saveSummary(summary);
+      // Finally update the app state
+      set({
+        status: 'completed',
+        activeWorkout: completedWorkout,
+        isActive: false,
+        isMinimized: false
+      });
+    } catch (error) {
+      console.error('Error completing workout:', error);
+      // Consider showing an error message to the user
+    }
+  },
 
-    set({
-      status: 'completed',
-      activeWorkout: completedWorkout,
-      isActive: false,
-      isMinimized: false
-    });
+  publishEvent: async (event: NostrEvent) => {
+    try {
+      const { ndk, isAuthenticated } = useNDKStore.getState();
+      
+      if (!ndk || !isAuthenticated) {
+        throw new Error('Not authenticated or NDK not initialized');
+      }
+      
+      // Create a new NDK event
+      const ndkEvent = new NDKEvent(ndk as any);
+      
+      // Copy event properties
+      ndkEvent.kind = event.kind;
+      ndkEvent.content = event.content;
+      ndkEvent.tags = event.tags || [];
+      ndkEvent.created_at = event.created_at;
+      
+      // Sign and publish
+      await ndkEvent.sign();
+      await ndkEvent.publish();
+      
+      return ndkEvent;
+    } catch (error) {
+      console.error('Failed to publish event:', error);
+      throw error;
+    }
   },
 
   cancelWorkout: async () => {

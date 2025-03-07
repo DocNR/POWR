@@ -273,7 +273,7 @@ export default function CreateWorkoutScreen() {
           <Button
             variant="purple"
             className="px-4"
-            onPress={() => completeWorkout()}
+            onPress={() => router.push('/(workout)/complete')}
             disabled={!hasExercises}
           >
             <Text className="text-white font-medium">Finish</Text>

@@ -127,7 +127,6 @@ export default function SetInput({
           keyboardType="decimal-pad"
           placeholder="0"
           placeholderTextColor={mutedForegroundColor}
-          returnKeyType="next"
           selectTextOnFocus
         />
       </TouchableOpacity>
@@ -149,7 +148,6 @@ export default function SetInput({
           keyboardType="number-pad"
           placeholder="0"
           placeholderTextColor={mutedForegroundColor}
-          returnKeyType="done"
           selectTextOnFocus
         />
       </TouchableOpacity>
