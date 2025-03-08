@@ -1,6 +1,6 @@
 // app/(tabs)/index.tsx
 import React, { useState, useEffect, useCallback } from 'react'; 
-import { ScrollView, View } from 'react-native'
+import { ScrollView, View, TouchableOpacity } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router'
 import { 
@@ -20,7 +20,7 @@ import FavoriteTemplate from '@/components/workout/FavoriteTemplate'
 import { useWorkoutStore } from '@/stores/workoutStore'
 import { Text } from '@/components/ui/text'
 import { getRandomWorkoutTitle } from '@/utils/workoutTitles'
-import { Bell } from 'lucide-react-native';
+import { Bell, Star, Clock, Dumbbell } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 
 interface FavoriteTemplateData {
@@ -44,6 +44,8 @@ type PendingWorkoutAction =
   | { type: 'quick-start' } 
   | { type: 'template', templateId: string }
   | { type: 'template-select' };
+  
+const purpleColor = 'hsl(261, 90%, 66%)';
 
 export default function WorkoutScreen() {
   const { startWorkout } = useWorkoutStore.getState();
@@ -204,6 +206,30 @@ export default function WorkoutScreen() {
     }
   };
 
+  // Helper function to format time ago
+  const getTimeAgo = (timestamp: number) => {
+    const now = Date.now();
+    const diffInSeconds = Math.floor((now - timestamp) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours} hr ago`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays === 1) return 'Yesterday';
+    if (diffInDays < 30) return `${diffInDays} days ago`;
+    
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths === 1) return '1 month ago';
+    if (diffInMonths < 12) return `${diffInMonths} months ago`;
+    
+    return 'Over a year ago';
+  };
+
   return (
     <TabScreen>
       <Header 
@@ -227,47 +253,136 @@ export default function WorkoutScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20 }}
       >
-        <HomeWorkout 
-          onStartBlank={handleQuickStart}
-          onSelectTemplate={handleSelectTemplate}
-        />
+
+      {/* Start a Workout section - without the outer box */}
+      <View className="mb-6">
+        <Text className="text-xl font-semibold mb-4">Start a Workout</Text>
+        <Text className="text-sm text-muted-foreground mb-4">
+          Begin a new workout or choose from one of your templates.
+        </Text>
         
-        {/* Favorites section */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Favorites</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoadingFavorites ? (
-              <View className="p-6">
-                <Text className="text-muted-foreground text-center">
-                  Loading favorites...
-                </Text>
-              </View>
-            ) : favoriteWorkouts.length === 0 ? (
-              <View className="p-6">
-                <Text className="text-muted-foreground text-center">
-                  Star workouts from your library to see them here
-                </Text>
-              </View>
-            ) : (
-              <View className="gap-4">
-                {favoriteWorkouts.map(template => (
-                  <FavoriteTemplate
-                    key={template.id}
-                    title={template.title}
-                    exercises={template.exercises}
-                    duration={template.duration}
-                    exerciseCount={template.exerciseCount}
-                    isFavorited={true}
-                    onPress={() => handleStartWorkout(template.id)}
-                    onFavoritePress={() => handleFavoritePress(template.id)}
-                  />
-                ))}
-              </View>
-            )}
-          </CardContent>
-        </Card>
+        {/* Buttons from HomeWorkout but directly here */}
+        <View className="gap-4">
+          <Button 
+            variant="default"  // This ensures it uses the primary purple color
+            className="w-full"
+            onPress={handleQuickStart}
+            style={{ backgroundColor: purpleColor }}
+          >
+            <Text className="text-white font-medium">Quick Start</Text>
+          </Button>
+          
+          <Button 
+            variant="outline"
+            className="w-full"
+            onPress={handleSelectTemplate}
+          >
+            <Text>Use Template</Text>
+          </Button>
+        </View>
+      </View>
+        
+        {/* Favorites section with adjusted grid layout */}
+        <View className="mt-6">
+          <Text className="text-xl font-semibold mb-4">Favorites</Text>
+          
+          {isLoadingFavorites ? (
+            <View className="p-6">
+              <Text className="text-muted-foreground text-center">
+                Loading favorites...
+              </Text>
+            </View>
+          ) : favoriteWorkouts.length === 0 ? (
+            <View className="p-6">
+              <Text className="text-muted-foreground text-center">
+                Star workouts from your library to see them here
+              </Text>
+            </View>
+          ) : (
+            <View className="flex-row flex-wrap justify-between">
+              {favoriteWorkouts.map(template => (
+                <TouchableOpacity 
+                  key={template.id}
+                  activeOpacity={0.7} 
+                  onPress={() => handleStartWorkout(template.id)}
+                  className="w-[48%] mb-3"
+                  style={{ aspectRatio: 1 / 0.85 }} // Slightly less tall than a square
+                >
+                  <Card className="border border-border h-full">
+                    <CardContent className="p-4 flex-1 justify-between">
+                      {/* Top section with title and star */}
+                      <View className="flex-1">
+                        <View className="flex-row justify-between items-start">
+                          <Text className="text-base font-medium flex-1 mr-1" numberOfLines={2}>
+                            {template.title}
+                          </Text>
+                          
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleFavoritePress(template.id);
+                            }}
+                          >
+                            <Star 
+                              size={16}
+                              className="text-primary"
+                              fill="currentColor"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                        
+                        {/* First 2 exercises */}
+                        <View className="mt-2">
+                          {template.exercises.slice(0, 2).map((exercise, index) => (
+                            <Text key={index} className="text-xs text-foreground" numberOfLines={1}>
+                              • {exercise.title}
+                            </Text>
+                          ))}
+                          {template.exercises.length > 2 && (
+                            <Text className="text-xs text-muted-foreground">
+                              +{template.exercises.length - 2} more
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      
+                      {/* Stats row */}
+                      <View className="mt-2 pt-2 border-t border-border">
+                        <View className="flex-row items-center justify-between">
+                          <View className="flex-row items-center">
+                            <Dumbbell size={14} className="text-muted-foreground mr-1" />
+                            <Text className="text-xs text-muted-foreground">
+                              {template.exerciseCount}
+                            </Text>
+                          </View>
+                          
+                          {template.duration && (
+                            <View className="flex-row items-center">
+                              <Clock size={14} className="text-muted-foreground mr-1" />
+                              <Text className="text-xs text-muted-foreground">
+                                {Math.round(template.duration / 60)} min
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        
+                        {/* Last performed info */}
+                        {template.lastUsed && (
+                          <View className="flex-row items-center mt-2">
+                            <Clock size={14} className="text-muted-foreground mr-1" />
+                            <Text className="text-xs text-muted-foreground">
+                              Last: {getTimeAgo(template.lastUsed)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       <AlertDialog open={showActiveWorkoutModal}>
