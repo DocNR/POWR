@@ -23,12 +23,14 @@ export interface WorkoutSet {
   timestamp?: number;
   lastUpdated?: number;
   completedAt?: number;
+  duration?: number;
 }
 
 /**
  * Exercise within a workout
  */
 export interface WorkoutExercise extends BaseExercise {
+  exerciseId?: string;
   sets: WorkoutSet[];
   targetSets?: number;
   targetReps?: number;
@@ -53,12 +55,16 @@ export interface Workout extends SyncableContent {
   tags?: string[];
   
   // Template reference if workout was started from template
-  templateId?: string;
+  templateId?: string; // Keep only one templateId property
+  templatePubkey?: string; // Add this for template references
+  
+  // Add shareStatus property
+  shareStatus?: 'local' | 'public' | 'limited';
   
   // Workout configuration
   rounds?: number;
-  duration?: number;     // Total duration in seconds
-  interval?: number;     // For EMOM/interval workouts
+  duration?: number;
+  interval?: number;
   restBetweenRounds?: number;
   
   // Workout metrics

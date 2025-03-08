@@ -1,13 +1,21 @@
 // lib/db/services/DevSeederService.ts
 import { SQLiteDatabase } from 'expo-sqlite';
 import { ExerciseService } from './ExerciseService';
+import { EventCache } from '@/lib/db/services/EventCache';
+import { WorkoutService } from './WorkoutService';
+import { TemplateService } from './TemplateService';
 import { logDatabaseInfo } from '../debug';
 import { mockExerciseEvents, convertNostrToExercise } from '../../mocks/exercises';
+import { DbService } from '../db-service';
 import NDK, { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 
 export class DevSeederService {
   private db: SQLiteDatabase;
+  private dbService: DbService;
   private exerciseService: ExerciseService;
+  private workoutService: WorkoutService | null = null;
+  private templateService: TemplateService | null = null;
+  private eventCache: EventCache | null = null;
   private ndk: NDK | null = null;
 
   constructor(
@@ -15,7 +23,17 @@ export class DevSeederService {
     exerciseService: ExerciseService
   ) {
     this.db = db;
+    this.dbService = new DbService(db);
     this.exerciseService = exerciseService;
+    
+    // Try to initialize other services if needed
+    try {
+      this.workoutService = new WorkoutService(db);
+      this.templateService = new TemplateService(db);
+      this.eventCache = new EventCache(db);
+    } catch (error) {
+      console.log('Some services not available yet:', error);
+    }
   }
 
   setNDK(ndk: NDK) {
@@ -36,22 +54,19 @@ export class DevSeederService {
       
       if (existingCount > 0) {
         console.log('Database already seeded with', existingCount, 'exercises');
-        return;
-      }
-
-      // Start transaction for all seeding operations
-      await this.db.withTransactionAsync(async () => {
-        console.log('Seeding mock exercises...');
-
-        // Process all events within the same transaction
-        for (const eventData of mockExerciseEvents) {
-          if (this.ndk) {
-            // If NDK is available, use it to cache the event
-            const event = new NDKEvent(this.ndk);
-            Object.assign(event, eventData);
-            
-            // Cache the event in NDK
+      } else {
+        // Start transaction for all seeding operations
+        await this.db.withTransactionAsync(async () => {
+          console.log('Seeding mock exercises...');
+  
+          // Process all events within the same transaction
+          for (const eventData of mockExerciseEvents) {
             if (this.ndk) {
+              // If NDK is available, use it to cache the event
+              const event = new NDKEvent(this.ndk);
+              Object.assign(event, eventData);
+              
+              // Cache the event in NDK
               const ndkEvent = new NDKEvent(this.ndk);
               
               // Copy event properties
@@ -70,15 +85,28 @@ export class DevSeederService {
                 await ndkEvent.sign();
               }
             }
+            
+            // Cache the event if possible
+            if (this.eventCache) {
+              try {
+                await this.eventCache.setEvent(eventData, true);
+              } catch (error) {
+                console.log('Error caching event:', error);
+              }
+            }
+            
+            // Create exercise from the mock data regardless of NDK availability
+            const exercise = convertNostrToExercise(eventData);
+            await this.exerciseService.createExercise(exercise, true);
           }
-          
-          // Create exercise from the mock data regardless of NDK availability
-          const exercise = convertNostrToExercise(eventData);
-          await this.exerciseService.createExercise(exercise, true);
-        }
+  
+          console.log('Successfully seeded', mockExerciseEvents.length, 'exercises');
+        });
+      }
 
-        console.log('Successfully seeded', mockExerciseEvents.length, 'exercises');
-      });
+      // Seed workout and template tables
+      await this.seedWorkoutTables();
+      await this.seedTemplates();
 
       // Log final database state
       await logDatabaseInfo();
@@ -86,6 +114,70 @@ export class DevSeederService {
     } catch (error) {
       console.error('Error seeding database:', error);
       throw error;
+    }
+  }
+
+  async seedWorkoutTables() {
+    if (!__DEV__) return;
+
+    try {
+      console.log('Checking workout tables seeding...');
+
+      // Check if we already have workout data
+      try {
+        const hasWorkouts = await this.dbService.getFirstAsync<{ count: number }>(
+          'SELECT COUNT(*) as count FROM workouts'
+        );
+        
+        if (hasWorkouts && hasWorkouts.count > 0) {
+          console.log('Workout tables already seeded with', hasWorkouts.count, 'workouts');
+          return;
+        }
+
+        console.log('No workout data found, but tables should be created');
+        
+        // Optional: Add mock workout data here
+        // if (this.workoutService) {
+        //   // Create mock workouts
+        //   // await this.workoutService.saveWorkout(mockWorkout);
+        // }
+      } catch (error) {
+        console.log('Workout tables may not exist yet - will be created in schema update');
+      }
+    } catch (error) {
+      console.error('Error checking workout tables:', error);
+    }
+  }
+
+  async seedTemplates() {
+    if (!__DEV__) return;
+
+    try {
+      console.log('Checking template tables seeding...');
+
+      // Check if templates table exists and has data
+      try {
+        const hasTemplates = await this.dbService.getFirstAsync<{ count: number }>(
+          'SELECT COUNT(*) as count FROM templates'
+        );
+        
+        if (hasTemplates && hasTemplates.count > 0) {
+          console.log('Template tables already seeded with', hasTemplates.count, 'templates');
+          return;
+        }
+        
+        console.log('No template data found, but tables should be created');
+        
+        // Optional: Add mock template data here
+        // if (this.templateService) {
+        //   // Create mock templates
+        //   // await this.templateService.createTemplate(mockTemplate);
+        // }
+      } catch (error) {
+        console.log('Template tables may not exist yet - will be created in schema update');
+      }
+    } catch (error) {
+      console.error('Error checking template tables:', error);
     }
   }
 
@@ -97,16 +189,29 @@ export class DevSeederService {
 
       await this.db.withTransactionAsync(async () => {
         const tables = [
+          // Original tables
           'exercises',
           'exercise_tags',
           'nostr_events',
           'event_tags',
           'cache_metadata',
-          'ndk_cache' // Add the NDK Mobile cache table
+          'ndk_cache',
+          
+          // New tables
+          'workouts',
+          'workout_exercises',
+          'workout_sets',
+          'templates',
+          'template_exercises'
         ];
 
         for (const table of tables) {
-          await this.db.runAsync(`DELETE FROM ${table}`);
+          try {
+            await this.db.runAsync(`DELETE FROM ${table}`);
+            console.log(`Cleared table: ${table}`);
+          } catch (error) {
+            console.log(`Table ${table} might not exist yet, skipping`);
+          }
         }
       });
 

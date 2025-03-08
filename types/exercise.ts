@@ -77,6 +77,9 @@ export interface WorkoutSet {
   isCompleted: boolean;
   notes?: string;
   timestamp?: number;
+  duration?: number; // Add this property
+  completedAt?: number;
+  lastUpdated?: number;
 }
 
 /**
@@ -84,6 +87,7 @@ export interface WorkoutSet {
  */
 export interface WorkoutExercise extends BaseExercise {
   sets: WorkoutSet[];
+  exerciseId?: string; 
   targetSets?: number;
   targetReps?: number;
   notes?: string;

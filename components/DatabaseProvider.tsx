@@ -6,12 +6,16 @@ import { ExerciseService } from '@/lib/db/services/ExerciseService';
 import { DevSeederService } from '@/lib/db/services/DevSeederService';
 import { PublicationQueueService } from '@/lib/db/services/PublicationQueueService';
 import { FavoritesService } from '@/lib/db/services/FavoritesService';
+import { WorkoutService } from '@/lib/db/services/WorkoutService';
+import { TemplateService } from '@/lib/db/services/TemplateService';
 import { logDatabaseInfo } from '@/lib/db/debug';
 import { useNDKStore } from '@/lib/stores/ndk';
 
 // Create context for services
 interface DatabaseServicesContextValue {
   exerciseService: ExerciseService | null;
+  workoutService: WorkoutService | null;
+  templateService: TemplateService | null;
   devSeeder: DevSeederService | null;
   publicationQueue: PublicationQueueService | null;
   favoritesService: FavoritesService | null;
@@ -20,6 +24,8 @@ interface DatabaseServicesContextValue {
 
 const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue>({
   exerciseService: null,
+  workoutService: null,
+  templateService: null,
   devSeeder: null,
   publicationQueue: null,
   favoritesService: null,
@@ -35,6 +41,8 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [services, setServices] = React.useState<DatabaseServicesContextValue>({
     exerciseService: null,
+    workoutService: null,
+    templateService: null,
     devSeeder: null,
     publicationQueue: null,
     favoritesService: null,
@@ -64,6 +72,8 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         // Initialize services
         console.log('[DB] Initializing services...');
         const exerciseService = new ExerciseService(db);
+        const workoutService = new WorkoutService(db);
+        const templateService = new TemplateService(db);
         const devSeeder = new DevSeederService(db, exerciseService);
         const publicationQueue = new PublicationQueueService(db);
         const favoritesService = new FavoritesService(db);
@@ -80,6 +90,8 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         // Set services
         setServices({
           exerciseService,
+          workoutService,
+          templateService,
           devSeeder,
           publicationQueue,
           favoritesService,
@@ -138,6 +150,22 @@ export function useExerciseService() {
     throw new Error('Exercise service not initialized');
   }
   return context.exerciseService;
+}
+
+export function useWorkoutService() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.workoutService) {
+    throw new Error('Workout service not initialized');
+  }
+  return context.workoutService;
+}
+
+export function useTemplateService() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.templateService) {
+    throw new Error('Template service not initialized');
+  }
+  return context.templateService;
 }
 
 export function useDevSeeder() {

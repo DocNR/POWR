@@ -1,20 +1,4 @@
 // stores/workoutStore.ts
-
-/**
- * Workout Store
- * 
- * This store manages the state for active workouts including:
- * - Starting, pausing, and completing workouts
- * - Managing exercise sets and completion status
- * - Handling workout timing and duration tracking
- * - Publishing workout data to Nostr when requested
- * - Tracking favorite templates
- * 
- * The store uses a timestamp-based approach for duration tracking,
- * capturing start and end times to accurately represent workout duration
- * even when accounting for time spent in completion flow.
- */
-
 import { create } from 'zustand';
 import { createSelectors } from '@/utils/createSelectors';
 import { generateId } from '@/utils/ids';
@@ -40,8 +24,25 @@ import { router } from 'expo-router';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { NostrWorkoutService } from '@/lib/db/services/NostrWorkoutService';
 import { TemplateService } from '@/lib//db/services/TemplateService';
+import { WorkoutService } from '@/lib/db/services/WorkoutService'; // Add this import
 import { NostrEvent } from '@/types/nostr';
 import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
+
+/**
+ * Workout Store
+ * 
+ * This store manages the state for active workouts including:
+ * - Starting, pausing, and completing workouts
+ * - Managing exercise sets and completion status
+ * - Handling workout timing and duration tracking
+ * - Publishing workout data to Nostr when requested
+ * - Tracking favorite templates
+ * 
+ * The store uses a timestamp-based approach for duration tracking,
+ * capturing start and end times to accurately represent workout duration
+ * even when accounting for time spent in completion flow.
+ */
+
 
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
@@ -810,26 +811,23 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
 }));
 
 // Helper functions
+
 async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> {
   try {
     // Try to get it from favorites in the database
     const db = openDatabaseSync('powr.db');
+    const favoritesService = new FavoritesService(db);
+    const templateService = new TemplateService(db);
     
-    const result = await db.getFirstAsync<{
-      content: string
-    }>(
-      `SELECT content FROM favorites WHERE content_type = 'template' AND content_id = ?`,
-      [templateId]
-    );
-    
-    if (result && result.content) {
-      return JSON.parse(result.content);
+    // First try to get from favorites
+    const favoriteResult = await favoritesService.getContentById<WorkoutTemplate>('template', templateId);
+    if (favoriteResult) {
+      return favoriteResult;
     }
     
-    // If not found in favorites, could implement fetching from template database
-    // Example: return await db.getTemplate(templateId);
-    console.log('Template not found in favorites:', templateId);
-    return null;
+    // If not in favorites, try the templates table
+    const templateResult = await templateService.getTemplate(templateId);
+    return templateResult;
   } catch (error) {
     console.error('Error fetching template:', error);
     return null;
@@ -838,11 +836,28 @@ async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> 
 
 async function saveWorkout(workout: Workout): Promise<void> {
   try {
-    // Make sure we're capturing the duration properly in what's saved
     console.log('Saving workout with endTime:', workout.endTime);
-    // TODO: Implement actual save logic using our database service
+    
+    // Use the workout service to save the workout
+    const db = openDatabaseSync('powr.db');
+    const workoutService = new WorkoutService(db);
+    
+    await workoutService.saveWorkout(workout);
   } catch (error) {
     console.error('Error saving workout:', error);
+  }
+}
+
+async function saveSummary(summary: WorkoutSummary) {
+  try {
+    // Use the workout service to save summary metrics
+    const db = openDatabaseSync('powr.db');
+    const workoutService = new WorkoutService(db);
+    
+    await workoutService.saveWorkoutSummary(summary.id, summary);
+    console.log('Workout summary saved successfully:', summary.id);
+  } catch (error) {
+    console.error('Error saving workout summary:', error);
   }
 }
 
@@ -889,11 +904,6 @@ function calculateAverageRpe(workout: Workout): number {
 
   const totalRpe = rpeSets.reduce((total, set) => total + (set.rpe || 0), 0);
   return totalRpe / rpeSets.length;
-}
-
-async function saveSummary(summary: WorkoutSummary) {
-  // TODO: Implement summary saving
-  console.log('Saving summary:', summary);
 }
 
 // Create auto-generated selectors

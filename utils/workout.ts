@@ -23,7 +23,7 @@ export function convertTemplateToWorkout(template: WorkoutTemplate) {
       },
       created_at: now,
       // Create the specified number of sets from template
-      sets: Array.from({ length: templateExercise.targetSets }, (): WorkoutSet => ({
+      sets: Array.from({ length: templateExercise.targetSets || 0 }, (): WorkoutSet => ({
         id: generateId('local'),
         weight: 0, // Start empty, but could use last workout weight
         reps: templateExercise.targetReps, // Use target reps from template

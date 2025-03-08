@@ -31,9 +31,11 @@ export interface TemplateExerciseDisplay {
 }
 
 export interface TemplateExerciseConfig {
+  id?: string; // Add this line
   exercise: BaseExercise;
-  targetSets: number;
-  targetReps: number;
+  targetSets?: number;
+  targetReps?: number;
+  targetWeight?: number;
   weight?: number;
   rpe?: number;
   setType?: SetType;
@@ -122,6 +124,8 @@ export interface WorkoutTemplate extends TemplateBase, SyncableContent {
   exercises: TemplateExerciseConfig[];
   isPublic: boolean;
   version: number;
+  lastUpdated?: number; // Add this line
+  parentId?: string; // Add this line
   
   // Template configuration
   format?: {
@@ -184,8 +188,8 @@ export function toTemplateDisplay(template: WorkoutTemplate): Template {
     description: template.description,
     exercises: template.exercises.map(ex => ({
       title: ex.exercise.title,
-      targetSets: ex.targetSets,
-      targetReps: ex.targetReps,
+      targetSets: ex.targetSets || 0, // Add default value
+      targetReps: ex.targetReps || 0, // Add default value
       notes: ex.notes
     })),
     tags: template.tags,
@@ -261,8 +265,8 @@ export function createNostrTemplateEvent(template: WorkoutTemplate) {
       ...template.exercises.map(ex => [
         'exercise',
         `33401:${ex.exercise.id}`,
-        ex.targetSets.toString(),
-        ex.targetReps.toString(),
+        (ex.targetSets || 0).toString(),
+        (ex.targetReps || 0).toString(),
         ex.setType || 'normal'
       ]),
       ...template.tags.map(tag => ['t', tag])

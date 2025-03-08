@@ -3,6 +3,7 @@ import { SQLiteDatabase } from 'expo-sqlite';
 import { Workout } from '@/types/workout';
 import { format } from 'date-fns';
 import { DbService } from '../db-service';
+import { WorkoutExercise } from '@/types/exercise'; // Add this import
 
 export class WorkoutHistoryService {
   private db: DbService;
@@ -21,21 +22,47 @@ export class WorkoutHistoryService {
         title: string;
         type: string;
         start_time: number;
-        end_time: number;
+        end_time: number | null;
         is_completed: number;
         created_at: number;
-        last_updated: number;
+        updated_at: number;
         template_id: string | null;
         total_volume: number | null;
         total_reps: number | null;
         source: string;
+        notes: string | null;
       }>(
         `SELECT * FROM workouts 
          ORDER BY start_time DESC`
       );
       
       // Transform database records to Workout objects
-      return workouts.map(row => this.mapRowToWorkout(row));
+      const result: Workout[] = [];
+      
+      for (const workout of workouts) {
+        const exercises = await this.getWorkoutExercises(workout.id);
+        
+        result.push({
+          id: workout.id,
+          title: workout.title,
+          type: workout.type as any,
+          startTime: workout.start_time,
+          endTime: workout.end_time || undefined,
+          isCompleted: Boolean(workout.is_completed),
+          created_at: workout.created_at,
+          lastUpdated: workout.updated_at,
+          templateId: workout.template_id || undefined,
+          totalVolume: workout.total_volume || undefined,
+          totalReps: workout.total_reps || undefined,
+          notes: workout.notes || undefined,
+          exercises,
+          availability: {
+            source: [workout.source as any]
+          }
+        });
+      }
+      
+      return result;
     } catch (error) {
       console.error('Error getting workouts:', error);
       throw error;
@@ -55,14 +82,15 @@ export class WorkoutHistoryService {
         title: string;
         type: string;
         start_time: number;
-        end_time: number;
+        end_time: number | null;
         is_completed: number;
         created_at: number;
-        last_updated: number;
+        updated_at: number;
         template_id: string | null;
         total_volume: number | null;
         total_reps: number | null;
         source: string;
+        notes: string | null;
       }>(
         `SELECT * FROM workouts 
          WHERE start_time >= ? AND start_time <= ?
@@ -70,7 +98,32 @@ export class WorkoutHistoryService {
         [startOfDay, endOfDay]
       );
       
-      return workouts.map(row => this.mapRowToWorkout(row));
+      const result: Workout[] = [];
+      
+      for (const workout of workouts) {
+        const exercises = await this.getWorkoutExercises(workout.id);
+        
+        result.push({
+          id: workout.id,
+          title: workout.title,
+          type: workout.type as any,
+          startTime: workout.start_time,
+          endTime: workout.end_time || undefined,
+          isCompleted: Boolean(workout.is_completed),
+          created_at: workout.created_at,
+          lastUpdated: workout.updated_at,
+          templateId: workout.template_id || undefined,
+          totalVolume: workout.total_volume || undefined,
+          totalReps: workout.total_reps || undefined,
+          notes: workout.notes || undefined,
+          exercises,
+          availability: {
+            source: [workout.source as any]
+          }
+        });
+      }
+      
+      return result;
     } catch (error) {
       console.error('Error getting workouts by date:', error);
       throw error;
@@ -88,7 +141,8 @@ export class WorkoutHistoryService {
       const result = await this.db.getAllAsync<{
         start_time: number;
       }>(
-        `SELECT DISTINCT start_time FROM workouts 
+        `SELECT DISTINCT date(start_time/1000, 'unixepoch', 'localtime') * 1000 as start_time
+         FROM workouts 
          WHERE start_time >= ? AND start_time <= ?`,
         [startOfMonth, endOfMonth]
       );
@@ -110,14 +164,15 @@ export class WorkoutHistoryService {
         title: string;
         type: string;
         start_time: number;
-        end_time: number;
+        end_time: number | null;
         is_completed: number;
         created_at: number;
-        last_updated: number;
+        updated_at: number;
         template_id: string | null;
         total_volume: number | null;
         total_reps: number | null;
         source: string;
+        notes: string | null;
       }>(
         `SELECT * FROM workouts WHERE id = ?`,
         [workoutId]
@@ -126,18 +181,26 @@ export class WorkoutHistoryService {
       if (!workout) return null;
       
       // Get exercises for this workout
-      // This is just a skeleton - you'll need to implement the actual query
-      // based on your database schema
-      const exercises = await this.db.getAllAsync(
-        `SELECT * FROM workout_exercises WHERE workout_id = ?`,
-        [workoutId]
-      );
+      const exercises = await this.getWorkoutExercises(workoutId);
       
-      const workoutObj = this.mapRowToWorkout(workout);
-      // You would set the exercises property here based on your schema
-      // workoutObj.exercises = exercises.map(...);
-      
-      return workoutObj;
+      return {
+        id: workout.id,
+        title: workout.title,
+        type: workout.type as any,
+        startTime: workout.start_time,
+        endTime: workout.end_time || undefined,
+        isCompleted: Boolean(workout.is_completed),
+        created_at: workout.created_at,
+        lastUpdated: workout.updated_at,
+        templateId: workout.template_id || undefined,
+        totalVolume: workout.total_volume || undefined,
+        totalReps: workout.total_reps || undefined,
+        notes: workout.notes || undefined,
+        exercises,
+        availability: {
+          source: [workout.source as any]
+        }
+      };
     } catch (error) {
       console.error('Error getting workout details:', error);
       throw error;
@@ -160,39 +223,96 @@ export class WorkoutHistoryService {
     }
   }
   
-  /**
-   * Helper method to map a database row to a Workout object
-   */
-  private mapRowToWorkout(row: {
-    id: string;
-    title: string;
-    type: string;
-    start_time: number;
-    end_time: number;
-    is_completed: number;
-    created_at: number;
-    last_updated?: number;
-    template_id?: string | null;
-    total_volume?: number | null;
-    total_reps?: number | null;
-    source: string;
-  }): Workout {
-    return {
-      id: row.id,
-      title: row.title,
-      type: row.type as any, // Cast to TemplateType
-      startTime: row.start_time,
-      endTime: row.end_time,
-      isCompleted: row.is_completed === 1,
-      created_at: row.created_at,
-      lastUpdated: row.last_updated,
-      templateId: row.template_id || undefined,
-      totalVolume: row.total_volume || undefined,
-      totalReps: row.total_reps || undefined,
-      availability: {
-        source: [row.source as any] // Cast to StorageSource
-      },
-      exercises: [] // Exercises would be loaded separately
-    };
-  }
+  // Helper method to load workout exercises and sets
+  private async getWorkoutExercises(workoutId: string): Promise<WorkoutExercise[]> {
+		try {
+			const exercises = await this.db.getAllAsync<{
+				id: string;
+				exercise_id: string;
+				display_order: number;
+				notes: string | null;
+				created_at: number;
+				updated_at: number;
+			}>(
+				`SELECT we.* FROM workout_exercises we
+				 WHERE we.workout_id = ?
+				 ORDER BY we.display_order`,
+				[workoutId]
+			);
+			
+			const result: WorkoutExercise[] = [];
+			
+			for (const exercise of exercises) {
+				// Get the base exercise info
+				const baseExercise = await this.db.getFirstAsync<{
+					title: string;
+					type: string;
+					category: string;
+					equipment: string | null;
+				}>(
+					`SELECT title, type, category, equipment FROM exercises WHERE id = ?`,
+					[exercise.exercise_id]
+				);
+				
+				// Get the tags for this exercise
+				const tags = await this.db.getAllAsync<{ tag: string }>(
+					`SELECT tag FROM exercise_tags WHERE exercise_id = ?`,
+					[exercise.exercise_id]
+				);
+				
+				// Get the sets for this exercise
+				const sets = await this.db.getAllAsync<{
+					id: string;
+					type: string;
+					weight: number | null;
+					reps: number | null;
+					rpe: number | null;
+					duration: number | null;
+					is_completed: number;
+					completed_at: number | null;
+					created_at: number;
+					updated_at: number;
+				}>(
+					`SELECT * FROM workout_sets 
+					 WHERE workout_exercise_id = ? 
+					 ORDER BY id`,
+					[exercise.id]
+				);
+				
+				// Map sets to the correct format
+				const mappedSets = sets.map(set => ({
+					id: set.id,
+					type: set.type as any,
+					weight: set.weight || undefined,
+					reps: set.reps || undefined,
+					rpe: set.rpe || undefined,
+					duration: set.duration || undefined,
+					isCompleted: Boolean(set.is_completed),
+					completedAt: set.completed_at || undefined,
+					lastUpdated: set.updated_at
+				}));
+				
+				result.push({
+					id: exercise.id,
+					exerciseId: exercise.exercise_id,
+					title: baseExercise?.title || 'Unknown Exercise',
+					type: baseExercise?.type as any || 'strength',
+					category: baseExercise?.category as any || 'Other',
+					equipment: baseExercise?.equipment as any,
+					notes: exercise.notes || undefined,
+					tags: tags.map(t => t.tag), // Add the tags array here
+					sets: mappedSets,
+					created_at: exercise.created_at,
+					lastUpdated: exercise.updated_at,
+					isCompleted: mappedSets.every(set => set.isCompleted),
+					availability: { source: ['local'] }
+				});
+			}
+			
+			return result;
+		} catch (error) {
+			console.error('Error getting workout exercises:', error);
+			return [];
+		}
+	}
 }

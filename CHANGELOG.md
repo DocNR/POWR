@@ -5,6 +5,55 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 8, 2025
+
+## Added
+- Database schema upgrade to version 5
+  - Added workouts, workout_exercises, and workout_sets tables
+  - Added templates and template_exercises tables
+  - Added publication_queue table for offline-first functionality
+  - Added app_status table for connectivity tracking
+- New database services
+  - WorkoutService for managing workout data persistence
+  - Enhanced TemplateService for template management
+  - NostrWorkoutService for Nostr event conversion
+  - Updated PublicationQueueService for offline publishing
+- React hooks for database access
+  - useWorkouts hook for workout operations
+  - useTemplates hook for template operations
+- Improved workout completion flow
+  - Three-tier storage approach (Local Only, Publish Complete, Publish Limited)
+  - Template modification options (keep original, update, save as new)
+  - Enhanced social sharing capabilities
+  - Detailed workout summary with statistics
+- Enhanced database debugging tools
+  - Added proper error handling and logging
+  - Improved transaction management
+  - Added connectivity status tracking
+
+## Fixed
+- Missing workout and template table errors
+- Incomplete data storage issues
+- Template management synchronization
+- Nostr event conversion between app models and Nostr protocol
+- Workout persistence across app sessions
+- Database transaction handling in workout operations
+- Template reference handling in workout records
+
+## Improved
+- Workout store persistence layer
+  - Enhanced integration with database services
+  - Better error handling for database operations
+  - Improved Nostr connectivity detection
+- Template management workflow
+  - Proper versioning and attribution
+  - Enhanced modification tracking
+  - Better user control over template sharing
+- Overall data persistence architecture
+  - Consistent service-based approach
+  - Improved type safety
+  - Enhanced error propagation
+  
 # Changelog - March 6, 2025
 
 ## Added
