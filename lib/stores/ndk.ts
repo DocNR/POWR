@@ -10,6 +10,7 @@ import NDK, {
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import * as SecureStore from 'expo-secure-store';
 import { RelayService } from '@/lib/db/services/RelayService';
+import { openDatabaseSync } from 'expo-sqlite';
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';

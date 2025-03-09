@@ -40,10 +40,22 @@ export interface RelayWithStatus extends RelayConfig {
 export class RelayService {
   private db: SQLiteDatabase;
   private ndk: NDKCommon | null = null;
+  private debug: boolean = false; 
 
   constructor(db: SQLiteDatabase) {
     this.db = db;
   }
+
+  enableDebug() {
+      this.debug = true;
+      console.log('[RelayService] Debug mode enabled');
+    }
+    
+    private logDebug(message: string, ...args: any[]) {
+      if (this.debug) {
+        console.log(`[RelayService Debug] ${message}`, ...args);
+      }
+    }
 
   /**
    * Set NDK instance for relay operations
@@ -84,24 +96,21 @@ export class RelayService {
       
       if (!this.ndk) {
         console.warn('[RelayService] NDK not initialized, returning relays with disconnected status');
-        // Return relays with disconnected status if NDK not initialized
         return relays.map(relay => ({
           ...relay,
           status: 'disconnected'
         }));
       }
       
+      // Log the relays in the NDK pool for debugging
+      console.log('[RelayService] Checking status for relays. Current NDK pool:');
+      this.ndk.pool.relays.forEach((ndkRelay, url) => {
+        console.log(`  - ${url}: status=${ndkRelay.status}`);
+      });
+      
       return relays.map(relay => {
-        let status: 'connected' | 'connecting' | 'disconnected' | 'error' = 'disconnected';
-        
-        try {
-          const ndkRelay = this.ndk?.pool.getRelay(relay.url);
-          if (ndkRelay) {
-            status = this.getRelayStatus(ndkRelay);
-          }
-        } catch (error) {
-          console.error(`[RelayService] Error getting status for relay ${relay.url}:`, error);
-        }
+        const status = this.getRelayStatus(relay);
+        console.log(`[RelayService] Status for relay ${relay.url}: ${status}`);
         
         return {
           ...relay,
@@ -114,13 +123,18 @@ export class RelayService {
     }
   }
 
+  private normalizeRelayUrl(url: string): string {
+    // Remove trailing slash if present
+    return url.replace(/\/$/, '');
+  }
+
   /**
    * Add a new relay to the database
    */
   async addRelay(url: string, read = true, write = true, priority?: number): Promise<boolean> {
     try {
       // Normalize the URL
-      url = url.trim();
+      url = this.normalizeRelayUrl(url.trim());
       
       // Validate URL format
       if (!url.startsWith('wss://')) {
@@ -408,6 +422,24 @@ export class RelayService {
       
       console.log(`[RelayService] Found relay list in event created at ${new Date(latestCreatedAt * 1000).toISOString()}`);
       
+      // Safely log event details without circular references
+      try {
+        console.log('[RelayService] Event ID:', latestEvent.id);
+        console.log('[RelayService] Event Kind:', latestEvent.kind);
+        console.log('[RelayService] Event Created At:', latestEvent.created_at);
+        console.log('[RelayService] Event Tags Count:', latestEvent.tags ? latestEvent.tags.length : 0);
+        
+        // Safely log the tags
+        if (latestEvent.tags && Array.isArray(latestEvent.tags)) {
+          console.log('[RelayService] Tags:');
+          latestEvent.tags.forEach((tag: any[], index: number) => {
+            console.log(`  Tag ${index}:`, JSON.stringify(tag));
+          });
+        }
+      } catch (error) {
+        console.log('[RelayService] Error logging event details:', error);
+      }
+      
       // Get highest current priority
       const highestPriority = await this.db.getFirstAsync<{ priority: number }>(
         'SELECT MAX(priority) as priority FROM relays'
@@ -417,50 +449,293 @@ export class RelayService {
       let importCount = 0;
       let updatedCount = 0;
       
+      // Check if any relay tags exist
+      let relayTagsFound = false;
+      
       // Process each relay in the event
-      for (const tag of latestEvent.tags) {
-        if (tag[0] === 'r') {
-          const url = tag[1];
-          
-          // Check for read/write specification in the tag
-          let read = true;
-          let write = true;
-          
-          if (tag.length > 2) {
-            read = tag[2] !== 'write'; // If "write", then not read
-            write = tag[2] !== 'read'; // If "read", then not write
-          }
-          
+      if (latestEvent.tags && Array.isArray(latestEvent.tags)) {
+        for (const tag of latestEvent.tags) {
           try {
-            // Check if the relay already exists
-            const existingRelay = await this.db.getFirstAsync<{ url: string }>(
-              'SELECT url FROM relays WHERE url = ?',
-              [url]
-            );
+            console.log(`[RelayService] Processing tag: ${JSON.stringify(tag)}`);
             
-            const now = Date.now();
-            
-            if (existingRelay) {
-              // Update existing relay
-              await this.db.runAsync(
-                'UPDATE relays SET read = ?, write = ?, updated_at = ? WHERE url = ?',
-                [read ? 1 : 0, write ? 1 : 0, now, url]
-              );
-              updatedCount++;
-            } else {
-              // Add new relay with incremented priority
-              maxPriority++;
-              await this.db.runAsync(
-                'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-                [url, read ? 1 : 0, write ? 1 : 0, maxPriority, now, now]
-              );
-              importCount++;
+            // More flexible tag detection - handle 'r', 'R', or 'relay' tag types
+            if ((tag[0] === 'r' || tag[0] === 'R' || tag[0] === 'relay') && tag.length > 1 && tag[1]) {
+              relayTagsFound = true;
+              console.log(`[RelayService] Found relay tag: ${tag[1]}`);
+              
+              const url = tag[1];
+              
+              // Ensure URL is properly formatted
+              if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
+                console.log(`[RelayService] Skipping invalid relay URL: ${url}`);
+                continue;
+              }
+              
+              // Check for read/write specification in the tag
+              let read = true;
+              let write = true;
+              
+              if (tag.length > 2) {
+                // Handle various common formatting patterns
+                const readWriteSpec = tag[2]?.toLowerCase();
+                if (readWriteSpec === 'write') {
+                  read = false;
+                  write = true;
+                  console.log(`[RelayService] Relay ${url} configured as write-only`);
+                } else if (readWriteSpec === 'read') {
+                  read = true;
+                  write = false;
+                  console.log(`[RelayService] Relay ${url} configured as read-only`);
+                } else {
+                  console.log(`[RelayService] Unrecognized read/write spec: ${readWriteSpec}, using default (read+write)`);
+                }
+              }
+              
+              try {
+                // Check if the relay already exists
+                const existingRelay = await this.db.getFirstAsync<{ url: string }>(
+                  'SELECT url FROM relays WHERE url = ?',
+                  [url]
+                );
+                
+                const now = Date.now();
+                
+                if (existingRelay) {
+                  // Update existing relay
+                  await this.db.runAsync(
+                    'UPDATE relays SET read = ?, write = ?, updated_at = ? WHERE url = ?',
+                    [read ? 1 : 0, write ? 1 : 0, now, url]
+                  );
+                  updatedCount++;
+                  console.log(`[RelayService] Updated existing relay: ${url} (read=${read}, write=${write})`);
+                } else {
+                  // Add new relay with incremented priority
+                  maxPriority++;
+                  await this.db.runAsync(
+                    'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                    [url, read ? 1 : 0, write ? 1 : 0, maxPriority, now, now]
+                  );
+                  importCount++;
+                  console.log(`[RelayService] Added new relay: ${url} (read=${read}, write=${write}, priority=${maxPriority})`);
+                }
+              } catch (innerError) {
+                console.error(`[RelayService] Error importing relay ${url}:`, innerError);
+                // Continue with other relays
+              }
             }
-          } catch (innerError) {
-            console.error(`[RelayService] Error importing relay ${url}:`, innerError);
-            // Continue with other relays
+          } catch (tagError) {
+            console.log('[RelayService] Error processing tag:', tagError);
           }
         }
+      }
+      
+      // Check for relays in content (some clients store them there)
+      if (!relayTagsFound) {
+        console.log('[RelayService] No relay tags found in event tags, checking content...');
+        
+        try {
+          // Only try to parse the content if it's a string
+          if (typeof latestEvent.content === 'string') {
+            const contentObj = JSON.parse(latestEvent.content);
+            
+            // Only log specific properties to avoid circular references
+            console.log('[RelayService] Content has relays property:', contentObj.hasOwnProperty('relays'));
+            
+            // Some clients store relays in content as an object
+            if (contentObj.relays && typeof contentObj.relays === 'object') {
+              console.log('[RelayService] Found relay URLs in content:', Object.keys(contentObj.relays));
+              
+              // Process relays from content object
+              for (const [url, permissions] of Object.entries(contentObj.relays)) {
+                try {
+                  if (typeof url === 'string' && (url.startsWith('wss://') || url.startsWith('ws://'))) {
+                    relayTagsFound = true;
+                    
+                    let read = true;
+                    let write = true;
+                    
+                    // Handle different formats of permissions
+                    if (typeof permissions === 'object' && permissions !== null) {
+                      // Format: { "wss://relay.example.com": { "read": true, "write": false } }
+                      if ('read' in permissions) read = Boolean((permissions as any).read);
+                      if ('write' in permissions) write = Boolean((permissions as any).write);
+                    } else if (typeof permissions === 'string') {
+                      // Format: { "wss://relay.example.com": "read" }
+                      read = (permissions as string).includes('read');
+                      write = (permissions as string).includes('write');
+                    }
+                    
+                    console.log(`[RelayService] Found relay in content: ${url} (read=${read}, write=${write})`);
+                    
+                    // Then add or update the relay just like above...
+                    try {
+                      const existingRelay = await this.db.getFirstAsync<{ url: string }>(
+                        'SELECT url FROM relays WHERE url = ?',
+                        [url]
+                      );
+                      
+                      const now = Date.now();
+                      
+                      if (existingRelay) {
+                        await this.db.runAsync(
+                          'UPDATE relays SET read = ?, write = ?, updated_at = ? WHERE url = ?',
+                          [read ? 1 : 0, write ? 1 : 0, now, url]
+                        );
+                        updatedCount++;
+                        console.log(`[RelayService] Updated existing relay from content: ${url} (read=${read}, write=${write})`);
+                      } else {
+                        maxPriority++;
+                        await this.db.runAsync(
+                          'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                          [url, read ? 1 : 0, write ? 1 : 0, maxPriority, now, now]
+                        );
+                        importCount++;
+                        console.log(`[RelayService] Added new relay from content: ${url} (read=${read}, write=${write}, priority=${maxPriority})`);
+                      }
+                    } catch (innerError) {
+                      console.error(`[RelayService] Error importing relay ${url} from content:`, innerError);
+                    }
+                  }
+                } catch (relayError) {
+                  console.log('[RelayService] Error processing relay from content:', relayError);
+                }
+              }
+            }
+          } else {
+            console.log('[RelayService] Content is not a string:', typeof latestEvent.content);
+          }
+        } catch (e) {
+          // Convert the unknown error to a string safely
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.log('[RelayService] Content is not JSON or does not contain relay information:', errorMessage);
+        }
+      }
+      
+      // Check the raw event string that might be available
+      if (!relayTagsFound && latestEvent.rawEvent && typeof latestEvent.rawEvent === 'string') {
+        console.log('[RelayService] Checking raw event string for relay information');
+        try {
+          const rawEventObj = JSON.parse(latestEvent.rawEvent);
+          if (rawEventObj.tags && Array.isArray(rawEventObj.tags)) {
+            console.log(`[RelayService] Raw event has ${rawEventObj.tags.length} tags`);
+            
+            for (const tag of rawEventObj.tags) {
+              try {
+                if ((tag[0] === 'r' || tag[0] === 'R') && tag.length > 1 && tag[1]) {
+                  relayTagsFound = true;
+                  const url = tag[1];
+                  
+                  console.log(`[RelayService] Found relay in raw event: ${url}`);
+                  
+                  // Process like above...
+                  if (url.startsWith('wss://') || url.startsWith('ws://')) {
+                    let read = true;
+                    let write = true;
+                    
+                    if (tag.length > 2) {
+                      const readWriteSpec = tag[2]?.toLowerCase();
+                      if (readWriteSpec === 'write') {
+                        read = false;
+                        write = true;
+                      } else if (readWriteSpec === 'read') {
+                        read = true;
+                        write = false;
+                      }
+                    }
+                    
+                    try {
+                      const existingRelay = await this.db.getFirstAsync<{ url: string }>(
+                        'SELECT url FROM relays WHERE url = ?',
+                        [url]
+                      );
+                      
+                      const now = Date.now();
+                      
+                      if (existingRelay) {
+                        await this.db.runAsync(
+                          'UPDATE relays SET read = ?, write = ?, updated_at = ? WHERE url = ?',
+                          [read ? 1 : 0, write ? 1 : 0, now, url]
+                        );
+                        updatedCount++;
+                      } else {
+                        maxPriority++;
+                        await this.db.runAsync(
+                          'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                          [url, read ? 1 : 0, write ? 1 : 0, maxPriority, now, now]
+                        );
+                        importCount++;
+                      }
+                    } catch (innerError) {
+                      console.error(`[RelayService] Error importing relay ${url} from raw event:`, innerError);
+                    }
+                  }
+                }
+              } catch (tagError) {
+                console.log('[RelayService] Error processing tag from raw event:', tagError);
+              }
+            }
+          }
+        } catch (rawError) {
+          // Convert the unknown error to a string safely
+          const errorMessage = rawError instanceof Error ? rawError.message : String(rawError);
+          console.log('[RelayService] Error parsing raw event:', errorMessage);
+        }
+      }
+      
+      // Try to access user cached relays
+      if (!relayTagsFound && ndk && ndk.pool && ndk.pool.relays) {
+        console.log('[RelayService] Checking for relays in the user NDK pool');
+        
+        try {
+          // Try to access the user's connected relays
+          const userRelays = Array.from(ndk.pool.relays.keys());
+          if (userRelays.length > 0) {
+            console.log(`[RelayService] Found ${userRelays.length} relays in user's NDK pool:`, userRelays);
+            
+            // Import these relays
+            for (const url of userRelays) {
+              if (typeof url === 'string' && (url.startsWith('wss://') || url.startsWith('ws://'))) {
+                try {
+                  const existingRelay = await this.db.getFirstAsync<{ url: string }>(
+                    'SELECT url FROM relays WHERE url = ?',
+                    [url]
+                  );
+                  
+                  const now = Date.now();
+                  
+                  if (existingRelay) {
+                    // We'll only update the timestamp, not the permissions
+                    await this.db.runAsync(
+                      'UPDATE relays SET updated_at = ? WHERE url = ?',
+                      [now, url]
+                    );
+                    updatedCount++;
+                    console.log(`[RelayService] Updated existing relay from NDK pool: ${url}`);
+                  } else {
+                    maxPriority++;
+                    await this.db.runAsync(
+                      'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                      [url, 1, 1, maxPriority, now, now]
+                    );
+                    importCount++;
+                    console.log(`[RelayService] Added new relay from NDK pool: ${url}`);
+                  }
+                } catch (innerError) {
+                  console.error(`[RelayService] Error importing relay ${url} from NDK pool:`, innerError);
+                }
+              }
+            }
+            
+            // Set flag to true because we found relays
+            relayTagsFound = userRelays.length > 0;
+          }
+        } catch (poolError) {
+          console.log('[RelayService] Error accessing NDK pool relays:', poolError);
+        }
+      }
+      
+      if (!relayTagsFound) {
+        console.log('[RelayService] No relay information found in any format');
       }
       
       console.log(`[RelayService] Imported ${importCount} new relays, updated ${updatedCount} existing relays`);
@@ -483,19 +758,25 @@ export class RelayService {
       
       // Add default relays
       const now = Date.now();
+      let addedCount = 0;
       
       for (let i = 0; i < DEFAULT_RELAYS.length; i++) {
         const url = DEFAULT_RELAYS[i];
         const priority = DEFAULT_RELAYS.length - i; // Higher priority for first relays
         
-        await this.db.runAsync(
-          'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [url, 1, 1, priority, now, now]
-        );
+        try {
+          await this.db.runAsync(
+            'INSERT INTO relays (url, read, write, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [url, 1, 1, priority, now, now]
+          );
+          addedCount++;
+        } catch (innerError) {
+          console.error(`[RelayService] Error adding default relay ${url}:`, innerError);
+        }
       }
       
-      console.log(`[RelayService] Successfully reset to ${DEFAULT_RELAYS.length} default relays`);
-      return true;
+      console.log(`[RelayService] Successfully reset to ${addedCount} default relays`);
+      return addedCount > 0;
     } catch (error) {
       console.error('[RelayService] Error resetting relays to defaults:', error);
       throw error;
@@ -603,22 +884,42 @@ export class RelayService {
    * Helper to convert NDK relay status to our status format
    */
   private getRelayStatus(relay: any): 'connected' | 'connecting' | 'disconnected' | 'error' {
-    try {
-      if (relay.status === NDK_RELAY_STATUS.CONNECTED) {
+  try {
+    // Check if the relay has a trailing slash in the URL
+    const urlWithoutSlash = relay.url ? relay.url.replace(/\/$/, '') : '';
+    const urlWithSlash = urlWithoutSlash + '/';
+    
+    // Try to get the relay from NDK pool - check both with and without trailing slash
+    const ndkRelay = this.ndk?.pool.getRelay(urlWithoutSlash) || 
+                     this.ndk?.pool.getRelay(urlWithSlash);
+    
+    if (ndkRelay) {
+      console.log(`[RelayService] Detailed relay status for ${relay.url}: status=${ndkRelay.status}, connected=${!!ndkRelay.connected}`);
+      
+      // The most reliable way to check connection status is to check the 'connected' property
+      if (ndkRelay.connected) {
         return 'connected';
-      } else if (
-        relay.status === NDK_RELAY_STATUS.CONNECTING || 
-        relay.status === NDK_RELAY_STATUS.RECONNECTING
-      ) {
+      }
+      
+      // NDK relay status: 0=connecting, 1=connected, 2=disconnecting, 3=disconnected, 4=reconnecting, 5=auth_required
+      if (ndkRelay.status === 1) {
+        return 'connected';
+      } else if (ndkRelay.status === 0 || ndkRelay.status === 4) { // CONNECTING or RECONNECTING
         return 'connecting';
+      } else if (ndkRelay.status === 5) { // AUTH_REQUIRED - This is actually a connected state!
+        return 'connected';  // This is the key fix
       } else {
         return 'disconnected';
       }
-    } catch (error) {
-      console.error(`[RelayService] Error getting relay status:`, error);
-      return 'disconnected';
     }
+    
+    // If we can't find the relay in the NDK pool
+    return 'disconnected';
+  } catch (error) {
+    console.error(`[RelayService] Error getting relay status:`, error);
+    return 'disconnected';
   }
+}
 
   /**
    * Check and debug relays table and content
@@ -674,9 +975,10 @@ export class RelayService {
       );
       
       // If we have relays and they're not just the defaults, skip import
-      if (existingCount?.count > DEFAULT_RELAYS.length) {
-        console.log(`[RelayService] Using existing relay configuration (${existingCount?.count} relays)`);
-        return;
+      if (existingCount && existingCount.count !== undefined && existingCount.count > 0) {
+        console.log(`[RelayService] Found ${existingCount.count} existing relays, checking if we need to import more`);
+      } else {
+        console.log('[RelayService] No existing relays found, will attempt to import');
       }
       
       console.log('[RelayService] Attempting to import user relay preferences');
@@ -689,10 +991,19 @@ export class RelayService {
         // Apply the imported configuration immediately
         await this.applyRelayConfig(ndk);
       } else {
-        console.log('[RelayService] No relay preferences found, using defaults');
+        console.log('[RelayService] No relay preferences found, resetting to defaults');
+        await this.resetToDefaults();
+        await this.applyRelayConfig(ndk);
       }
     } catch (error) {
       console.error('[RelayService] Error importing user relays:', error);
+      // On error, reset to defaults
+      try {
+        console.log('[RelayService] Error occurred, resetting to defaults');
+        await this.resetToDefaults();
+        await this.applyRelayConfig(ndk);
+      } catch (resetError) {
+        console.error('[RelayService] Error resetting to defaults:', resetError);
+      }
     }
-  }
-}
+  }}

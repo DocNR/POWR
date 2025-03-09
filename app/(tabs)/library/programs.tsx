@@ -1,6 +1,6 @@
 // app/(tabs)/library/programs.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, TextInput, ActivityIndicator, Platform, TouchableOpacity } from 'react-native';
+import { View, ScrollView, TextInput, ActivityIndicator, Platform, Alert, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { FilterSheet, type FilterOptions, type SourceType } from '@/components/l
 import { Separator } from '@/components/ui/separator';
 import { NostrEventKind } from '@/types/nostr';
 import { useNDKStore } from '@/lib/stores/ndk';
+import * as SecureStore from 'expo-secure-store';
 
 // Define relay status
 enum RelayStatus {
@@ -150,34 +151,84 @@ export default function ProgramsScreen() {
 
   const resetDatabase = async () => {
     try {
-      await db.withTransactionAsync(async () => {
-        // Drop all tables
-        const tables = await db.getAllAsync<{ name: string }>(
+      setTestResults(null);
+      
+      // Clear stored keys first
+      try {
+        await SecureStore.deleteItemAsync('nostr_privkey');
+        console.log('[Database Reset] Cleared stored Nostr keys');
+      } catch (keyError) {
+        console.warn('[Database Reset] Error clearing keys:', keyError);
+      }
+      
+      // Define explicit type for tables
+      let tables: { name: string }[] = [];
+      
+      // Try to get existing tables
+      try {
+        tables = await db.getAllAsync<{ name: string }>(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         );
-        
-        for (const { name } of tables) {
-          await db.execAsync(`DROP TABLE IF EXISTS ${name}`);
+        console.log(`[Database Reset] Found ${tables.length} tables to drop`);
+      } catch (tableListError) {
+        console.warn('[Database Reset] Error listing tables:', tableListError);
+        // Initialize with empty array if query fails
+        tables = [];
+      }
+      
+      // Drop tables one by one
+      for (const table of tables) {
+        try {
+          await db.execAsync(`DROP TABLE IF EXISTS "${table.name}";`);
+          console.log(`[Database Reset] Dropped table: ${table.name}`);
+        } catch (dropError) {
+          console.error(`[Database Reset] Error dropping table ${table.name}:`, dropError);
         }
-        
-        // Recreate schema
-        await schema.createTables(db);
-      });
+      }
+      
+      // Use a delay to allow any pending operations to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Create a completely new database instance instead of using the existing one
+      // This will bypass the "Access to closed resource" issue
+      Alert.alert(
+        'Database Tables Dropped',
+        'All database tables have been dropped. The app needs to be restarted to complete the reset process.',
+        [
+          { 
+            text: 'Restart Now', 
+            style: 'destructive',
+            onPress: () => {
+              // In a production app, you would use something like RN's DevSettings.reload()
+              // For Expo, we'll suggest manual restart
+              Alert.alert(
+                'Manual Restart Required',
+                'Please completely close the app and reopen it to finish the database reset.',
+                [{ text: 'OK', style: 'default' }]
+              );
+            }
+          }
+        ]
+      );
       
       setTestResults({
         success: true,
-        message: 'Database reset successfully'
+        message: 'Database tables dropped. Please restart the app to complete the reset.'
       });
       
-      // Refresh database status
-      checkDatabase();
-      inspectDatabase();
     } catch (error) {
-      console.error('Error resetting database:', error);
+      console.error('[Database Reset] Error resetting database:', error);
       setTestResults({
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error during reset'
+        message: error instanceof Error ? error.message : 'Unknown error during database reset'
       });
+      
+      // Still recommend a restart since the database might be in an inconsistent state
+      Alert.alert(
+        'Database Reset Error',
+        'There was an error during database reset. Please restart the app and try again.',
+        [{ text: 'OK', style: 'default' }]
+      );
     }
   };
 

@@ -19,6 +19,8 @@ export async function initializeNDK() {
   // Initialize database and relay service
   const db = openDatabaseSync('powr.db');
   const relayService = new RelayService(db);
+
+  relayService.enableDebug();
   
   // Load relays from database or use defaults
   console.log('[NDK] Loading relay configuration...');
@@ -97,7 +99,6 @@ export async function initializeNDK() {
   });
   
   try {
-    // Connect to relays
     console.log('[NDK] Connecting to relays...');
     await ndk.connect();
     
@@ -110,6 +111,17 @@ export async function initializeNDK() {
       .map(([url]) => url);
     
     console.log(`[NDK] Connected to ${connectedRelays.length}/${relays.length} relays`);
+    
+    // Add more detailed relay status logging
+    console.log('[NDK] Detailed relay status:');
+    relays.forEach(url => {
+      const relay = ndk.pool.getRelay(url);
+      console.log(`  - ${url}: ${relay ? 
+        (relay.status === 1 ? 'connected' : 
+         relay.status === 0 ? 'connecting' : 
+         relay.status === 3 ? 'disconnected' : 
+         `status=${relay.status}`) : 'not found'}`);
+    });
     
     return { 
       ndk, 
