@@ -15,6 +15,7 @@ import { DatabaseProvider } from '@/components/DatabaseProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SettingsDrawerProvider } from '@/lib/contexts/SettingsDrawerContext';
 import SettingsDrawer from '@/components/SettingsDrawer';
+import RelayInitializer from '@/components/RelayInitializer';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { useWorkoutStore } from '@/stores/workoutStore';
 
@@ -72,6 +73,9 @@ export default function RootLayout() {
         <DatabaseProvider>
           <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
             <SettingsDrawerProvider>
+              {/* Add RelayInitializer here - it loads relay data once NDK is available */}
+              <RelayInitializer />
+              
               <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen 

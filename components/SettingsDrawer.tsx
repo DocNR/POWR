@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSettingsDrawer } from '@/lib/contexts/SettingsDrawerContext';
 import { 
   Moon, Sun, LogOut, User, ChevronRight, X, Bell, HelpCircle, 
-  Smartphone, Database, Zap, RefreshCw, AlertTriangle
+  Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe
 } from 'lucide-react-native';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { Text } from '@/components/ui/text';
 import { useColorScheme } from '@/lib/useColorScheme';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
+import RelayManagement from '@/components/RelayManagement';
 import { useNDKCurrentUser, useNDKAuth } from '@/lib/hooks/useNDK';
 import { 
   AlertDialog,
@@ -48,6 +49,7 @@ export default function SettingsDrawer() {
   const theme = useTheme();
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
   const [showSignOutAlert, setShowSignOutAlert] = useState(false);
+  const [showRelayManager, setShowRelayManager] = useState(false);
   
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -121,6 +123,11 @@ export default function SettingsDrawer() {
     closeDrawer();
   };
 
+  // Open relay management
+  const handleRelayManagement = () => {
+    setShowRelayManager(true);
+  };
+
   // Nostr integration handler
   const handleNostrIntegration = () => {
     if (!isAuthenticated) {
@@ -168,6 +175,12 @@ export default function SettingsDrawer() {
       icon: Database,
       label: 'Backup & Restore',
       onPress: () => closeDrawer(),
+    },
+    {
+      id: 'relays',
+      icon: Globe,
+      label: 'Manage Relays',
+      onPress: handleRelayManagement,
     },
     {
       id: 'device',
@@ -324,6 +337,12 @@ export default function SettingsDrawer() {
           onClose={() => setIsLoginSheetOpen(false)} 
         />
       )}
+      
+      {/* Relay Management Sheet */}
+      <RelayManagement 
+        isVisible={showRelayManager} 
+        onClose={() => setShowRelayManager(false)} 
+      />
       
       {/* Sign Out Alert Dialog */}
       <AlertDialog open={showSignOutAlert} onOpenChange={setShowSignOutAlert}>

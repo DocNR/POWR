@@ -5,6 +5,33 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 9, 2025
+
+## Added
+- Relay management system
+  - Added relays table to SQLite schema (version 3)
+  - Created RelayService for database operations
+  - Implemented RelayStore using Zustand for state management
+  - Added compatibility layer for NDK and NDK-mobile
+  - Added relay management UI in settings drawer
+  - Implemented relay connection status tracking
+  - Added support for read/write permissions
+  - Created relay initialization system with defaults
+
+## Improved
+- Enhanced NDK initialization
+  - Added proper relay configuration loading
+  - Improved connection status tracking
+  - Enhanced error handling for relay operations
+- Settings drawer enhancements
+  - Added relay management option
+  - Improved navigation structure
+  - Enhanced user interface
+- NDK compatibility
+  - Created universal interfaces for NDK implementations
+  - Added type safety for complex operations
+  - Improved error handling throughout relay management
+
 # Changelog - March 8, 2025
 
 ## Added

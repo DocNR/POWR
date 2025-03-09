@@ -9,6 +9,7 @@ import NDK, {
 } from '@nostr-dev-kit/ndk';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import * as SecureStore from 'expo-secure-store';
+import { RelayService } from '@/lib/db/services/RelayService';
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
@@ -184,6 +185,22 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       
       // Save the private key hex string securely
       await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, privateKeyHex);
+      
+      // After successful login, import user relay preferences
+      try {
+        console.log('[NDK] Login successful, importing user relay preferences');
+        const db = openDatabaseSync('powr.db');
+        const relayService = new RelayService(db);
+        
+        // Set NDK on the relay service
+        relayService.setNDK(ndk as any);
+        
+        // Import and apply user relay preferences
+        await relayService.importUserRelaysOnLogin(user, ndk);
+      } catch (relayError) {
+        console.error('[NDK] Error importing user relay preferences:', relayError);
+        // Continue with login even if relay import fails
+      }
       
       set({ 
         currentUser: user,
