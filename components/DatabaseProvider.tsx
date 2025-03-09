@@ -1,3 +1,4 @@
+// components/DatabaseProvider.tsx
 import React from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
 import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
@@ -8,6 +9,7 @@ import { PublicationQueueService } from '@/lib/db/services/PublicationQueueServi
 import { FavoritesService } from '@/lib/db/services/FavoritesService';
 import { WorkoutService } from '@/lib/db/services/WorkoutService';
 import { TemplateService } from '@/lib/db/services/TemplateService';
+import { RelayService } from '@/lib/db/services/RelayService';
 import { logDatabaseInfo } from '@/lib/db/debug';
 import { useNDKStore } from '@/lib/stores/ndk';
 
@@ -19,6 +21,7 @@ interface DatabaseServicesContextValue {
   devSeeder: DevSeederService | null;
   publicationQueue: PublicationQueueService | null;
   favoritesService: FavoritesService | null;
+  relayService: RelayService | null;  // Add this line
   db: SQLiteDatabase | null;
 }
 
@@ -29,6 +32,7 @@ const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue
   devSeeder: null,
   publicationQueue: null,
   favoritesService: null,
+  relayService: null,
   db: null,
 });
 
@@ -46,6 +50,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
     devSeeder: null,
     publicationQueue: null,
     favoritesService: null,
+    relayService: null,
     db: null,
   });
   
@@ -54,9 +59,10 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   
   // Effect to set NDK on services when it becomes available
   React.useEffect(() => {
-    if (ndk && services.devSeeder && services.publicationQueue) {
+    if (ndk && services.devSeeder && services.publicationQueue && services.relayService) {
       services.devSeeder.setNDK(ndk);
       services.publicationQueue.setNDK(ndk);
+      services.relayService.setNDK(ndk);
     }
   }, [ndk, services]);
 
@@ -77,6 +83,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         const devSeeder = new DevSeederService(db, exerciseService);
         const publicationQueue = new PublicationQueueService(db);
         const favoritesService = new FavoritesService(db);
+        const relayService = new RelayService(db);
         
         // Initialize the favorites service
         await favoritesService.initialize();
@@ -85,6 +92,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         if (ndk) {
           devSeeder.setNDK(ndk);
           publicationQueue.setNDK(ndk);
+          relayService.setNDK(ndk);
         }
 
         // Set services
@@ -95,6 +103,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
           devSeeder,
           publicationQueue,
           favoritesService,
+          relayService,
           db,
         });
 
@@ -190,6 +199,14 @@ export function useFavoritesService() {
     throw new Error('Favorites service not initialized');
   }
   return context.favoritesService;
+}
+
+export function useRelayService() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.relayService) {
+    throw new Error('Relay service not initialized');
+  }
+  return context.relayService;
 }
 
 export function useDatabase() {

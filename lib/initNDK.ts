@@ -2,41 +2,59 @@
 import 'react-native-get-random-values'; // This must be the first import
 import NDK, { NDKCacheAdapterSqlite, NDKEvent, NDKRelay } from '@nostr-dev-kit/ndk-mobile';
 import * as SecureStore from 'expo-secure-store';
+import { openDatabaseSync } from 'expo-sqlite';
+import { RelayService, DEFAULT_RELAYS } from '@/lib/db/services/RelayService';
 
-// Use the same default relays you have in your current implementation
-const DEFAULT_RELAYS = [
-  'wss://powr.duckdns.org',
-  'wss://relay.damus.io', 
-  'wss://relay.nostr.band',
-  'wss://purplepag.es',
-  'wss://nos.lol'
-];
-
+/**
+ * Initialize NDK with relays from database or defaults
+ */
 export async function initializeNDK() {
   console.log('Initializing NDK with mobile adapter...');
   
   // Create a mobile-specific cache adapter
   const cacheAdapter = new NDKCacheAdapterSqlite('powr', 1000);
   
-  // Initialize NDK with mobile-specific options
+  // Initialize database and relay service
+  const db = openDatabaseSync('powr.db');
+  const relayService = new RelayService(db);
+  
+  // Load relays from database or use defaults
+  console.log('[NDK] Loading relay configuration...');
+  let relays: string[];
+  
+  try {
+    // Try to initialize relays from database (will add defaults if none exist)
+    relays = await relayService.initializeRelays();
+    console.log(`[NDK] Loaded ${relays.length} relays from database`);
+  } catch (error) {
+    console.error('[NDK] Error loading relays from database:', error);
+    console.log('[NDK] Falling back to default relays');
+    relays = DEFAULT_RELAYS;
+  }
+  
+  // Initialize NDK with options
   const ndk = new NDK({
     cacheAdapter,
-    explicitRelayUrls: DEFAULT_RELAYS,
+    explicitRelayUrls: relays,
     enableOutboxModel: true,
+    autoConnectUserRelays: true,
     clientName: 'powr',
   });
   
   // Initialize cache adapter
   await cacheAdapter.initialize();
   
+  // Set up the RelayService with the NDK instance for future use
+  relayService.setNDK(ndk);
+  
   // Setup relay status tracking
   const relayStatus: Record<string, 'connected' | 'connecting' | 'disconnected' | 'error'> = {};
-  DEFAULT_RELAYS.forEach(url => {
+  relays.forEach(url => {
     relayStatus[url] = 'connecting';
   });
   
   // Set up listeners before connecting
-  DEFAULT_RELAYS.forEach(url => {
+  relays.forEach(url => {
     const relay = ndk.pool.getRelay(url);
     if (relay) {
       // Connection success
@@ -65,7 +83,7 @@ export async function initializeNDK() {
       .filter(([_, status]) => status === 'connected')
       .map(([url]) => url);
     
-    console.log(`[NDK] Connected relays: ${connected.length}/${DEFAULT_RELAYS.length}`);
+    console.log(`[NDK] Connected relays: ${connected.length}/${relays.length}`);
     return {
       connectedCount: connected.length,
       connectedRelays: connected
@@ -128,7 +146,9 @@ export async function initializeNDK() {
   }
 }
 
-// Helper function to test publishing to relays
+/**
+ * Helper function to test publishing to relays
+ */
 export async function testRelayPublishing(ndk: NDK): Promise<boolean> {
   try {
     console.log('[NDK] Testing relay publishing...');

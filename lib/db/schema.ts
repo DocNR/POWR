@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 2; // Increment since we're adding new tables
+export const SCHEMA_VERSION = 3; // Incrementing to add the relays table
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -286,6 +286,20 @@ class Schema {
         );
         CREATE INDEX idx_favorites_content_type ON favorites(content_type);
         CREATE INDEX idx_favorites_content_id ON favorites(content_id);
+      `);
+
+      // Create relays table
+      console.log('[Schema] Creating relays table...');
+      await db.execAsync(`
+        CREATE TABLE relays (
+          url TEXT PRIMARY KEY,
+          read INTEGER NOT NULL DEFAULT 1,
+          write INTEGER NOT NULL DEFAULT 1,
+          priority INTEGER,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX idx_relays_priority ON relays(priority DESC);
       `);
 
       // === NEW TABLES === //

@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSettingsDrawer } from '@/lib/contexts/SettingsDrawerContext';
 import { 
   Moon, Sun, LogOut, User, ChevronRight, X, Bell, HelpCircle, 
-  Smartphone, Database, Zap, RefreshCw, AlertTriangle
+  Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe
 } from 'lucide-react-native';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { Text } from '@/components/ui/text';
 import { useColorScheme } from '@/lib/useColorScheme';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
+import RelayManagementSheet from '@/components/sheets/RelayManagementSheet';
 import { useNDKCurrentUser, useNDKAuth } from '@/lib/hooks/useNDK';
 import { 
   AlertDialog,
@@ -47,6 +48,7 @@ export default function SettingsDrawer() {
   const { toggleColorScheme, isDarkColorScheme } = useColorScheme();
   const theme = useTheme();
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
+  const [isRelaySheetOpen, setIsRelaySheetOpen] = useState(false);
   const [showSignOutAlert, setShowSignOutAlert] = useState(false);
   
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
@@ -137,6 +139,11 @@ export default function SettingsDrawer() {
     }
   };
 
+  // Handle relay management
+  const handleRelayManagement = () => {
+    setIsRelaySheetOpen(true);
+  };
+
   // Define menu items
   const menuItems: MenuItem[] = [
     {
@@ -180,6 +187,12 @@ export default function SettingsDrawer() {
       icon: Zap,
       label: 'Nostr Integration',
       onPress: handleNostrIntegration,
+    },
+    {
+      id: 'relays',
+      icon: Globe,
+      label: 'Manage Relays',
+      onPress: handleRelayManagement,
     },
     {
       id: 'about',
@@ -317,13 +330,19 @@ export default function SettingsDrawer() {
         </Animated.View>
       </View>
 
-      {/* Only render the NostrLoginSheet on iOS */}
+      {/* Login Sheet */}
       {Platform.OS === 'ios' && (
         <NostrLoginSheet 
           open={isLoginSheetOpen} 
           onClose={() => setIsLoginSheetOpen(false)} 
         />
       )}
+      
+      {/* Relay Management Sheet */}
+      <RelayManagementSheet 
+        open={isRelaySheetOpen} 
+        onClose={() => setIsRelaySheetOpen(false)} 
+      />
       
       {/* Sign Out Alert Dialog */}
       <AlertDialog open={showSignOutAlert} onOpenChange={setShowSignOutAlert}>
