@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 3; // Incrementing to add the relays table
+export const SCHEMA_VERSION = 6; // Incremented from 5 to 6 for relay table removal
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -44,9 +44,17 @@ class Schema {
       const currentVersion = await this.getCurrentVersion(db);
       console.log(`[Schema] Current version: ${currentVersion}, Target version: ${SCHEMA_VERSION}`);
       
-      // If we already have the current version, no need to recreate tables
+      // If we already have the current version, check for missing tables
       if (currentVersion === SCHEMA_VERSION) {
-        console.log(`[Schema] Database already at version ${SCHEMA_VERSION}`);
+        console.log(`[Schema] Database already at version ${SCHEMA_VERSION}, checking for missing tables`);
+        await this.ensureCriticalTablesExist(db);
+        return;
+      }
+      
+      // Handle higher version numbers - especially important for Android
+      if (currentVersion > SCHEMA_VERSION) {
+        console.log(`[Schema] Database version ${currentVersion} is newer than target ${SCHEMA_VERSION}, checking for missing tables`);
+        await this.ensureCriticalTablesExist(db);
         return;
       }
       
@@ -85,6 +93,129 @@ class Schema {
       }
     } catch (error) {
       console.error('[Schema] Error creating tables:', error);
+      throw error;
+    }
+  }
+  
+  // Add this method to check for and create critical tables
+  async ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Checking for missing critical tables...');
+      
+      // Check if workouts table exists
+      const workoutsTableExists = await db.getFirstAsync<{ count: number }>(
+        `SELECT count(*) as count FROM sqlite_master 
+         WHERE type='table' AND name='workouts'`
+      );
+      
+      if (!workoutsTableExists || workoutsTableExists.count === 0) {
+        console.log('[Schema] Creating missing workouts tables...');
+        
+        // Create workouts table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS workouts (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            type TEXT NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER,
+            is_completed BOOLEAN NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            template_id TEXT,
+            nostr_event_id TEXT,
+            share_status TEXT NOT NULL DEFAULT 'local',
+            source TEXT NOT NULL DEFAULT 'local',
+            total_volume REAL,
+            total_reps INTEGER,
+            notes TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_workouts_start_time ON workouts(start_time);
+          CREATE INDEX IF NOT EXISTS idx_workouts_template_id ON workouts(template_id);
+        `);
+        
+        // Create workout_exercises table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS workout_exercises (
+            id TEXT PRIMARY KEY,
+            workout_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            display_order INTEGER NOT NULL,
+            notes TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(workout_id) REFERENCES workouts(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_workout_exercises_workout_id ON workout_exercises(workout_id);
+        `);
+        
+        // Create workout_sets table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS workout_sets (
+            id TEXT PRIMARY KEY,
+            workout_exercise_id TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'normal',
+            weight REAL,
+            reps INTEGER,
+            rpe REAL,
+            duration INTEGER,
+            is_completed BOOLEAN NOT NULL DEFAULT 0,
+            completed_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(workout_exercise_id) REFERENCES workout_exercises(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_workout_sets_exercise_id ON workout_sets(workout_exercise_id);
+        `);
+      }
+      
+      // Check if templates table exists
+      const templatesTableExists = await db.getFirstAsync<{ count: number }>(
+        `SELECT count(*) as count FROM sqlite_master 
+         WHERE type='table' AND name='templates'`
+      );
+      
+      if (!templatesTableExists || templatesTableExists.count === 0) {
+        console.log('[Schema] Creating missing templates tables...');
+        
+        // Create templates table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS templates (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            nostr_event_id TEXT,
+            source TEXT NOT NULL DEFAULT 'local',
+            parent_id TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_templates_updated_at ON templates(updated_at);
+        `);
+        
+        // Create template_exercises table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS template_exercises (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            display_order INTEGER NOT NULL,
+            target_sets INTEGER,
+            target_reps INTEGER,
+            target_weight REAL,
+            notes TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_template_exercises_template_id ON template_exercises(template_id);
+        `);
+      }
+      
+      console.log('[Schema] Critical tables check complete');
+    } catch (error) {
+      console.error('[Schema] Error ensuring critical tables exist:', error);
       throw error;
     }
   }
@@ -288,20 +419,6 @@ class Schema {
         CREATE INDEX idx_favorites_content_id ON favorites(content_id);
       `);
 
-      // Create relays table
-      console.log('[Schema] Creating relays table...');
-      await db.execAsync(`
-        CREATE TABLE relays (
-          url TEXT PRIMARY KEY,
-          read INTEGER NOT NULL DEFAULT 1,
-          write INTEGER NOT NULL DEFAULT 1,
-          priority INTEGER,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        );
-        CREATE INDEX idx_relays_priority ON relays(priority DESC);
-      `);
-
       // === NEW TABLES === //
 
       // Create workouts table
@@ -427,25 +544,36 @@ class Schema {
     }
   }
   
-  async resetDatabase(db: SQLiteDatabase): Promise<void> {
+  async resetDatabaseCompletely(db: SQLiteDatabase): Promise<void> {
     if (!__DEV__) {
       console.log('[Schema] Database reset is only available in development mode');
       return;
     }
     
     try {
-      console.log('[Schema] Resetting database...');
+      console.log('[Schema] Completely resetting database...');
       
-      // Clear schema_version to force recreation of all tables
-      await db.execAsync('DROP TABLE IF EXISTS schema_version');
-      console.log('[Schema] Dropped schema_version table');
+      // Get all tables
+      const tables = await db.getAllAsync<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+      );
       
-      // Now create tables from scratch
+      // Drop all tables including schema_version
+      for (const { name } of tables) {
+        try {
+          await db.execAsync(`DROP TABLE IF EXISTS ${name}`);
+          console.log(`[Schema] Dropped table: ${name}`);
+        } catch (dropError) {
+          console.error(`[Schema] Error dropping table ${name}:`, dropError);
+        }
+      }
+      
+      // Create tables from scratch
       await this.createTables(db);
       
-      console.log('[Schema] Database reset complete');
+      console.log('[Schema] Database completely reset');
     } catch (error) {
-      console.error('[Schema] Error resetting database:', error);
+      console.error('[Schema] Error completely resetting database:', error);
       throw error;
     }
   }

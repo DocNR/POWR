@@ -8,6 +8,7 @@ import { logDatabaseInfo } from '../debug';
 import { mockExerciseEvents, convertNostrToExercise } from '../../mocks/exercises';
 import { DbService } from '../db-service';
 import NDK, { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
+import { NostrEvent } from '@/types/nostr'; // Assuming you have this type defined
 
 export class DevSeederService {
   private db: SQLiteDatabase;
@@ -178,6 +179,71 @@ export class DevSeederService {
       }
     } catch (error) {
       console.error('Error checking template tables:', error);
+    }
+  }
+
+  /**
+   * Seed the database with real events from Nostr relays instead of mock data
+   * @param filter The filter to use when fetching events from relays
+   * @param limit Maximum number of events to seed (optional)
+   */
+  async seedFromNostr(filter: any, limit?: number) {
+    if (!this.ndk) {
+      console.log('NDK not available for seeding from Nostr');
+      return;
+    }
+
+    try {
+      console.log(`Seeding from Nostr with filter:`, filter);
+      
+      // Fetch events from relays
+      const events = await this.ndk.fetchEvents(filter);
+      
+      console.log(`Found ${events.size} events on Nostr`);
+      
+      // Convert to array and limit if needed
+      const eventsArray = Array.from(events);
+      const eventsToProcess = limit ? eventsArray.slice(0, limit) : eventsArray;
+      
+      // Process each event individually
+      let successCount = 0;
+      
+      for (const ndkEvent of eventsToProcess) {
+        try {
+          // Convert NDKEvent to your NostrEvent format
+          const nostrEvent: NostrEvent = {
+            id: ndkEvent.id || '',
+            pubkey: ndkEvent.pubkey || '',
+            created_at: ndkEvent.created_at || 0, // Set a default value of 0 if undefined
+            kind: ndkEvent.kind || 0,
+            tags: ndkEvent.tags || [],
+            content: ndkEvent.content || '',
+            sig: ndkEvent.sig || ''
+          };
+          
+          // Cache the event
+          if (this.eventCache) {
+            await this.eventCache.setEvent(nostrEvent, true);
+          }
+          
+          // Process based on kind
+          if (ndkEvent.kind === 33401) { // Exercise
+            const exercise = convertNostrToExercise(nostrEvent);
+            await this.exerciseService.createExercise(exercise, true);
+            successCount++;
+          } 
+          // Add more event type processing here as needed
+          
+        } catch (error) {
+          console.error(`Error processing Nostr event:`, error);
+          // Continue with next event
+        }
+      }
+      
+      console.log(`Successfully seeded ${successCount} items from Nostr`);
+      
+    } catch (error) {
+      console.error('Error seeding from Nostr:', error);
     }
   }
 

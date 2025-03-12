@@ -6,11 +6,10 @@ import NDK, {
   NDKUser,
   NDKRelay,
   NDKPrivateKeySigner
-} from '@nostr-dev-kit/ndk';
+} from '@nostr-dev-kit/ndk-mobile';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import * as SecureStore from 'expo-secure-store';
 import { RelayService } from '@/lib/db/services/RelayService';
-import { openDatabaseSync } from 'expo-sqlite';
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
@@ -133,85 +132,129 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
   
   login: async (privateKeyInput?: string) => {
     set({ isLoading: true, error: null });
+    console.log('[NDK] Login attempt starting');
     
     try {
       const { ndk } = get();
       if (!ndk) {
+        console.log('[NDK] Error: NDK not initialized');
         throw new Error('NDK not initialized');
       }
+      
+      console.log('[NDK] Processing private key input');
       
       // If no private key is provided, generate one
       let privateKeyHex = privateKeyInput;
       if (!privateKeyHex) {
+        console.log('[NDK] No key provided, generating new key');
         const { privateKey } = get().generateKeys();
         privateKeyHex = privateKey;
+      } else {
+        console.log('[NDK] Using provided key, format:', 
+          privateKeyHex.startsWith('nsec') ? 'nsec' : 'hex',
+          'length:', privateKeyHex.length);
       }
       
       // Handle nsec format
       if (privateKeyHex.startsWith('nsec')) {
         try {
+          console.log('[NDK] Decoding nsec format key');
           const decoded = nip19.decode(privateKeyHex);
+          console.log('[NDK] Decoded type:', decoded.type);
           if (decoded.type === 'nsec') {
             // Get the data as hex
             privateKeyHex = bytesToHex(decoded.data as any);
+            console.log('[NDK] Converted to hex, new length:', privateKeyHex.length);
           }
         } catch (error) {
-          console.error('Error decoding nsec:', error);
+          console.error('[NDK] Error decoding nsec:', error);
           throw new Error('Invalid nsec format');
         }
       }
       
+      console.log('[NDK] Creating signer with key length:', privateKeyHex.length);
+      
       // Create signer with private key
       const signer = new NDKPrivateKeySigner(privateKeyHex);
+      console.log('[NDK] Signer created, setting on NDK');
       ndk.signer = signer;
       
       // Get user
+      console.log('[NDK] Getting user from signer');
       const user = await ndk.signer.user();
       if (!user) {
+        console.log('[NDK] Error: Could not get user from signer');
         throw new Error('Could not get user from signer');
       }
       
+      console.log('[NDK] User retrieved, pubkey:', user.pubkey ? user.pubkey.substring(0, 8) + '...' : 'undefined');
+      
       // Fetch user profile
       console.log('[NDK] Fetching user profile');
-      await user.fetchProfile();
+      try {
+        await user.fetchProfile();
+        console.log('[NDK] Profile fetched successfully');
+      } catch (profileError) {
+        console.warn('[NDK] Warning: Could not fetch user profile:', profileError);
+        // Continue even if profile fetch fails
+      }
       
       // Process profile data to ensure image property is set
       if (user.profile) {
+        console.log('[NDK] Profile data available');
         if (!user.profile.image && (user.profile as any).picture) {
           user.profile.image = (user.profile as any).picture;
+          console.log('[NDK] Set image from picture property');
         }
         
-        console.log('[NDK] User profile loaded:', user.profile);
+        console.log('[NDK] User profile loaded:', 
+          user.profile.name || user.profile.displayName || 'No name available');
+      } else {
+        console.log('[NDK] No profile data available');
       }
       
       // Save the private key hex string securely
+      console.log('[NDK] Saving private key to secure storage');
       await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, privateKeyHex);
       
       // After successful login, import user relay preferences
       try {
-        console.log('[NDK] Login successful, importing user relay preferences');
-        const db = openDatabaseSync('powr.db');
-        const relayService = new RelayService(db);
+        console.log('[NDK] Creating RelayService to import user preferences');
+        const relayService = new RelayService();
         
         // Set NDK on the relay service
-        relayService.setNDK(ndk as any);
+        console.log('[NDK] Setting NDK on RelayService');
+        relayService.setNDK(ndk as any); // Using type assertion
         
-        // Import and apply user relay preferences
-        await relayService.importUserRelaysOnLogin(user, ndk);
+        // Import user relay preferences from metadata (kind:3 events)
+        if (user.pubkey) {
+          console.log('[NDK] Importing relay metadata for user:', user.pubkey.substring(0, 8) + '...');
+          try {
+            await relayService.importFromUserMetadata(user.pubkey, ndk);
+            console.log('[NDK] Successfully imported user relay preferences');
+          } catch (importError) {
+            console.warn('[NDK] Could not import user relay preferences:', importError);
+            // Continue even if import fails
+          }
+        } else {
+          console.log('[NDK] Cannot import relay metadata: No pubkey available');
+        }
       } catch (relayError) {
-        console.error('[NDK] Error importing user relay preferences:', relayError);
+        console.error('[NDK] Error with RelayService:', relayError);
         // Continue with login even if relay import fails
       }
       
+      console.log('[NDK] Login successful, updating state');
       set({ 
         currentUser: user,
         isAuthenticated: true,
         isLoading: false
       });
       
+      console.log('[NDK] Login complete');
       return true;
     } catch (error) {
-      console.error('[NDK] Login error:', error);
+      console.error('[NDK] Login error detailed:', error);
       set({
         error: error instanceof Error ? error : new Error('Failed to login'),
         isLoading: false

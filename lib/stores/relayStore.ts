@@ -1,6 +1,5 @@
 // lib/stores/relayStore.ts
 import { create } from 'zustand';
-import { openDatabaseSync } from 'expo-sqlite';
 import type { RelayWithStatus } from '@/lib/db/services/RelayService';
 import { RelayService } from '@/lib/db/services/RelayService';
 import { useNDKStore } from './ndk';
@@ -11,8 +10,7 @@ let relayServiceInstance: RelayService | null = null;
 
 const getRelayService = (): RelayService => {
   if (!relayServiceInstance) {
-    const db = openDatabaseSync('powr.db');
-    relayServiceInstance = new RelayService(db);
+    relayServiceInstance = new RelayService();
     console.log('[RelayStore] Created RelayService instance');
   }
   return relayServiceInstance;
@@ -60,7 +58,8 @@ export const useRelayStore = create<RelayStoreState & RelayStoreActions>((set, g
         const ndk = ndkState.ndk as unknown as NDKCommon;
         
         if (ndk) {
-          relayService.setNDK(ndk);
+          // Use type assertion to ensure compatibility
+          relayService.setNDK(ndk as any);
         }
         
         const relays = await relayService.getAllRelaysWithStatus();
@@ -159,7 +158,8 @@ export const useRelayStore = create<RelayStoreState & RelayStoreActions>((set, g
         }
         
         // Apply relay config changes to NDK
-        const success = await relayService.applyRelayConfig(ndk);
+        const relays = get().relays;
+        const success = await relayService.applyRelayConfig(relays);
         
         // Wait a moment before reloading to give connections time to establish
         await new Promise(resolve => setTimeout(resolve, 2000));

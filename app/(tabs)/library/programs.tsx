@@ -161,60 +161,21 @@ export default function ProgramsScreen() {
         console.warn('[Database Reset] Error clearing keys:', keyError);
       }
       
-      // Define explicit type for tables
-      let tables: { name: string }[] = [];
+      // Use the new complete reset method
+      await schema.resetDatabaseCompletely(db);
       
-      // Try to get existing tables
-      try {
-        tables = await db.getAllAsync<{ name: string }>(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        );
-        console.log(`[Database Reset] Found ${tables.length} tables to drop`);
-      } catch (tableListError) {
-        console.warn('[Database Reset] Error listing tables:', tableListError);
-        // Initialize with empty array if query fails
-        tables = [];
-      }
-      
-      // Drop tables one by one
-      for (const table of tables) {
-        try {
-          await db.execAsync(`DROP TABLE IF EXISTS "${table.name}";`);
-          console.log(`[Database Reset] Dropped table: ${table.name}`);
-        } catch (dropError) {
-          console.error(`[Database Reset] Error dropping table ${table.name}:`, dropError);
-        }
-      }
-      
-      // Use a delay to allow any pending operations to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Create a completely new database instance instead of using the existing one
-      // This will bypass the "Access to closed resource" issue
-      Alert.alert(
-        'Database Tables Dropped',
-        'All database tables have been dropped. The app needs to be restarted to complete the reset process.',
-        [
-          { 
-            text: 'Restart Now', 
-            style: 'destructive',
-            onPress: () => {
-              // In a production app, you would use something like RN's DevSettings.reload()
-              // For Expo, we'll suggest manual restart
-              Alert.alert(
-                'Manual Restart Required',
-                'Please completely close the app and reopen it to finish the database reset.',
-                [{ text: 'OK', style: 'default' }]
-              );
-            }
-          }
-        ]
-      );
-      
+      // Show success message
       setTestResults({
         success: true,
-        message: 'Database tables dropped. Please restart the app to complete the reset.'
+        message: 'Database completely reset. The app will need to be restarted to see the changes.'
       });
+      
+      // Recommend a restart
+      Alert.alert(
+        'Database Reset Complete',
+        'The database has been completely reset. Please restart the app for the changes to take effect fully.',
+        [{ text: 'OK', style: 'default' }]
+      );
       
     } catch (error) {
       console.error('[Database Reset] Error resetting database:', error);
@@ -222,13 +183,6 @@ export default function ProgramsScreen() {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error during database reset'
       });
-      
-      // Still recommend a restart since the database might be in an inconsistent state
-      Alert.alert(
-        'Database Reset Error',
-        'There was an error during database reset. Please restart the app and try again.',
-        [{ text: 'OK', style: 'default' }]
-      );
     }
   };
 

@@ -77,7 +77,7 @@ export default function Header({
               onPress={() => {}}
             >
               <View className="relative">
-                <Bell size={24} className="text-foreground" />
+                <Bell size={24} color={theme.colors.text} />
                 {/* Notification indicator - you can conditionally render this */}
                 <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
               </View>

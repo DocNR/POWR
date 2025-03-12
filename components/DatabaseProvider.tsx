@@ -36,6 +36,32 @@ interface DatabaseProviderProps {
   children: React.ReactNode;
 }
 
+// Add a DelayedInitializer component to ensure database is fully ready
+const DelayedInitializer: React.FC<{children: React.ReactNode}> = ({children}) => {
+  const [ready, setReady] = React.useState(false);
+  
+  React.useEffect(() => {
+    // Small delay to ensure database is fully ready
+    const timer = setTimeout(() => {
+      console.log('[Database] Delayed initialization complete');
+      setReady(true);
+    }, 300); // 300ms delay should be sufficient
+    
+    return () => clearTimeout(timer);
+  }, []);
+  
+  if (!ready) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <ActivityIndicator size="small" className="mb-2" />
+        <Text className="text-foreground text-sm">Finishing initialization...</Text>
+      </View>
+    );
+  }
+  
+  return <>{children}</>;
+};
+
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [isReady, setIsReady] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -63,11 +89,19 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   React.useEffect(() => {
     async function initDatabase() {
       try {
+        console.log('[DB] Starting database initialization...');
+        
+        // Add a small delay to ensure system is ready (especially on Android)
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
         console.log('[DB] Opening database...');
         const db = openDatabaseSync('powr.db');
         
         console.log('[DB] Creating schema...');
         await schema.createTables(db);
+        
+        // Explicitly check for critical tables after schema creation
+        await schema.ensureCriticalTablesExist(db);
 
         // Initialize services
         console.log('[DB] Initializing services...');
@@ -101,7 +135,12 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         // Seed development database
         if (__DEV__) {
           console.log('[DB] Seeding development database...');
-          await devSeeder.seedDatabase();
+          try {
+            await devSeeder.seedDatabase();
+          } catch (seedError) {
+            console.error('[DB] Error seeding database:', seedError);
+            // Continue even if seeding fails
+          }
           await logDatabaseInfo();
         }
         
@@ -137,7 +176,9 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   return (
     <SQLiteProvider databaseName="powr.db">
       <DatabaseServicesContext.Provider value={services}>
-        {children}
+        <DelayedInitializer>
+          {children}
+        </DelayedInitializer>
       </DatabaseServicesContext.Provider>
     </SQLiteProvider>
   );

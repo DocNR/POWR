@@ -1,7 +1,7 @@
 // app/(tabs)/index.tsx
 import React, { useState, useEffect, useCallback } from 'react'; 
-import { ScrollView, View, TouchableOpacity } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native';
+import { ScrollView, View, TouchableOpacity, Platform } from 'react-native'
+import { useFocusEffect, useTheme } from '@react-navigation/native';
 import { router } from 'expo-router'
 import { 
   AlertDialog,
@@ -15,8 +15,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TabScreen } from '@/components/layout/TabScreen'
 import Header from '@/components/Header'
-import HomeWorkout from '@/components/workout/HomeWorkout'
-import FavoriteTemplate from '@/components/workout/FavoriteTemplate'
 import { useWorkoutStore } from '@/stores/workoutStore'
 import { Text } from '@/components/ui/text'
 import { getRandomWorkoutTitle } from '@/utils/workoutTitles'
@@ -62,6 +60,8 @@ export default function WorkoutScreen() {
     isActive,
     endWorkout
   } = useWorkoutStore();
+
+  const theme = useTheme();
 
   useFocusEffect(
     useCallback(() => {
@@ -241,7 +241,10 @@ export default function WorkoutScreen() {
             onPress={() => console.log('Open notifications')}
           >
             <View className="relative">
-              <Bell className="text-foreground" />
+              <Bell size={24} color={Platform.select({
+                                      ios: undefined,
+                                      android: '#8B5CF6'
+                                    })} />
               <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
             </View>
           </Button>
