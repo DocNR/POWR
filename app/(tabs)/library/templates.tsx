@@ -94,8 +94,11 @@ export default function TemplatesScreen() {
 
   const handleStartWorkout = async (template: Template) => {
     try {
-      // Use the workoutStore action to start a workout from template
-      await useWorkoutStore.getState().startWorkoutFromTemplate(template.id);
+      // Convert to WorkoutTemplate format
+      const workoutTemplate = toWorkoutTemplate(template);
+      
+      // Start the workout
+      await useWorkoutStore.getState().startWorkoutFromTemplate(template.id, workoutTemplate);
       
       // Navigate to the active workout screen
       router.push('/(workout)/create');
@@ -285,7 +288,7 @@ export default function TemplatesScreen() {
           ) : (
             <View className="px-4">
               <Text className="text-muted-foreground">
-                No templates found. Create one by clicking the + button.
+                So empty! Create a new workout template by clicking the + button.
               </Text>
             </View>
           )}

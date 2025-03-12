@@ -10,19 +10,42 @@ import UserAvatar from '@/components/UserAvatar';
 import PowerLogo from '@/components/PowerLogo';
 import { useSettingsDrawer } from '@/lib/contexts/SettingsDrawerContext';
 import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 interface HeaderProps {
   title?: string;
   hideTitle?: boolean;
   rightElement?: React.ReactNode;
   useLogo?: boolean;
+  showNotifications?: boolean; // New prop
+}
+
+function NotificationBell() {
+  const { getIconProps } = useIconColor();
+  
+  return (
+    <Button 
+      variant="ghost" 
+      size="icon"
+      onPress={() => console.log('Open notifications')}
+    >
+      <View className="relative">
+        <Bell 
+          size={24} 
+          {...getIconProps('primary')}
+        />
+        <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+      </View>
+    </Button>
+  );
 }
 
 export default function Header({ 
   title, 
   hideTitle = false, 
   rightElement,
-  useLogo = false
+  useLogo = false,
+  showNotifications = true  // Default to true
 }: HeaderProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -38,6 +61,13 @@ export default function Header({
     : 'G';
 
   if (hideTitle) return null;
+
+  // Determine right element: custom, notification bell, or nothing
+  const headerRightElement = rightElement 
+    ? rightElement 
+    : showNotifications 
+      ? <NotificationBell /> 
+      : null;
 
   return (
     <View
@@ -68,21 +98,9 @@ export default function Header({
           )}
         </View>
 
-        {/* Right side - Custom element or default notifications */}
+        {/* Right side - Custom element, notifications, or nothing */}
         <View style={styles.rightContainer}>
-          {rightElement || (
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onPress={() => {}}
-            >
-              <View className="relative">
-                <Bell size={24} color={theme.colors.text} />
-                {/* Notification indicator - you can conditionally render this */}
-                <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
-              </View>
-            </Button>
-          )}
+          {headerRightElement}
         </View>
       </View>
     </View>

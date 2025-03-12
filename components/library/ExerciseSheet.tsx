@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { generateId } from '@/utils/ids';
 import { X } from 'lucide-react-native';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 import { 
   BaseExercise, 
   ExerciseType, 

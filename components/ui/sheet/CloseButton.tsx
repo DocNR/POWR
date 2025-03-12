@@ -2,8 +2,8 @@
 import React from 'react';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
 import { X } from 'lucide-react-native';
-import { useColorScheme } from '@/lib/useColorScheme';
-import { NAV_THEME } from '@/lib/constants';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
+import { NAV_THEME } from '@/lib/theme/constants';
 
 interface CloseButtonProps {
   onPress: () => void;

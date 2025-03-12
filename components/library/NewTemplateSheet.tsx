@@ -17,7 +17,7 @@ import { generateId } from '@/utils/ids';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LibraryService } from '@/lib/db/services/LibraryService';
 import { ChevronLeft, Dumbbell, Clock, RotateCw, List, Search, X } from 'lucide-react-native';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 
 interface NewTemplateSheetProps {
   isOpen: boolean;

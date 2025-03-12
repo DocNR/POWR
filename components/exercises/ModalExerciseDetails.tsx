@@ -19,7 +19,7 @@ import {
 } from 'lucide-react-native';
 import { ExerciseDisplay } from '@/types/exercise';
 import { useTheme } from '@react-navigation/native';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 import type { CustomTheme } from '@/lib/theme';
 
 const Tab = createMaterialTopTabNavigator();

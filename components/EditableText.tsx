@@ -12,7 +12,8 @@ import {
 import { Text } from '@/components/ui/text';
 import { Check, Edit2 } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 interface EditableTextProps {
   value: string;
@@ -37,6 +38,7 @@ export default function EditableText({
   const [tempValue, setTempValue] = useState(value);
   const inputRef = useRef<TextInput>(null);
   const { isDarkColorScheme } = useColorScheme();
+  const { getIconProps } = useIconColor();
 
   const handleSubmit = () => {
     if (tempValue.trim()) {
@@ -72,7 +74,10 @@ export default function EditableText({
             onPress={handleSubmit}
             className="p-2 ml-2"
           >
-            <Check className="text-primary" size={20} />
+            <Check 
+              size={20} 
+              {...getIconProps('success')}
+            />
           </TouchableOpacity>
         </View>
       ) : (
@@ -93,7 +98,10 @@ export default function EditableText({
           </Text>
           <View className="mt-1">
             <View className="flex-row items-center self-start px-1.5 py-1 rounded bg-muted/20">
-              <Edit2 size={14} className="text-muted-foreground" />
+              <Edit2 
+                size={14} 
+                {...getIconProps('muted')}
+              />
               <Text className="text-xs text-muted-foreground ml-1">Edit</Text>
             </View>
           </View>

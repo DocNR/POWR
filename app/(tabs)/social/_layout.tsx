@@ -16,7 +16,7 @@ export default function SocialLayout() {
 
   return (
     <TabScreen>
-      <Header useLogo={true} />
+      <Header useLogo={true} showNotifications={true} />
 
       <Tab.Navigator
         initialRouteName="powr"

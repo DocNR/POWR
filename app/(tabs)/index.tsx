@@ -20,6 +20,7 @@ import { Text } from '@/components/ui/text'
 import { getRandomWorkoutTitle } from '@/utils/workoutTitles'
 import { Bell, Star, Clock, Dumbbell } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 interface FavoriteTemplateData {
   id: string;
@@ -62,6 +63,7 @@ export default function WorkoutScreen() {
   } = useWorkoutStore();
 
   const theme = useTheme();
+  const { getIconProps } = useIconColor();
 
   useFocusEffect(
     useCallback(() => {
@@ -232,24 +234,7 @@ export default function WorkoutScreen() {
 
   return (
     <TabScreen>
-      <Header 
-        useLogo={true}
-        rightElement={
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onPress={() => console.log('Open notifications')}
-          >
-            <View className="relative">
-              <Bell size={24} color={Platform.select({
-                                      ios: undefined,
-                                      android: '#8B5CF6'
-                                    })} />
-              <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
-            </View>
-          </Button>
-        }
-      />
+      <Header useLogo={true} showNotifications={true} />
       
       <ScrollView 
         className="flex-1 px-4 pt-4"

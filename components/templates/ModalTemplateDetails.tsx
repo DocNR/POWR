@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { useTheme } from '@react-navigation/native';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 import { WorkoutTemplate } from '@/types/templates';
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { formatTime } from '@/utils/formatTime';

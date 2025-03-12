@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Template, TemplateExerciseDisplay } from '@/types/templates';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 interface TemplateCardProps {
   template: Template;
@@ -36,6 +37,7 @@ export function TemplateCard({
 }: TemplateCardProps) {
   const [showDeleteAlert, setShowDeleteAlert] = React.useState(false);
   const lastUsed = template.metadata?.lastUsed ? new Date(template.metadata.lastUsed) : undefined;
+  const { getIconProps, getIconColor } = useIconColor();
 
   const {
     id,
@@ -147,7 +149,10 @@ export function TemplateCard({
                 className="native:h-10 native:w-10"
                 accessibilityLabel="Start workout"
               >
-                <Play className="text-primary" size={20} />
+                <Play
+                  size={20}
+                  {...getIconProps('primary')}
+                />
               </Button>
               <Button 
                 variant="ghost" 
@@ -157,9 +162,9 @@ export function TemplateCard({
                 accessibilityLabel={isFavorite ? "Remove from favorites" : "Add to favorites"}
               >
                 <Star 
-                  className={isFavorite ? "text-primary" : "text-muted-foreground"} 
-                  fill={isFavorite ? "currentColor" : "none"}
-                  size={20} 
+                  size={20}
+                  {...getIconProps(isFavorite ? 'primary' : 'muted')}
+                  fill={isFavorite ? getIconColor('primary') : "none"}
                 />
               </Button>
               <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
@@ -171,12 +176,8 @@ export function TemplateCard({
                     accessibilityLabel="Delete template"
                   >
                     <Trash2 
-                      size={20} 
-                      color={Platform.select({
-                        ios: undefined,
-                        android: '#8B5CF6'
-                      })}
-                      className="text-destructive" 
+                      size={20}
+                      {...getIconProps('destructive')}
                     />
                   </Button>
                 </AlertDialogTrigger>

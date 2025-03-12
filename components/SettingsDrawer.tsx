@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Text } from '@/components/ui/text';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
 import RelayManagement from '@/components/RelayManagement';
 import { useNDKCurrentUser, useNDKAuth } from '@/lib/hooks/useNDK';

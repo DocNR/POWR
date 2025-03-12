@@ -5,7 +5,7 @@ import { Text } from '@/components/ui/text';
 import { Circle, CheckCircle } from 'lucide-react-native'; // Lucide React icons
 import { cn } from '@/lib/utils';
 import { useWorkoutStore } from '@/stores/workoutStore';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 import type { WorkoutSet } from '@/types/workout';
 import debounce from 'lodash/debounce';
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { X, Info } from 'lucide-react-native';
 import { useNDKAuth } from '@/lib/hooks/useNDK';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 
 interface NostrLoginSheetProps {
   open: boolean;

@@ -14,7 +14,7 @@ export default function HistoryLayout() {
 
   return (
     <TabScreen>
-      <Header title="History" useLogo={true} />
+      <Header useLogo={true} showNotifications={true} />
 
       <Tab.Navigator
         initialRouteName="history"

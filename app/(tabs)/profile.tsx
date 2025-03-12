@@ -76,7 +76,7 @@ export default function ProfileScreen() {
               onPress={() => console.log('Open notifications')}
             >
               <View className="relative">
-                <Bell className="text-foreground" />
+                <Bell size={24} className="text-primary" />
                 <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
               </View>
             </Button>
@@ -115,21 +115,7 @@ export default function ProfileScreen() {
   
   return (
     <TabScreen>
-      <Header 
-        useLogo={true}
-        rightElement={
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onPress={() => console.log('Open notifications')}
-          >
-            <View className="relative">
-              <Bell className="text-foreground" />
-              <View className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
-            </View>
-          </Button>
-        }
-      />
+      <Header useLogo={true} showNotifications={true} />
       
       <ScrollView 
         className="flex-1"

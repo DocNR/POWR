@@ -7,7 +7,7 @@ import { X } from 'lucide-react-native';
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { WorkoutCompletionFlow } from '@/components/workout/WorkoutCompletionFlow';
 import { WorkoutCompletionOptions } from '@/types/workout';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 
 /**
  * Workout Completion Screen

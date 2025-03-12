@@ -25,8 +25,9 @@ import { formatTime } from '@/utils/formatTime';
 import { ParamListBase } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import SetInput from '@/components/workout/SetInput';
-import { useColorScheme } from '@/lib/useColorScheme';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
 import { WorkoutAlertDialog } from '@/components/workout/WorkoutAlertDialog';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 export default function CreateWorkoutScreen() {
   const { 
@@ -51,6 +52,8 @@ export default function CreateWorkoutScreen() {
 
   // Get theme colors
   const { isDarkColorScheme } = useColorScheme();
+  // Get icon utilities
+  const { getIconProps } = useIconColor();
 
   // Create dynamic styles based on theme
   const dynamicStyles = StyleSheet.create({
@@ -239,7 +242,7 @@ export default function CreateWorkoutScreen() {
               onPress={() => useWorkoutStore.getState().extendRest(30)}
             >
               <View>
-                <Plus className="mr-2 text-foreground" size={18} />
+                <Plus {...getIconProps('primary')} size={18} />
               </View>
               <Text>Add 30s</Text>
             </Button>
@@ -266,7 +269,7 @@ export default function CreateWorkoutScreen() {
               }}
             >
               <View>
-                <ChevronLeft className="text-foreground" />
+                <ChevronLeft {...getIconProps('primary')} />
               </View>
             </Button>
             <Text className="text-xl font-semibold ml-2">Back</Text>
@@ -312,7 +315,7 @@ export default function CreateWorkoutScreen() {
               onPress={pauseWorkout}
             >
               <View>
-                <Pause className="text-foreground" />
+                <Pause {...getIconProps('primary')} />
               </View>
             </Button>
           ) : (
@@ -323,7 +326,7 @@ export default function CreateWorkoutScreen() {
               onPress={resumeWorkout}
             >
               <View>
-                <Play className="text-foreground" />
+                <Play {...getIconProps('primary')} />
               </View>
             </Button>
           )}
@@ -351,7 +354,7 @@ export default function CreateWorkoutScreen() {
                     </Text>
                     <TouchableOpacity onPress={() => console.log('Open exercise options')}>
                       <View>
-                        <MoreHorizontal size={20} color={isDarkColorScheme ? "#999" : "#666"} />
+                        <MoreHorizontal {...getIconProps('muted')} size={20} />
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -400,7 +403,7 @@ export default function CreateWorkoutScreen() {
                       onPress={() => handleAddSet(exerciseIndex)}
                     >
                       <View>
-                        <Plus size={18} className="text-foreground mr-2" />
+                        <Plus {...getIconProps('primary')} size={18} />
                       </View>
                       <Text className="text-foreground">Add Set</Text>
                     </Button>
@@ -430,7 +433,7 @@ export default function CreateWorkoutScreen() {
             // Empty State with nice message and icon
             <View className="flex-1 justify-center items-center px-4">
               <View>
-                <Dumbbell className="text-muted-foreground mb-6" size={80} />
+                <Dumbbell {...getIconProps('muted')} size={80} />
               </View>
               <Text className="text-xl font-semibold text-center mb-2">
                 No exercises added
@@ -494,12 +497,12 @@ export default function CreateWorkoutScreen() {
               <Text>Are you sure you want to cancel this workout? All progress will be lost.</Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <View className="flex-row justify-end gap-3">
+          <View className="flex-row justify-center gap-3 px-4 mt-2">
             <AlertDialogCancel onPress={() => setShowCancelDialog(false)}>
               <Text>Continue Workout</Text>
             </AlertDialogCancel>
-            <AlertDialogAction onPress={confirmCancelWorkout}>
-              <Text>Cancel Workout</Text>
+            <AlertDialogAction onPress={confirmCancelWorkout} className='bg-destructive'>
+              <Text className='text-destructive-foreground'>Cancel Workout</Text>
             </AlertDialogAction>
           </View>
         </AlertDialogContent>

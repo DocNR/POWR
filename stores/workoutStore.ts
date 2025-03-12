@@ -604,42 +604,42 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
   },
 
   // Template Management
-  startWorkoutFromTemplate: async (templateId: string) => {
-    // Get template from your template store/service
-    const template = await getTemplate(templateId);
+  startWorkoutFromTemplate: async (templateId: string, templateData?: WorkoutTemplate) => {
+    // If template data is provided directly, use it
+    const template = templateData || await getTemplate(templateId);
     if (!template) return;
   
     // Convert template exercises to workout exercises
     const exercises: WorkoutExercise[] = template.exercises.map(templateExercise => ({
+      id: generateId('local'),
+      title: templateExercise.exercise.title,
+      type: templateExercise.exercise.type,
+      category: templateExercise.exercise.category,
+      equipment: templateExercise.exercise.equipment,
+      tags: templateExercise.exercise.tags || [],
+      availability: {
+        source: ['local']
+      },
+      created_at: Date.now(),
+      sets: Array(templateExercise.targetSets || 3).fill(0).map(() => ({
         id: generateId('local'),
-        title: templateExercise.exercise.title,
-        type: templateExercise.exercise.type,
-        category: templateExercise.exercise.category,
-        equipment: templateExercise.exercise.equipment,
-        tags: templateExercise.exercise.tags || [],
-        availability: {
-          source: ['local']
-        },
-        created_at: Date.now(),
-        sets: Array(templateExercise.targetSets || 3).fill(0).map(() => ({
-          id: generateId('local'),
-          type: 'normal',
-          weight: 0,
-          reps: templateExercise.targetReps || 0,
-          isCompleted: false
-        })),
-        isCompleted: false,
-        notes: templateExercise.notes || ''
-      }));
-    
-      // Start workout with template data
-      get().startWorkout({
-        title: template.title,
-        type: template.type || 'strength',
-        exercises,
-        templateId: template.id
-      });
-    },
+        type: 'normal',
+        weight: 0,
+        reps: templateExercise.targetReps || 0,
+        isCompleted: false
+      })),
+      isCompleted: false,
+      notes: templateExercise.notes || ''
+    }));
+  
+    // Start workout with template data
+    get().startWorkout({
+      title: template.title,
+      type: template.type || 'strength',
+      exercises,
+      templateId: template.id
+    });
+  },
 
   updateWorkoutTitle: (title: string) => {
     const { activeWorkout } = get();
