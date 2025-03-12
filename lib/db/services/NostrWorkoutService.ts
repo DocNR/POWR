@@ -27,15 +27,47 @@ export class NostrWorkoutService {
    * Creates a social share event that quotes the workout record
    */
   static createSocialShareEvent(workoutEventId: string, message: string): NostrEvent {
+    return this.createShareEvent(workoutEventId, '1301', message);
+  }
+
+  /**
+   * Creates a social share event that quotes a POWR event
+   * @param eventId The ID of the event being quoted
+   * @param kind The kind number of the event being quoted (1301, 33401, 33402)
+   * @param message The message content for the social post
+   * @param additionalTags Optional additional tags to include
+   */
+  static createShareEvent(
+    eventId: string, 
+    kind: '1301' | '33401' | '33402', 
+    message: string,
+    additionalTags: string[][] = []
+  ): NostrEvent {
+    // Determine appropriate hashtags based on kind
+    const contentTypeTags: string[][] = [];
+    
+    if (kind === '1301') {
+      contentTypeTags.push(['t', 'workout']);
+    } else if (kind === '33401') {
+      contentTypeTags.push(['t', 'exercise']);
+    } else if (kind === '33402') {
+      contentTypeTags.push(['t', 'workouttemplate']);
+    }
+    
     return {
-      kind: 1, // Standard note
+      kind: 1,
       content: message,
       tags: [
-        // Quote the workout event
-        ['q', workoutEventId],
-        // Add hash tags for discovery
-        ['t', 'workout'],
-        ['t', 'fitness']
+        // Quote the event
+        ['q', eventId],
+        // Add kind tag
+        ['k', kind],
+        // Add standard fitness tag
+        ['t', 'fitness'],
+        // Add content-specific tags
+        ...contentTypeTags,
+        // Add any additional tags
+        ...additionalTags
       ],
       created_at: Math.floor(Date.now() / 1000)
     };

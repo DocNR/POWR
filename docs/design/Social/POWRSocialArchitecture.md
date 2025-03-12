@@ -1,4 +1,4 @@
-# POWR Social Features Design Document
+# POWR Social Architecture
 
 ## Problem Statement
 POWR needs to integrate social features that leverage the Nostr protocol while maintaining a local-first architecture. The system must provide a seamless way for users to share workout content, receive feedback, and engage with the fitness community without compromising the standalone functionality of the application. Additionally, the implementation must support future integration with value-exchange mechanisms through Nostr Wallet Connect.
@@ -167,10 +167,12 @@ interface SocialShare extends NostrEvent {
   tags: [
     // Quote reference to the exercise, template or workout
     ["q", string, string, string], // event-id, relay-url, pubkey
+    
+    // Kind tag to indicate what kind of event is being quoted
+    ["k", string], // The kind number of the quoted event (e.g., "1301")
+    
     // Mention author's pubkey
-    ["p", string], // pubkey of the event creator
-    // App handler registration (NIP-89)
-    ["client", string, string, string] // Name, 31990 reference, relay-url
+    ["p", string] // pubkey of the event creator
   ]
 }
 
@@ -385,10 +387,29 @@ const commentsQuery = {
   "#K": ["1301"] // Root kind filter
 };
 
-// Find social posts (kind 1) that reference our workout events
-const socialReferencesQuery = {
+// Find all social posts specifically referencing workout records
+const workoutPostsQuery = {
   kinds: [1],
-  "#q": [workoutEventId]
+  "#k": ["1301"]
+};
+
+// Find all social posts referencing any POWR content types
+const allPowrContentQuery = {
+  kinds: [1],
+  "#k": ["1301", "33401", "33402"]
+};
+
+// Find all social posts referencing POWR content from a specific user
+const userPowrContentQuery = {
+  kinds: [1],
+  "#k": ["1301", "33401", "33402"],
+  authors: [userPubkey]
+};
+
+// Find posts with POWR hashtag
+const powrHashtagQuery = {
+  kinds: [1],
+  "#t": ["powrapp"]
 };
 
 // Get reactions to a workout record
