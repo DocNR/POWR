@@ -14,6 +14,7 @@ import { FilterSheet, type FilterOptions, type SourceType } from '@/components/l
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { generateId } from '@/utils/ids';
 import { useNDKStore } from '@/lib/stores/ndk';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 // Default available filters
 const availableFilters = {
@@ -35,7 +36,8 @@ export default function ExercisesScreen() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
   const [activeFilters, setActiveFilters] = useState(0);
-  
+  const { getIconProps } = useIconColor();
+
   // Exercise sheet state
   const [showExerciseSheet, setShowExerciseSheet] = useState(false);
   const [exerciseToEdit, setExerciseToEdit] = useState<ExerciseDisplay | undefined>(undefined);
@@ -200,36 +202,37 @@ export default function ExercisesScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Search bar with filter button */}
-      <View className="px-4 py-2 border-b border-border">
-        <View className="flex-row items-center">
-          <View className="relative flex-1">
-            <View className="absolute left-3 z-10 h-full justify-center">
-              <Search size={18} className="text-muted-foreground" />
-            </View>
-            <Input
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search exercises"
-              className="pl-9 pr-10 bg-muted/50 border-0"
-            />
-            <View className="absolute right-2 z-10 h-full justify-center">
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onPress={() => setFilterSheetOpen(true)}
-              >
-                <View className="relative">
-                  <ListFilter className="text-muted-foreground" size={20} />
-                  {activeFilters > 0 && (
-                    <View className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f7931a' }} />
-                  )}
+          {/* Search bar with filter button */}
+          <View className="px-4 py-2 border-b border-border">
+            <View className="flex-row items-center">
+              <View className="relative flex-1">
+                <View className="absolute left-3 z-10 h-full justify-center">
+                  <Search size={18} {...getIconProps('primary')} />
                 </View>
-              </Button>
+                <Input
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search exercises"
+                  className="pl-9 pr-10 border-0 bg-background"
+                />
+                <View className="absolute right-2 z-10 h-full justify-center">
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onPress={() => setFilterSheetOpen(true)}
+                  >
+                    <View className="relative">
+                      <ListFilter size={20} {...getIconProps('primary')} />
+                      {activeFilters > 0 && (
+                        <View className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f7931a' }} />
+                      )}
+                    </View>
+                  </Button>
+                </View>
+              </View>
             </View>
           </View>
-        </View>
-      </View>
+        );
 
       {/* Filter Sheet */}
       <FilterSheet 
