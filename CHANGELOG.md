@@ -5,6 +5,37 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 12, 2025
+
+## Added
+- POWR Packs - Shareable template and exercise collections
+  - Implemented import/export system for workout content using Nostr protocol
+  - Added database schema support for packs (tables: powr_packs, powr_pack_items)
+  - Created POWRPackService for fetching, importing, and managing packs
+  - Built NostrIntegration helper for conversion between Nostr events and local models
+  - Implemented interface to browse and import workout packs from the community
+  - Added pack management screen with import/delete functionality
+  - Created pack discovery in POWR Community tab
+  - Added dependency tracking for exercises required by templates
+  - Implemented selective import with smart dependency management
+  - Added clipboard support for sharing pack addresses
+
+## Improved
+- Enhanced Social experience
+  - Added POWR Pack discovery to POWR Community tab
+  - Implemented horizontal scrolling gallery for featured packs
+  - Added loading states with skeleton UI
+  - Improved visual presentation of shared content
+- Settings drawer enhancements
+  - Added POWR Packs management option
+  - Improved navigation structure
+- Nostr integration
+  - Added support for NIP-51 lists (kind 30004)
+  - Enhanced compatibility between app models and Nostr events
+  - Improved type safety for Nostr operations
+  - Better error handling for network operations
+  - Expanded event type support for templates and exercises
+  
 # Changelog - March 9, 2025
 
 ## Added

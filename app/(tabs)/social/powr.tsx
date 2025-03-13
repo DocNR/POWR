@@ -4,6 +4,7 @@ import { View, ScrollView, RefreshControl } from 'react-native';
 import { Text } from '@/components/ui/text';
 import SocialPost from '@/components/social/SocialPost';
 import { Zap } from 'lucide-react-native';
+import POWRPackSection from '@/components/social/POWRPackSection'; // Add this import
 
 // Sample mock data for posts from POWR team/recommendations
 const POWR_POSTS = [
@@ -95,6 +96,9 @@ export default function PowerScreen() {
           Official updates, featured content, and community highlights from the POWR team.
         </Text>
       </View>
+
+      {/* POWR Packs Section - Add this */}
+      <POWRPackSection />
 
       {/* Posts */}
       {posts.map(post => (

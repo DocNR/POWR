@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 6; // Incremented from 5 to 6 for relay table removal
+export const SCHEMA_VERSION = 7; // Incremented from 6 to 7 for POWR Pack addition
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -515,6 +515,37 @@ class Schema {
           FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE
         );
         CREATE INDEX idx_template_exercises_template_id ON template_exercises(template_id);
+      `);
+
+      // Create powr_packs table
+      console.log('[Schema] Creating powr_packs table...');
+      await db.execAsync(`
+        CREATE TABLE powr_packs (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          author_pubkey TEXT,
+          nostr_event_id TEXT,
+          import_date INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX idx_powr_packs_import_date ON powr_packs(import_date DESC);
+      `);
+
+      // Create powr_pack_items table
+      console.log('[Schema] Creating powr_pack_items table...');
+      await db.execAsync(`
+        CREATE TABLE powr_pack_items (
+          pack_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          item_type TEXT NOT NULL CHECK(item_type IN ('exercise', 'template')),
+          item_order INTEGER,
+          is_imported BOOLEAN NOT NULL DEFAULT 0,
+          nostr_event_id TEXT,
+          PRIMARY KEY (pack_id, item_id),
+          FOREIGN KEY (pack_id) REFERENCES powr_packs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_powr_pack_items_type ON powr_pack_items(item_type);
       `);
       
       console.log('[Schema] All tables created successfully');

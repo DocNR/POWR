@@ -8,6 +8,7 @@ import { PublicationQueueService } from '@/lib/db/services/PublicationQueueServi
 import { FavoritesService } from '@/lib/db/services/FavoritesService';
 import { WorkoutService } from '@/lib/db/services/WorkoutService';
 import { TemplateService } from '@/lib/db/services/TemplateService';
+import POWRPackService from '@/lib/db/services/POWRPackService';
 import { logDatabaseInfo } from '@/lib/db/debug';
 import { useNDKStore } from '@/lib/stores/ndk';
 
@@ -19,6 +20,7 @@ interface DatabaseServicesContextValue {
   devSeeder: DevSeederService | null;
   publicationQueue: PublicationQueueService | null;
   favoritesService: FavoritesService | null;
+  powrPackService: POWRPackService | null;
   db: SQLiteDatabase | null;
 }
 
@@ -29,6 +31,7 @@ const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue
   devSeeder: null,
   publicationQueue: null,
   favoritesService: null,
+  powrPackService: null,
   db: null,
 });
 
@@ -72,6 +75,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
     devSeeder: null,
     publicationQueue: null,
     favoritesService: null,
+    powrPackService: null,
     db: null,
   });
   
@@ -111,6 +115,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         const devSeeder = new DevSeederService(db, exerciseService);
         const publicationQueue = new PublicationQueueService(db);
         const favoritesService = new FavoritesService(db);
+        const powrPackService = new POWRPackService(db);
         
         // Initialize the favorites service
         await favoritesService.initialize();
@@ -129,6 +134,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
           devSeeder,
           publicationQueue,
           favoritesService,
+          powrPackService,
           db,
         });
 
@@ -231,6 +237,14 @@ export function useFavoritesService() {
     throw new Error('Favorites service not initialized');
   }
   return context.favoritesService;
+}
+
+export function usePOWRPackService() {
+  const context = React.useContext(DatabaseServicesContext);
+  if (!context.powrPackService) {
+    throw new Error('POWR Pack service not initialized');
+  }
+  return context.powrPackService;
 }
 
 export function useDatabase() {

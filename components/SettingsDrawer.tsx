@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSettingsDrawer } from '@/lib/contexts/SettingsDrawerContext';
 import { 
   Moon, Sun, LogOut, User, ChevronRight, X, Bell, HelpCircle, 
-  Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe
+  Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe, PackageOpen
 } from 'lucide-react-native';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -181,6 +181,15 @@ export default function SettingsDrawer() {
       icon: Globe,
       label: 'Manage Relays',
       onPress: handleRelayManagement,
+    },
+    {
+      id: 'powr-packs',
+      icon: PackageOpen,
+      label: 'POWR Packs',
+      onPress: () => {
+        closeDrawer();
+        router.push("/(packs)/manage");
+      },
     },
     {
       id: 'device',

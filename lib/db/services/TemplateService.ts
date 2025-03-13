@@ -20,6 +20,13 @@ export class TemplateService {
    */
   async getAllTemplates(limit: number = 50, offset: number = 0): Promise<WorkoutTemplate[]> {
     try {
+      // Add source logging
+      const sourceCount = await this.db.getAllAsync<{source: string, count: number}>(
+        'SELECT source, COUNT(*) as count FROM templates GROUP BY source'
+      );
+      console.log('[TemplateService] Template sources:');
+      sourceCount.forEach(s => console.log(`  - ${s.source}: ${s.count}`));
+      
       const templates = await this.db.getAllAsync<{
         id: string;
         title: string;
@@ -34,6 +41,10 @@ export class TemplateService {
         `SELECT * FROM templates ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
         [limit, offset]
       );
+      
+      console.log(`[TemplateService] Found ${templates.length} templates`);
+      // Log each template for debugging
+      templates.forEach(t => console.log(`  - ${t.title} (${t.id}) [source: ${t.source}]`));
       
       const result: WorkoutTemplate[] = [];
       
@@ -310,6 +321,9 @@ export class TemplateService {
   // Helper methods
   private async getTemplateExercises(templateId: string): Promise<TemplateExerciseConfig[]> {
     try {
+      // Add additional logging for diagnostic purposes
+      console.log(`Fetching exercises for template ${templateId}`);
+      
       const exercises = await this.db.getAllAsync<{
         id: string;
         exercise_id: string;
@@ -327,6 +341,13 @@ export class TemplateService {
         [templateId]
       );
       
+      console.log(`Found ${exercises.length} template exercises in database`);
+      
+      // Log exercise IDs for debugging
+      if (exercises.length > 0) {
+        exercises.forEach(ex => console.log(`  - Exercise ID: ${ex.exercise_id}`));
+      }
+      
       const result: TemplateExerciseConfig[] = [];
       
       for (const ex of exercises) {
@@ -340,6 +361,17 @@ export class TemplateService {
           `SELECT title, type, category, equipment FROM exercises WHERE id = ?`,
           [ex.exercise_id]
         );
+        
+        // Log if exercise is found
+        if (exercise) {
+          console.log(`Found exercise: ${exercise.title} (${ex.exercise_id})`);
+        } else {
+          console.log(`Exercise not found for ID: ${ex.exercise_id}`);
+          
+          // Important: Skip exercises that don't exist in the database
+          // We don't want to include placeholder exercises
+          continue;
+        }
         
         result.push({
           id: ex.id,
@@ -360,13 +392,14 @@ export class TemplateService {
         });
       }
       
+      console.log(`Returning ${result.length} template exercises`);
       return result;
     } catch (error) {
       console.error('Error getting template exercises:', error);
       return [];
     }
   }
-  
+
   // Static helper methods used by the workout store
   static async updateExistingTemplate(workout: Workout): Promise<boolean> {
     try {

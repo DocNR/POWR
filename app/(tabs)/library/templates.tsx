@@ -18,6 +18,7 @@ import {
   toWorkoutTemplate 
 } from '@/types/templates';
 import { useWorkoutStore } from '@/stores/workoutStore';
+import { useTemplateService } from '@/components/DatabaseProvider';
 
 // Default available filters
 const availableFilters = {
@@ -33,39 +34,11 @@ const initialFilters: FilterOptions = {
   source: []
 };
 
-// Mock data - move to a separate file later
-const initialTemplates: Template[] = [
-  {
-    id: '1',
-    title: 'Full Body Strength',
-    type: 'strength',
-    category: 'Full Body',
-    exercises: [
-      { title: 'Barbell Squat', targetSets: 3, targetReps: 8 },
-      { title: 'Bench Press', targetSets: 3, targetReps: 8 },
-      { title: 'Bent Over Row', targetSets: 3, targetReps: 8 }
-    ],
-    tags: ['strength', 'compound'],
-    source: 'local',
-    isFavorite: true
-  },
-  {
-    id: '2',
-    title: '20min EMOM',
-    type: 'emom',
-    category: 'Conditioning',
-    exercises: [
-      { title: 'Kettlebell Swings', targetSets: 1, targetReps: 15 },
-      { title: 'Push-ups', targetSets: 1, targetReps: 10 },
-      { title: 'Air Squats', targetSets: 1, targetReps: 20 }
-    ],
-    tags: ['conditioning', 'kettlebell'],
-    source: 'powr',
-    isFavorite: false
-  }
-];
+// Initial templates - empty array
+const initialTemplates: Template[] = [];
 
 export default function TemplatesScreen() {
+  const templateService = useTemplateService(); // Get the template service
   const [showNewTemplate, setShowNewTemplate] = useState(false);
   const [templates, setTemplates] = useState(initialTemplates);
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +47,7 @@ export default function TemplatesScreen() {
   const [activeFilters, setActiveFilters] = useState(0);
   const { isActive, isMinimized } = useWorkoutStore();
   const shouldShowFAB = !isActive || !isMinimized;
+  const [debugInfo, setDebugInfo] = useState('');
   
   // State for the modal template details
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -87,9 +61,6 @@ export default function TemplatesScreen() {
     // Just open the modal without navigating to a route
     setSelectedTemplateId(template.id);
     setShowTemplateModal(true);
-    
-    // We're no longer using this:
-    // router.push(`/template/${template.id}`);
   };
 
   const handleStartWorkout = async (template: Template) => {
@@ -97,8 +68,8 @@ export default function TemplatesScreen() {
       // Convert to WorkoutTemplate format
       const workoutTemplate = toWorkoutTemplate(template);
       
-      // Start the workout
-      await useWorkoutStore.getState().startWorkoutFromTemplate(template.id, workoutTemplate);
+      // Start the workout - use the template ID
+      await useWorkoutStore.getState().startWorkoutFromTemplate(template.id);
       
       // Navigate to the active workout screen
       router.push('/(workout)/create');
@@ -157,13 +128,76 @@ export default function TemplatesScreen() {
     );
   };
 
+  const handleDebugDB = async () => {
+    try {
+      // Get all templates directly
+      const allTemplates = await templateService.getAllTemplates(100);
+      
+      let info = "Database Stats:\n";
+      info += "--------------\n";
+      info += `Total templates: ${allTemplates.length}\n\n`;
+      
+      // Template list
+      info += "Templates:\n";
+      allTemplates.forEach(template => {
+        info += `- ${template.title} (${template.id}) [${template.availability?.source[0] || 'unknown'}]\n`;
+        info += `  Exercises: ${template.exercises.length}\n`;
+      });
+      
+      setDebugInfo(info);
+      console.log(info);
+    } catch (error) {
+      console.error('Debug error:', error);
+      setDebugInfo(`Error: ${String(error)}`);
+    }
+  };
+
+  // Load templates when the screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      // Refresh template favorite status when tab gains focus
-      setTemplates(current => current.map(template => ({
-        ...template,
-        isFavorite: useWorkoutStore.getState().checkFavoriteStatus(template.id)
-      })));
+      async function loadTemplates() {
+        try {
+          console.log('[TemplateScreen] Loading templates...');
+          
+          // Load templates from the database
+          const data = await templateService.getAllTemplates(100);
+          
+          console.log(`[TemplateScreen] Loaded ${data.length} templates from database`);
+          
+          // Convert to Template[] format that the screen expects
+          const formattedTemplates: Template[] = [];
+          
+          for (const template of data) {
+            // Get favorite status
+            const isFavorite = useWorkoutStore.getState().checkFavoriteStatus(template.id);
+            
+            // Convert to Template format
+            formattedTemplates.push({
+              id: template.id,
+              title: template.title,
+              type: template.type,
+              category: template.category,
+              exercises: template.exercises.map(ex => ({
+                title: ex.exercise.title,
+                targetSets: ex.targetSets || 0,
+                targetReps: ex.targetReps || 0,
+                equipment: ex.exercise.equipment
+              })),
+              tags: template.tags || [],
+              source: template.availability?.source[0] || 'local',
+              isFavorite
+            });
+          }
+          
+          // Update the templates state
+          setTemplates(formattedTemplates);
+        } catch (error) {
+          console.error('[TemplateScreen] Error loading templates:', error);
+        }
+      }
+      
+      loadTemplates();
+      
       return () => {};
     }, [])
   );
@@ -181,7 +215,7 @@ export default function TemplatesScreen() {
     
     // Filter by equipment if any selected
     const matchesEquipment = currentFilters.equipment.length === 0 || 
-      (template.exercises.some(ex => 
+      (template.exercises && template.exercises.some(ex => 
         currentFilters.equipment.includes(ex.equipment || '')
       ));
     
@@ -244,6 +278,26 @@ export default function TemplatesScreen() {
         availableFilters={availableFilters}
       />
 
+      {/* Debug button */}
+      <View className="p-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={handleDebugDB}
+        >
+          <Text className="text-xs">Debug Templates</Text>
+        </Button>
+      </View>
+
+      {/* Debug info display */}
+      {debugInfo ? (
+        <View className="px-4 py-2 mx-4 mb-2 bg-primary/10 rounded-md">
+          <ScrollView style={{ maxHeight: 150 }}>
+            <Text className="font-mono text-xs">{debugInfo}</Text>
+          </ScrollView>
+        </View>
+      ) : null}
+
       {/* Templates list */}
       <ScrollView className="flex-1">
         {/* Favorites Section */}
@@ -288,7 +342,7 @@ export default function TemplatesScreen() {
           ) : (
             <View className="px-4">
               <Text className="text-muted-foreground">
-                So empty! Create a new workout template by clicking the + button.
+                No templates found. {templates.length > 0 ? 'Try changing your filters.' : 'Create a new workout template by clicking the + button.'}
               </Text>
             </View>
           )}
