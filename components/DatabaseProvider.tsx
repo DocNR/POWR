@@ -3,7 +3,6 @@ import { View, ActivityIndicator, ScrollView, Text } from 'react-native';
 import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
 import { schema } from '@/lib/db/schema';
 import { ExerciseService } from '@/lib/db/services/ExerciseService';
-import { DevSeederService } from '@/lib/db/services/DevSeederService';
 import { PublicationQueueService } from '@/lib/db/services/PublicationQueueService';
 import { FavoritesService } from '@/lib/db/services/FavoritesService';
 import { WorkoutService } from '@/lib/db/services/WorkoutService';
@@ -17,7 +16,6 @@ interface DatabaseServicesContextValue {
   exerciseService: ExerciseService | null;
   workoutService: WorkoutService | null;
   templateService: TemplateService | null;
-  devSeeder: DevSeederService | null;
   publicationQueue: PublicationQueueService | null;
   favoritesService: FavoritesService | null;
   powrPackService: POWRPackService | null;
@@ -28,7 +26,6 @@ const DatabaseServicesContext = React.createContext<DatabaseServicesContextValue
   exerciseService: null,
   workoutService: null,
   templateService: null,
-  devSeeder: null,
   publicationQueue: null,
   favoritesService: null,
   powrPackService: null,
@@ -64,6 +61,7 @@ const DelayedInitializer: React.FC<{children: React.ReactNode}> = ({children}) =
   
   return <>{children}</>;
 };
+
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [isReady, setIsReady] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -71,7 +69,6 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
     exerciseService: null,
     workoutService: null,
     templateService: null,
-    devSeeder: null,
     publicationQueue: null,
     favoritesService: null,
     powrPackService: null,
@@ -83,8 +80,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   
   // Effect to set NDK on services when it becomes available
   React.useEffect(() => {
-    if (ndk && services.devSeeder && services.publicationQueue) {
-      services.devSeeder.setNDK(ndk);
+    if (ndk && services.publicationQueue) {
       services.publicationQueue.setNDK(ndk);
     }
   }, [ndk, services]);
@@ -129,7 +125,6 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         const exerciseService = new ExerciseService(db);
         const workoutService = new WorkoutService(db);
         const templateService = new TemplateService(db, exerciseService);
-        const devSeeder = new DevSeederService(db, exerciseService);
         const publicationQueue = new PublicationQueueService(db);
         const favoritesService = new FavoritesService(db);
         const powrPackService = new POWRPackService(db);
@@ -139,7 +134,6 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         
         // Initialize NDK on services if available
         if (ndk) {
-          devSeeder.setNDK(ndk);
           publicationQueue.setNDK(ndk);
         }
 
@@ -148,21 +142,14 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
           exerciseService,
           workoutService,
           templateService,
-          devSeeder,
           publicationQueue,
           favoritesService,
           powrPackService,
           db,
         });
-        // Seed development database
+        
+        // Display database info in development mode
         if (__DEV__) {
-          console.log('[DB] Seeding development database...');
-          try {
-            await devSeeder.seedDatabase();
-          } catch (seedError) {
-            console.error('[DB] Error seeding database:', seedError);
-            // Continue even if seeding fails
-          }
           await logDatabaseInfo();
         }
         
@@ -229,14 +216,6 @@ export function useTemplateService() {
     throw new Error('Template service not initialized');
   }
   return context.templateService;
-}
-
-export function useDevSeeder() {
-  const context = React.useContext(DatabaseServicesContext);
-  if (!context.devSeeder) {
-    throw new Error('Dev seeder not initialized');
-  }
-  return context.devSeeder;
 }
 
 export function usePublicationQueue() {
