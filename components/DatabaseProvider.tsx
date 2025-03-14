@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, Text } from 'react-native';
+import { View, ActivityIndicator, ScrollView, Text } from 'react-native';
 import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
 import { schema } from '@/lib/db/schema';
 import { ExerciseService } from '@/lib/db/services/ExerciseService';
@@ -64,7 +64,6 @@ const DelayedInitializer: React.FC<{children: React.ReactNode}> = ({children}) =
   
   return <>{children}</>;
 };
-
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [isReady, setIsReady] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -106,12 +105,30 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         
         // Explicitly check for critical tables after schema creation
         await schema.ensureCriticalTablesExist(db);
+        
+        // Run the v8 migration explicitly to ensure new columns are added
+        try {
+          await (schema as any).migrate_v8(db);
+          console.log('[DB] Migration v8 executed successfully');
+        } catch (migrationError) {
+          console.warn('[DB] Error running migration v8:', migrationError);
+          // Continue even if migration fails - tables might already be updated
+        }
+
+        // Run v9 migration for Nostr metadata enhancements
+        try {
+          await (schema as any).migrate_v9(db);
+          console.log('[DB] Migration v9 executed successfully');
+        } catch (migrationError) {
+          console.warn('[DB] Error running migration v9:', migrationError);
+          // Continue even if migration fails - tables might already be updated
+        }
 
         // Initialize services
         console.log('[DB] Initializing services...');
         const exerciseService = new ExerciseService(db);
         const workoutService = new WorkoutService(db);
-        const templateService = new TemplateService(db);
+        const templateService = new TemplateService(db, exerciseService);
         const devSeeder = new DevSeederService(db, exerciseService);
         const publicationQueue = new PublicationQueueService(db);
         const favoritesService = new FavoritesService(db);
@@ -137,7 +154,6 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
           powrPackService,
           db,
         });
-
         // Seed development database
         if (__DEV__) {
           console.log('[DB] Seeding development database...');

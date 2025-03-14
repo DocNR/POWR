@@ -184,20 +184,26 @@ export function TemplateCard({
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
-                      <Text>Delete Template</Text>
+                      <Text className="text-xl font-semibold text-foreground">Delete Template</Text>
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                      <Text>Are you sure you want to delete {title}? This action cannot be undone.</Text>
+                      <Text className="text-muted-foreground">
+                        Are you sure you want to delete {title}? This action cannot be undone.
+                      </Text>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>
-                      <Text>Cancel</Text>
+                  <View className="flex-row justify-end gap-3">
+                    <AlertDialogCancel asChild>
+                      <Button variant="outline" className="mr-2">
+                        <Text>Cancel</Text>
+                      </Button>
                     </AlertDialogCancel>
-                    <AlertDialogAction onPress={handleConfirmDelete}>
-                      <Text>Delete</Text>
+                    <AlertDialogAction asChild>
+                      <Button variant="destructive" onPress={handleConfirmDelete}>
+                        <Text className="text-destructive-foreground">Delete</Text>
+                      </Button>
                     </AlertDialogAction>
-                  </AlertDialogFooter>
+                  </View>
                 </AlertDialogContent>
               </AlertDialog>
             </View>

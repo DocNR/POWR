@@ -232,7 +232,6 @@ export default function ExercisesScreen() {
               </View>
             </View>
           </View>
-        );
 
       {/* Filter Sheet */}
       <FilterSheet 

@@ -27,6 +27,7 @@ import { TemplateService } from '@/lib//db/services/TemplateService';
 import { WorkoutService } from '@/lib/db/services/WorkoutService'; // Add this import
 import { NostrEvent } from '@/types/nostr';
 import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
+import { ExerciseService } from '@/lib/db/services/ExerciseService';
 
 /**
  * Workout Store
@@ -817,7 +818,9 @@ async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> 
     // Try to get it from favorites in the database
     const db = openDatabaseSync('powr.db');
     const favoritesService = new FavoritesService(db);
-    const templateService = new TemplateService(db);
+    const exerciseService = new ExerciseService(db);
+    const templateService = new TemplateService(db, new ExerciseService(db));
+
     
     // First try to get from favorites
     const favoriteResult = await favoritesService.getContentById<WorkoutTemplate>('template', templateId);

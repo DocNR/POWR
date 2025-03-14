@@ -30,7 +30,7 @@ export class DevSeederService {
     // Try to initialize other services if needed
     try {
       this.workoutService = new WorkoutService(db);
-      this.templateService = new TemplateService(db);
+      this.templateService = new TemplateService(db, exerciseService);
       this.eventCache = new EventCache(db);
     } catch (error) {
       console.log('Some services not available yet:', error);

@@ -7,14 +7,28 @@ import {
 import { Workout } from '@/types/workout';
 import { generateId } from '@/utils/ids';
 import { DbService } from '../db-service';
+import { ExerciseService } from './ExerciseService';
+import { BaseExercise, ExerciseDisplay } from '@/types/exercise';
+
+interface TemplateExerciseWithData {
+  id: string;
+  exercise: BaseExercise | ExerciseDisplay;
+  displayOrder: number;
+  targetSets?: number; // Changed from number | null to number | undefined
+  targetReps?: number; // Changed from number | null to number | undefined
+  targetWeight?: number; // Changed from number | null to number | undefined
+  notes?: string;
+  nostrReference?: string;
+}
 
 export class TemplateService {
   private db: DbService;
   
-  constructor(database: SQLiteDatabase) {
-    this.db = new DbService(database);
+  constructor(db: SQLiteDatabase, private exerciseService: ExerciseService) {
+    // Convert SQLiteDatabase to DbService
+    this.db = db as unknown as DbService;
   }
-  
+
   /**
    * Get all templates
    */
@@ -37,8 +51,10 @@ export class TemplateService {
         nostr_event_id: string | null;
         source: string;
         parent_id: string | null;
+        author_pubkey: string | null;
+        is_archived: number;
       }>(
-        `SELECT * FROM templates ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+        `SELECT * FROM templates WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
         [limit, offset]
       );
       
@@ -57,11 +73,13 @@ export class TemplateService {
           title: template.title,
           type: template.type as any,
           description: template.description,
-          category: 'Custom', // Add this line
+          category: 'Custom', 
           created_at: template.created_at,
           lastUpdated: template.updated_at,
           nostrEventId: template.nostr_event_id || undefined,
           parentId: template.parent_id || undefined,
+          authorPubkey: template.author_pubkey || undefined,
+          isArchived: template.is_archived === 1,
           exercises,
           availability: {
             source: [template.source as any]
@@ -75,6 +93,63 @@ export class TemplateService {
       return result;
     } catch (error) {
       console.error('Error getting templates:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get all archived templates
+   */
+  async getArchivedTemplates(limit: number = 50, offset: number = 0): Promise<WorkoutTemplate[]> {
+    try {
+      const templates = await this.db.getAllAsync<{
+        id: string;
+        title: string;
+        type: string;
+        description: string;
+        created_at: number;
+        updated_at: number;
+        nostr_event_id: string | null;
+        source: string;
+        parent_id: string | null;
+        author_pubkey: string | null;
+        is_archived: number;
+      }>(
+        `SELECT * FROM templates WHERE is_archived = 1 ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+        [limit, offset]
+      );
+      
+      const result: WorkoutTemplate[] = [];
+      
+      for (const template of templates) {
+        // Get exercises for this template
+        const exercises = await this.getTemplateExercises(template.id);
+        
+        result.push({
+          id: template.id,
+          title: template.title,
+          type: template.type as any,
+          description: template.description,
+          category: 'Custom', 
+          created_at: template.created_at,
+          lastUpdated: template.updated_at,
+          nostrEventId: template.nostr_event_id || undefined,
+          parentId: template.parent_id || undefined,
+          authorPubkey: template.author_pubkey || undefined,
+          isArchived: true,
+          exercises,
+          availability: {
+            source: [template.source as any]
+          },
+          isPublic: false,
+          version: 1,
+          tags: []
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error getting archived templates:', error);
       return [];
     }
   }
@@ -94,6 +169,8 @@ export class TemplateService {
         nostr_event_id: string | null;
         source: string;
         parent_id: string | null;
+        author_pubkey: string | null;
+        is_archived: number;
       }>(
         `SELECT * FROM templates WHERE id = ?`,
         [id]
@@ -114,6 +191,8 @@ export class TemplateService {
         lastUpdated: template.updated_at,
         nostrEventId: template.nostr_event_id || undefined,
         parentId: template.parent_id || undefined,
+        authorPubkey: template.author_pubkey || undefined,
+        isArchived: template.is_archived === 1,
         exercises,
         availability: {
           source: [template.source as any]
@@ -141,8 +220,8 @@ export class TemplateService {
         await this.db.runAsync(
           `INSERT INTO templates (
             id, title, type, description, created_at, updated_at,
-            nostr_event_id, source, parent_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            nostr_event_id, source, parent_id, author_pubkey, is_archived
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             id,
             template.title,
@@ -152,7 +231,9 @@ export class TemplateService {
             timestamp,
             template.nostrEventId || null,
             template.availability?.source[0] || 'local',
-            template.parentId || null
+            template.parentId || null,
+            template.authorPubkey || null,
+            template.isArchived ? 1 : 0
           ]
         );
         
@@ -221,6 +302,15 @@ export class TemplateService {
         if (updates.nostrEventId !== undefined) {
           updateFields.push('nostr_event_id = ?');
           updateValues.push(updates.nostrEventId);
+        }
+        
+        if (updates.authorPubkey !== undefined) {
+          updateFields.push('author_pubkey = ?');
+          updateValues.push(updates.authorPubkey);
+        }
+        if (updates.isArchived !== undefined) {
+          updateFields.push('is_archived = ?');
+          updateValues.push(updates.isArchived ? 1 : 0);
         }
         
         // Always update the timestamp
@@ -318,78 +408,126 @@ export class TemplateService {
     }
   }
   
-  // Helper methods
-  private async getTemplateExercises(templateId: string): Promise<TemplateExerciseConfig[]> {
+  /**
+   * Archive a template
+   */
+  async archiveTemplate(id: string, archive: boolean = true): Promise<void> {
     try {
-      // Add additional logging for diagnostic purposes
+      await this.db.runAsync(
+        'UPDATE templates SET is_archived = ? WHERE id = ?',
+        [archive ? 1 : 0, id]
+      );
+    } catch (error) {
+      console.error('Error archiving template:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Remove template from library
+   */
+  async removeFromLibrary(id: string): Promise<void> {
+    try {
+      await this.db.withTransactionAsync(async () => {
+        // Delete template-exercise relationships
+        await this.db.runAsync(
+          'DELETE FROM template_exercises WHERE template_id = ?',
+          [id]
+        );
+        
+        // Delete template
+        await this.db.runAsync(
+          'DELETE FROM templates WHERE id = ?',
+          [id]
+        );
+        
+        // Update powr_pack_items to mark as not imported
+        await this.db.runAsync(
+          'UPDATE powr_pack_items SET is_imported = 0 WHERE item_id = ? AND item_type = "template"',
+          [id]
+        );
+      });
+    } catch (error) {
+      console.error('Error removing template from library:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Delete template from Nostr
+   */
+  async deleteFromNostr(id: string, ndk: any): Promise<void> {
+    try {
+      // Get template details
+      const template = await this.getTemplate(id);
+      if (!template || !template.nostrEventId) {
+        throw new Error('Template not found or not from Nostr');
+      }
+      
+      // Create deletion event
+      const event = new ndk.NDKEvent(ndk);
+      event.kind = 5; // Deletion event
+      event.tags.push(['e', template.nostrEventId]); // Reference to template event
+      event.content = '';
+      
+      // Sign and publish
+      await event.sign();
+      await event.publish();
+      
+      // Remove from database
+      await this.removeFromLibrary(id);
+    } catch (error) {
+      console.error('Error deleting template from Nostr:', error);
+      throw error;
+    }
+  }
+  
+  // Helper methods
+  async getTemplateExercises(templateId: string): Promise<TemplateExerciseWithData[]> {
+    try {
       console.log(`Fetching exercises for template ${templateId}`);
       
       const exercises = await this.db.getAllAsync<{
         id: string;
         exercise_id: string;
+        display_order: number;
         target_sets: number | null;
         target_reps: number | null;
         target_weight: number | null;
         notes: string | null;
+        nostr_reference: string | null;
       }>(
-        `SELECT 
-          te.id, te.exercise_id, te.target_sets, te.target_reps, 
-          te.target_weight, te.notes
-         FROM template_exercises te
-         WHERE te.template_id = ?
-         ORDER BY te.display_order`,
+        `SELECT id, exercise_id, display_order, target_sets, target_reps, target_weight, notes, nostr_reference
+         FROM template_exercises
+         WHERE template_id = ?
+         ORDER BY display_order`,
         [templateId]
       );
       
       console.log(`Found ${exercises.length} template exercises in database`);
       
-      // Log exercise IDs for debugging
-      if (exercises.length > 0) {
-        exercises.forEach(ex => console.log(`  - Exercise ID: ${ex.exercise_id}`));
+      if (exercises.length === 0) {
+        return [];
       }
       
-      const result: TemplateExerciseConfig[] = [];
+      // Get the actual exercise data for each template exercise
+      const result: TemplateExerciseWithData[] = [];
       
-      for (const ex of exercises) {
-        // Get exercise details
-        const exercise = await this.db.getFirstAsync<{
-          title: string;
-          type: string;
-          category: string;
-          equipment: string | null;
-        }>(
-          `SELECT title, type, category, equipment FROM exercises WHERE id = ?`,
-          [ex.exercise_id]
-        );
+      for (const exerciseRow of exercises) {
+        const exerciseData = await this.exerciseService.getExercise(exerciseRow.exercise_id);
         
-        // Log if exercise is found
-        if (exercise) {
-          console.log(`Found exercise: ${exercise.title} (${ex.exercise_id})`);
-        } else {
-          console.log(`Exercise not found for ID: ${ex.exercise_id}`);
-          
-          // Important: Skip exercises that don't exist in the database
-          // We don't want to include placeholder exercises
-          continue;
+        if (exerciseData) {
+          result.push({
+            id: exerciseRow.id,
+            exercise: exerciseData,
+            displayOrder: exerciseRow.display_order,
+            targetSets: exerciseRow.target_sets ?? undefined, // Convert null to undefined
+            targetReps: exerciseRow.target_reps ?? undefined, // Convert null to undefined
+            targetWeight: exerciseRow.target_weight ?? undefined, // Convert null to undefined
+            notes: exerciseRow.notes ?? undefined, // Convert null to undefined
+            nostrReference: exerciseRow.nostr_reference ?? undefined, // Convert null to undefined
+          });
         }
-        
-        result.push({
-          id: ex.id,
-          exercise: {
-            id: ex.exercise_id,
-            title: exercise?.title || 'Unknown Exercise',
-            type: exercise?.type as any || 'strength',
-            category: exercise?.category as any || 'Other',
-            equipment: exercise?.equipment as any || undefined,
-            tags: [], // Required property
-            availability: { source: ['local'] }, // Required property
-            created_at: Date.now() // Required property
-          },
-          targetSets: ex.target_sets || undefined,
-          targetReps: ex.target_reps || undefined,
-          targetWeight: ex.target_weight || undefined,
-          notes: ex.notes || undefined
-        });
       }
       
       console.log(`Returning ${result.length} template exercises`);
@@ -410,7 +548,7 @@ export class TemplateService {
       
       // Get database access
       const db = openDatabaseSync('powr.db');
-      const service = new TemplateService(db);
+      const service = new TemplateService(db, new ExerciseService(db))
       
       // Get the existing template
       const template = await service.getTemplate(workout.templateId);
@@ -455,7 +593,7 @@ export class TemplateService {
     try {
       // Get database access
       const db = openDatabaseSync('powr.db');
-      const service = new TemplateService(db);
+      const service = new TemplateService(db, new ExerciseService(db));
       
       // Convert workout exercises to template format
       const exercises: TemplateExerciseConfig[] = workout.exercises.map(ex => ({
@@ -489,7 +627,8 @@ export class TemplateService {
         },
         isPublic: false,
         version: 1,
-        tags: []
+        tags: [],
+        isArchived: false
       });
       
       console.log('New template created from workout:', templateId);

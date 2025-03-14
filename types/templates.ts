@@ -65,6 +65,17 @@ export interface TemplateExerciseConfig {
   roundRest?: number;
 }
 
+export interface TemplateExerciseWithData {
+  id: string;
+  exercise: BaseExercise;
+  displayOrder: number;
+  targetSets: number | null;
+  targetReps: number | null;
+  targetWeight: number | null;
+  notes: string | null;
+  nostrReference?: string | null;
+}
+
 /**
  * Template versioning and derivation tracking
  */
@@ -124,8 +135,8 @@ export interface WorkoutTemplate extends TemplateBase, SyncableContent {
   exercises: TemplateExerciseConfig[];
   isPublic: boolean;
   version: number;
-  lastUpdated?: number; // Add this line
-  parentId?: string; // Add this line
+  lastUpdated?: number;
+  parentId?: string;
   
   // Template configuration
   format?: {
@@ -151,6 +162,10 @@ export interface WorkoutTemplate extends TemplateBase, SyncableContent {
   // Nostr integration
   nostrEventId?: string;
   relayUrls?: string[];
+  authorPubkey?: string;
+  
+  // Template management
+  isArchived?: boolean;
 }
 
 /**

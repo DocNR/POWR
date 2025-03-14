@@ -1,7 +1,6 @@
 // lib/db/services/NostrIntegration.ts
 import { SQLiteDatabase } from 'expo-sqlite';
 import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
-import { findTagValue, getTagValues } from '@/utils/nostr-utils';
 import { 
   BaseExercise, 
   ExerciseType, 
@@ -33,14 +32,14 @@ export class NostrIntegration {
    */
   convertNostrExerciseToLocal(exerciseEvent: NDKEvent): BaseExercise {
     const id = generateId();
-    const title = findTagValue(exerciseEvent.tags, 'title') || 'Unnamed Exercise';
-    const equipmentTag = findTagValue(exerciseEvent.tags, 'equipment') || 'barbell';
-    const difficultyTag = findTagValue(exerciseEvent.tags, 'difficulty') || '';
-    const formatTag = exerciseEvent.tags.find(t => t[0] === 'format');
-    const formatUnitsTag = exerciseEvent.tags.find(t => t[0] === 'format_units');
+    const title = exerciseEvent.tagValue('title') || 'Unnamed Exercise';
+    const equipmentTag = exerciseEvent.tagValue('equipment') || 'barbell';
+    const difficultyTag = exerciseEvent.tagValue('difficulty') || '';
+    const formatTag = exerciseEvent.getMatchingTags('format');
+    const formatUnitsTag = exerciseEvent.getMatchingTags('format_units');
     
     // Get tags
-    const tags = getTagValues(exerciseEvent.tags, 't');
+    const tags = exerciseEvent.getMatchingTags('t').map(tag => tag[1]);
     
     // Map equipment to valid type
     const equipment: Equipment = this.mapToValidEquipment(equipmentTag);
@@ -55,11 +54,11 @@ export class NostrIntegration {
     const format: ExerciseFormat = {};
     const formatUnits: ExerciseFormatUnits = {};
     
-    if (formatTag && formatUnitsTag && formatTag.length > 1 && formatUnitsTag.length > 1) {
+    if (formatTag.length > 0 && formatUnitsTag.length > 0 && formatTag[0].length > 1 && formatUnitsTag[0].length > 1) {
       // Process format parameters
-      for (let i = 1; i < formatTag.length; i++) {
-        const param = formatTag[i];
-        const unit = formatUnitsTag[i] || '';
+      for (let i = 1; i < formatTag[0].length; i++) {
+        const param = formatTag[0][i];
+        const unit = formatUnitsTag[0][i] || '';
         
         if (param === 'weight') {
           format.weight = true;
@@ -88,6 +87,9 @@ export class NostrIntegration {
       formatUnits.set_type = 'warmup|normal|drop|failure';
     }
     
+    // Get d-tag for identification
+    const dTag = exerciseEvent.tagValue('d');
+    
     // Create the exercise object
     const exercise: BaseExercise = {
       id,
@@ -101,12 +103,25 @@ export class NostrIntegration {
       format_units: formatUnits,
       availability: {
         source: ['nostr'],
+        lastSynced: {
+          nostr: {
+            timestamp: Date.now(), // Make sure this is included
+            metadata: {
+              id: exerciseEvent.id,           // Add this
+              pubkey: exerciseEvent.pubkey,
+              relayUrl: "",                   // Add this
+              created_at: exerciseEvent.created_at || Math.floor(Date.now() / 1000), // Add this
+              dTag: dTag || '',
+              eventId: exerciseEvent.id
+            }
+          }
+        }
       },
       created_at: exerciseEvent.created_at ? exerciseEvent.created_at * 1000 : Date.now()
     };
-    
+
     return exercise;
-  }
+  } // Fixed missing closing brace
   
   /**
    * Map string to valid Equipment type
@@ -169,8 +184,8 @@ export class NostrIntegration {
    */
   convertNostrTemplateToLocal(templateEvent: NDKEvent): WorkoutTemplate {
     const id = generateId();
-    const title = findTagValue(templateEvent.tags, 'title') || 'Unnamed Template';
-    const typeTag = findTagValue(templateEvent.tags, 'type') || 'strength';
+    const title = templateEvent.tagValue('title') || 'Unnamed Template';
+    const typeTag = templateEvent.tagValue('type') || 'strength';
     
     // Convert string to valid TemplateType
     const type: TemplateType = 
@@ -179,18 +194,21 @@ export class NostrIntegration {
         typeTag as TemplateType : 'strength';
     
     // Get rounds, duration, interval if available
-    const rounds = parseInt(findTagValue(templateEvent.tags, 'rounds') || '0') || undefined;
-    const duration = parseInt(findTagValue(templateEvent.tags, 'duration') || '0') || undefined;
-    const interval = parseInt(findTagValue(templateEvent.tags, 'interval') || '0') || undefined;
+    const rounds = parseInt(templateEvent.tagValue('rounds') || '0') || undefined;
+    const duration = parseInt(templateEvent.tagValue('duration') || '0') || undefined;
+    const interval = parseInt(templateEvent.tagValue('interval') || '0') || undefined;
     
     // Get tags
-    const tags = getTagValues(templateEvent.tags, 't');
+    const tags = templateEvent.getMatchingTags('t').map(tag => tag[1]);
     
     // Map to valid category
     const category: TemplateCategory = this.mapToTemplateCategory(tags[0] || '');
     
     // Create exercises placeholder (will be populated later)
     const exercises: TemplateExerciseConfig[] = [];
+    
+    // Get d-tag for identification
+    const dTag = templateEvent.tagValue('d');
     
     // Create the template object
     const template: WorkoutTemplate = {
@@ -207,11 +225,25 @@ export class NostrIntegration {
       isPublic: true,
       version: 1,
       availability: {
-        source: ['nostr']
+        source: ['nostr'],
+        lastSynced: {
+          nostr: {
+            timestamp: Date.now(), // Add timestamp
+            metadata: {
+              id: templateEvent.id, // Fixed: changed from exerciseEvent to templateEvent
+              pubkey: templateEvent.pubkey, // Fixed: changed from exerciseEvent to templateEvent
+              relayUrl: "",
+              created_at: templateEvent.created_at || Math.floor(Date.now() / 1000), // Fixed: changed from exerciseEvent to templateEvent
+              dTag: dTag || '',
+              eventId: templateEvent.id // Fixed: changed from exerciseEvent to templateEvent
+            }
+          }
+        }
       },
       created_at: templateEvent.created_at ? templateEvent.created_at * 1000 : Date.now(),
       lastUpdated: Date.now(),
-      nostrEventId: templateEvent.id
+      nostrEventId: templateEvent.id,
+      authorPubkey: templateEvent.pubkey
     };
     
     return template;
@@ -239,11 +271,25 @@ export class NostrIntegration {
    * Get exercise references from a template event
    */
   getTemplateExerciseRefs(templateEvent: NDKEvent): string[] {
+    const exerciseTags = templateEvent.getMatchingTags('exercise');
     const exerciseRefs: string[] = [];
     
-    for (const tag of templateEvent.tags) {
-      if (tag[0] === 'exercise' && tag.length > 1) {
-        exerciseRefs.push(tag[1]);
+    for (const tag of exerciseTags) {
+      if (tag.length > 1) {
+        // Get the reference exactly as it appears in the tag
+        const ref = tag[1];
+        
+        // Add parameters if available
+        if (tag.length > 2) {
+          // Add parameters with "::" separator
+          const params = tag.slice(2).join(':');
+          exerciseRefs.push(`${ref}::${params}`);
+        } else {
+          exerciseRefs.push(ref);
+        }
+        
+        // Log the exact reference for debugging
+        console.log(`Extracted reference from template: ${exerciseRefs[exerciseRefs.length-1]}`);
       }
     }
     
@@ -253,17 +299,40 @@ export class NostrIntegration {
   /**
    * Save an imported exercise to the database
    */
-  async saveImportedExercise(exercise: BaseExercise): Promise<string> {
+  async saveImportedExercise(exercise: BaseExercise, originalEvent?: NDKEvent): Promise<string> {
     try {
       // Convert format objects to JSON strings
       const formatJson = JSON.stringify(exercise.format || {});
       const formatUnitsJson = JSON.stringify(exercise.format_units || {});
       
+      // Get the Nostr event ID and d-tag if available
+      const nostrEventId = originalEvent?.id || 
+                          (exercise.availability?.lastSynced?.nostr?.metadata?.eventId || null);
+      
+      // Get d-tag for identification (very important for future references)
+      const dTag = originalEvent?.tagValue('d') || 
+                  (exercise.availability?.lastSynced?.nostr?.metadata?.dTag || null);
+      
+      // Store the d-tag in a JSON metadata field for easier searching
+      const nostrMetadata = JSON.stringify({
+        pubkey: originalEvent?.pubkey || exercise.availability?.lastSynced?.nostr?.metadata?.pubkey,
+        dTag: dTag,
+        eventId: nostrEventId
+      });
+      
+      // Check if nostr_metadata column exists
+      const hasNostrMetadata = await this.columnExists('exercises', 'nostr_metadata');
+      
+      if (!hasNostrMetadata) {
+        console.log("Adding nostr_metadata column to exercises table");
+        await this.db.execAsync(`ALTER TABLE exercises ADD COLUMN nostr_metadata TEXT`);
+      }
+      
       await this.db.runAsync(
         `INSERT INTO exercises 
          (id, title, type, category, equipment, description, format_json, format_units_json, 
-          created_at, updated_at, source, nostr_event_id) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          created_at, updated_at, source, nostr_event_id${hasNostrMetadata ? ', nostr_metadata' : ''}) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrMetadata ? ', ?' : ''})`,
         [
           exercise.id,
           exercise.title,
@@ -276,7 +345,8 @@ export class NostrIntegration {
           exercise.created_at,
           Date.now(),
           'nostr',
-          exercise.id // Using exercise ID as nostr_event_id since we don't have the actual event ID
+          nostrEventId,
+          ...(hasNostrMetadata ? [nostrMetadata] : [])
         ]
       );
       
@@ -300,12 +370,31 @@ export class NostrIntegration {
   /**
    * Save an imported template to the database
    */
-  async saveImportedTemplate(template: WorkoutTemplate): Promise<string> {
+  async saveImportedTemplate(template: WorkoutTemplate, originalEvent?: NDKEvent): Promise<string> {
     try {
+      // Get d-tag for identification
+      const dTag = originalEvent?.tagValue('d') || 
+                  (template.availability?.lastSynced?.nostr?.metadata?.dTag || null);
+      
+      // Store the d-tag in a JSON metadata field for easier searching
+      const nostrMetadata = JSON.stringify({
+        pubkey: template.authorPubkey || originalEvent?.pubkey,
+        dTag: dTag,
+        eventId: template.nostrEventId
+      });
+      
+      // Check if nostr_metadata column exists
+      const hasNostrMetadata = await this.columnExists('templates', 'nostr_metadata');
+      
+      if (!hasNostrMetadata) {
+        console.log("Adding nostr_metadata column to templates table");
+        await this.db.execAsync(`ALTER TABLE templates ADD COLUMN nostr_metadata TEXT`);
+      }
+      
       await this.db.runAsync(
         `INSERT INTO templates 
-         (id, title, type, description, created_at, updated_at, source, nostr_event_id) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, title, type, description, created_at, updated_at, source, nostr_event_id, author_pubkey, is_archived${hasNostrMetadata ? ', nostr_metadata' : ''}) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrMetadata ? ', ?' : ''})`,
         [
           template.id,
           template.title,
@@ -314,7 +403,10 @@ export class NostrIntegration {
           template.created_at,
           template.lastUpdated || Date.now(),
           'nostr',
-          template.nostrEventId || null
+          template.nostrEventId || null,
+          template.authorPubkey || null,
+          template.isArchived ? 1 : 0,
+          ...(hasNostrMetadata ? [nostrMetadata] : [])
         ]
       );
       
@@ -336,54 +428,135 @@ export class NostrIntegration {
     try {
       console.log(`Saving ${exerciseIds.length} exercise relationships for template ${templateId}`);
       
+      // Check if nostr_reference column exists
+      const hasNostrReference = await this.columnExists('template_exercises', 'nostr_reference');
+      
+      if (!hasNostrReference) {
+        console.log("Adding nostr_reference column to template_exercises table");
+        await this.db.execAsync(`ALTER TABLE template_exercises ADD COLUMN nostr_reference TEXT`);
+      }
+      
       // Create template exercise records
-      for (const [index, exerciseId] of exerciseIds.entries()) {
+      for (let i = 0; i < exerciseIds.length; i++) {
+        const exerciseId = exerciseIds[i];
         const templateExerciseId = generateId();
         const now = Date.now();
         
         // Get the corresponding exercise reference with parameters
-        const exerciseRef = exerciseRefs[index] || '';
+        const exerciseRef = exerciseRefs[i] || '';
+        console.log(`Processing reference: ${exerciseRef}`);
         
         // Parse the reference format: kind:pubkey:d-tag::sets:reps:weight
         let targetSets = null;
         let targetReps = null;
         let targetWeight = null;
+        let setType = null;
         
         // Check if reference contains parameters
         if (exerciseRef.includes('::')) {
-          const parts = exerciseRef.split('::');
-          if (parts.length > 1) {
-            const params = parts[1].split(':');
-            if (params.length > 0) targetSets = parseInt(params[0]) || null;
-            if (params.length > 1) targetReps = parseInt(params[1]) || null;
-            if (params.length > 2) targetWeight = parseFloat(params[2]) || null;
-          }
+          const [_, paramString] = exerciseRef.split('::');
+          const params = paramString.split(':');
+          
+          if (params.length > 0) targetSets = params[0] ? parseInt(params[0]) : null;
+          if (params.length > 1) targetReps = params[1] ? parseInt(params[1]) : null;
+          if (params.length > 2) targetWeight = params[2] ? parseFloat(params[2]) : null;
+          if (params.length > 3) setType = params[3] || null;
+          
+          console.log(`Parsed parameters: sets=${targetSets}, reps=${targetReps}, weight=${targetWeight}, type=${setType}`);
         }
-        
-        console.log(`Template exercise ${index}: ${exerciseId} with sets=${targetSets}, reps=${targetReps}, weight=${targetWeight}`);
         
         await this.db.runAsync(
           `INSERT INTO template_exercises 
-           (id, template_id, exercise_id, display_order, target_sets, target_reps, target_weight, created_at, updated_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, template_id, exercise_id, display_order, target_sets, target_reps, target_weight, created_at, updated_at${hasNostrReference ? ', nostr_reference' : ''}) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrReference ? ', ?' : ''})`,
           [
             templateExerciseId,
             templateId,
             exerciseId,
-            index,
+            i,
             targetSets,
             targetReps,
             targetWeight,
             now,
-            now
+            now,
+            ...(hasNostrReference ? [exerciseRef] : [])
           ]
         );
+        
+        console.log(`Saved template-exercise relationship: template=${templateId}, exercise=${exerciseId}`);
       }
       
-      console.log(`Successfully saved all template-exercise relationships for template ${templateId}`);
+      console.log(`Successfully saved ${exerciseIds.length} template-exercise relationships for template ${templateId}`);
     } catch (error) {
       console.error('Error saving template exercises with parameters:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * Find exercises by Nostr reference
+   * This method helps match references in templates to actual exercises
+   */
+  async findExercisesByNostrReference(refs: string[]): Promise<Map<string, string>> {
+    try {
+      const result = new Map<string, string>();
+      
+      for (const ref of refs) {
+        const refParts = ref.split('::')[0].split(':');
+        if (refParts.length < 3) continue;
+        
+        const refKind = refParts[0];
+        const refPubkey = refParts[1];
+        const refDTag = refParts[2];
+        
+        // Try to find by d-tag and pubkey in nostr_metadata if available
+        const hasNostrMetadata = await this.columnExists('exercises', 'nostr_metadata');
+        
+        let exercise = null;
+        
+        if (hasNostrMetadata) {
+          exercise = await this.db.getFirstAsync<{ id: string }>(
+            `SELECT id FROM exercises WHERE 
+             JSON_EXTRACT(nostr_metadata, '$.pubkey') = ? AND 
+             JSON_EXTRACT(nostr_metadata, '$.dTag') = ?`,
+            [refPubkey, refDTag]
+          );
+        }
+        
+        // Fallback: try to match by event ID
+        if (!exercise) {
+          exercise = await this.db.getFirstAsync<{ id: string }>(
+            `SELECT id FROM exercises WHERE nostr_event_id = ?`,
+            [refDTag]
+          );
+        }
+        
+        if (exercise) {
+          result.set(ref, exercise.id);
+          console.log(`Matched exercise reference ${ref} to local ID ${exercise.id}`);
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error finding exercises by Nostr reference:', error);
+      return new Map();
+    }
+  }
+  
+  /**
+   * Check if a column exists in a table
+   */
+  private async columnExists(table: string, column: string): Promise<boolean> {
+    try {
+      const result = await this.db.getAllAsync<{ name: string }>(
+        `PRAGMA table_info(${table})`
+      );
+      
+      return result.some(col => col.name === column);
+    } catch (error) {
+      console.error(`Error checking if column ${column} exists in table ${table}:`, error);
+      return false;
     }
   }
 }

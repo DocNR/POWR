@@ -12,46 +12,102 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PackageOpen, ArrowRight } from 'lucide-react-native';
 import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 import { usePOWRPackService } from '@/components/DatabaseProvider';
+import { Clipboard } from 'react-native';
+
+// Hardcoded test pack naddr
+const TEST_PACK_NADDR = 'naddr1qq88qmmhwgkhgetnwskhqctrdvqs6amnwvaz7tmwdaejumr0dsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q25f8lj0pcq7xk3v68w4h9ldenhh3v3x97gumm5yl8e0mgq0dnvssxpqqqp6ng325rsl';
 
 export default function POWRPackSection() {
   const { ndk } = useNDK();
   const powrPackService = usePOWRPackService();
   const [featuredPacks, setFeaturedPacks] = useState<NDKEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Subscribe to POWR packs (kind 30004 with powrpack hashtag)
-  const { events, isLoading } = useSubscribe(
+  const { events, isLoading: isSubscribeLoading } = useSubscribe(
     ndk ? [{ kinds: [30004], '#t': ['powrpack'], limit: 10 }] : false,
     { enabled: !!ndk }
   );
   
+  // Set up test data on component mount
+  useEffect(() => {
+    const setupTestData = async () => {
+      try {
+        setIsLoading(true);
+        // For testing, create a mock event that mimics what we'd get from the network
+        const testPack = new NDKEvent(ndk || undefined);
+        testPack.kind = 30004;
+        testPack.pubkey = '55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21';
+        testPack.content = 'This is a test POWR Pack containing 2 workout templates and 2 exercises. Created for testing POWR Pack import functionality.';
+        testPack.id = 'c1838367545275c12a969b7f1b84c60edbaec548332bfb4af7e2d12926090211';
+        testPack.created_at = 1741832829;
+        
+        // Add all the tags
+        testPack.tags = [
+          ['d', 'powr-test-pack'],
+          ['name', 'POWR Test Pack'],
+          ['about', 'A test collection of workout templates and exercises for POWR app'],
+          ['a', '33402:55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21:e8256e9f70b87ad9fc4cf5712fe8f61641fc1313c608c38525c81537b5b411a5'],
+          ['a', '33402:55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21:404faf8c2bc3cf2477b7753b0888af48fd1416c3ff77a019fef89a8199826bcd'],
+          ['a', '33401:55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21:d25892222f1bb4a457c840c5c829915c4e2a0d1ced55b40d69e4682d9a8e3fb2'],
+          ['a', '33401:55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21:9f93ee6c8c314e7938ebf00e3de86e6e255c3ed48ad9763843758669092bb92a']
+        ];
+        
+        // Always include the test pack in our featured packs
+        setFeaturedPacks([testPack]);
+      } catch (error) {
+        console.error('Error setting up test data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    setupTestData();
+  }, [ndk]);
+  
   // Update featured packs when events change
   useEffect(() => {
     if (events.length > 0) {
-      setFeaturedPacks(events);
+      // Combine the test pack with any events from the subscription
+      setFeaturedPacks(prevPacks => {
+        // Filter out duplicates by ID
+        const uniqueEvents = events.filter(event => 
+          !prevPacks.some(pack => pack.id === event.id)
+        );
+        return [...prevPacks, ...uniqueEvents];
+      });
     }
   }, [events]);
   
   // Handle pack click
   const handlePackClick = (packEvent: NDKEvent) => {
-    // Use the service from context
-    const naddr = powrPackService.createShareableNaddr(packEvent);
-    
-    // Navigate to import screen
-    router.push('/(packs)/import');
-    
-    // We could also implement copy to clipboard functionality here
-    // Clipboard.setString(naddr);
-    // Alert.alert('Pack address copied', 'Paste the address in the import screen to add this pack.');
+    try {
+      // Create shareable naddr
+      const naddr = TEST_PACK_NADDR; // Use hardcoded test pack naddr for now
+      
+      // Copy to clipboard
+      Clipboard.setString(naddr);
+      
+      // Navigate to import screen
+      router.push('/(packs)/import');
+      
+      // Alert user that the address has been copied
+      alert('Pack address copied to clipboard. Paste it in the import field.');
+    } catch (error) {
+      console.error('Error handling pack click:', error);
+      alert('Failed to prepare pack for import. Please try again.');
+    }
   };
   
   // View all packs
   const handleViewAll = () => {
-    // For future implementation - could navigate to a dedicated packs discovery screen
     router.push('/(packs)/manage');
   };
   
-  // If no packs are available and not loading, don't show the section
-  if (featuredPacks.length === 0 && !isLoading) {
+  // Even if there are no network packs, we'll always show our test pack
+  const showSection = true;
+  
+  if (!showSection) {
     return null;
   }
   
@@ -90,8 +146,8 @@ export default function POWRPackSection() {
         ) : featuredPacks.length > 0 ? (
           // Pack cards
           featuredPacks.map(pack => {
-            const title = findTagValue(pack.tags, 'title') || 'Unnamed Pack';
-            const description = findTagValue(pack.tags, 'description') || '';
+            const title = findTagValue(pack.tags, 'name') || 'Unnamed Pack';
+            const description = findTagValue(pack.tags, 'about') || '';
             const image = findTagValue(pack.tags, 'image') || null;
             const exerciseCount = pack.tags.filter(t => t[0] === 'a' && t[1].startsWith('33401')).length;
             const templateCount = pack.tags.filter(t => t[0] === 'a' && t[1].startsWith('33402')).length;

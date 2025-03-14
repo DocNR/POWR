@@ -1,46 +1,54 @@
 // lib/db/services/POWRPackService.ts
 import { SQLiteDatabase } from 'expo-sqlite';
-import { generateId } from '@/utils/ids';
-import { POWRPack, POWRPackItem, POWRPackWithContent, POWRPackImport, POWRPackSelection } from '@/types/powr-pack';
-import { BaseExercise } from '@/types/exercise';
-import { WorkoutTemplate } from '@/types/templates';
 import NDK, { NDKEvent, NDKFilter } from '@nostr-dev-kit/ndk-mobile';
 import { nip19 } from 'nostr-tools';
-import { findTagValue, getTagValues } from '@/utils/nostr-utils';
+import { generateId } from '@/utils/ids';
 import { NostrIntegration } from './NostrIntegration';
+import { POWRPack, POWRPackImport, POWRPackSelection, POWRPackWithContent } from '@/types/powr-pack';
+import { 
+  BaseExercise, 
+  ExerciseType, 
+  ExerciseCategory 
+} from '@/types/exercise';
+import { 
+  WorkoutTemplate, 
+  TemplateType 
+} from '@/types/templates';
 
-class POWRPackService {
+/**
+ * Service for managing POWR Packs (importable collections of templates and exercises)
+ */
+export default class POWRPackService {
   private db: SQLiteDatabase;
+  private nostrIntegration: NostrIntegration;
   
   constructor(db: SQLiteDatabase) {
     this.db = db;
+    this.nostrIntegration = new NostrIntegration(db);
   }
   
   /**
-   * Fetches a POWR Pack from a nostr address (naddr)
-   * @param naddr The naddr string pointing to a NIP-51 list
-   * @param ndk The NDK instance to use for fetching
-   * @returns Promise with the pack data and its contents
+   * Fetch a POWR Pack from a Nostr address (naddr)
    */
   async fetchPackFromNaddr(naddr: string, ndk: NDK): Promise<POWRPackImport> {
     try {
       console.log(`Fetching POWR Pack from naddr: ${naddr}`);
       
-      // 1. Decode the naddr
+      // Validate naddr format
+      if (!naddr.startsWith('naddr1')) {
+        throw new Error('Invalid naddr format. Should start with "naddr1"');
+      }
+      
+      // Decode naddr
       const decoded = nip19.decode(naddr);
       if (decoded.type !== 'naddr') {
         throw new Error('Invalid naddr format');
       }
       
-      const { pubkey, kind, identifier } = decoded.data as { pubkey: string, kind: number, identifier?: string };
+      const { pubkey, kind, identifier } = decoded.data;
       console.log(`Decoded naddr: pubkey=${pubkey}, kind=${kind}, identifier=${identifier}`);
       
-      // 2. Check that it's a curation list (kind 30004)
-      if (kind !== 30004) {
-        throw new Error('Not a valid NIP-51 curation list');
-      }
-      
-      // 3. Create a filter to fetch the pack event
+      // Create filter to fetch the pack event
       const packFilter: NDKFilter = {
         kinds: [kind],
         authors: [pubkey],
@@ -49,49 +57,47 @@ class POWRPackService {
       
       console.log(`Fetching pack with filter: ${JSON.stringify(packFilter)}`);
       
-      // 4. Fetch the pack event
-      const packEvents = await ndk.fetchEvents(packFilter);
-      if (packEvents.size === 0) {
+      // Fetch the pack event
+      const events = await ndk.fetchEvents(packFilter);
+      if (events.size === 0) {
         throw new Error('Pack not found');
       }
       
-      const packEvent = Array.from(packEvents)[0];
+      // Get the first matching event
+      const packEvent = Array.from(events)[0];
       console.log(`Fetched pack event: ${packEvent.id}`);
+      
+      // Get tags for debugging
       console.log(`Pack tags: ${JSON.stringify(packEvent.tags)}`);
       
-      // 5. Extract template and exercise references
+      // Extract template and exercise references
       const templateRefs: string[] = [];
       const exerciseRefs: string[] = [];
       
-      for (const tag of packEvent.tags) {
-        if (tag[0] === 'a' && tag.length > 1) {
-          const addressPointer = tag[1];
-          
-          // Format is kind:pubkey:d-tag
-          if (addressPointer.startsWith('33402:')) {
-            // Workout template
-            templateRefs.push(addressPointer);
-            console.log(`Found template reference: ${addressPointer}`);
-          } else if (addressPointer.startsWith('33401:')) {
-            // Exercise
-            exerciseRefs.push(addressPointer);
-            console.log(`Found exercise reference: ${addressPointer}`);
-          }
+      // Use NDK's getMatchingTags for more reliable tag handling
+      const aTags = packEvent.getMatchingTags('a');
+      
+      for (const tag of aTags) {
+        if (tag.length < 2) continue;
+        
+        const addressPointer = tag[1];
+        if (addressPointer.startsWith('33402:')) {
+          console.log(`Found template reference: ${addressPointer}`);
+          templateRefs.push(addressPointer);
+        } else if (addressPointer.startsWith('33401:')) {
+          console.log(`Found exercise reference: ${addressPointer}`);
+          exerciseRefs.push(addressPointer);
         }
       }
       
       console.log(`Found ${templateRefs.length} template refs and ${exerciseRefs.length} exercise refs`);
       
-      // 6. Fetch templates and exercises
-      console.log('Fetching referenced templates...');
+      // Fetch referenced templates and exercises
       const templates = await this.fetchReferencedEvents(ndk, templateRefs);
-      
-      console.log('Fetching referenced exercises...');
       const exercises = await this.fetchReferencedEvents(ndk, exerciseRefs);
       
       console.log(`Fetched ${templates.length} templates and ${exercises.length} exercises`);
       
-      // 7. Return the complete pack data
       return {
         packEvent,
         templates,
@@ -104,76 +110,51 @@ class POWRPackService {
   }
   
   /**
-   * Helper function to fetch events from address pointers
+   * Fetch referenced events (templates or exercises)
    */
-  async fetchReferencedEvents(ndk: NDK, addressPointers: string[]): Promise<NDKEvent[]> {
+  async fetchReferencedEvents(ndk: NDK, refs: string[]): Promise<NDKEvent[]> {
+    if (refs.length === 0) return [];
+    
+    console.log(`Fetching references: ${JSON.stringify(refs)}`);
+    
     const events: NDKEvent[] = [];
     
-    console.log("Fetching references:", addressPointers);
-    
-    for (const pointer of addressPointers) {
+    for (const ref of refs) {
       try {
-        // Parse the pointer (kind:pubkey:d-tag)
-        const parts = pointer.split(':');
-        if (parts.length < 3) {
-          console.error(`Invalid address pointer format: ${pointer}`);
-          continue;
-        }
-        
-        // Extract the components
-        const kindStr = parts[0];
-        const hexPubkey = parts[1];
-        const dTagOrEventId = parts[2];
-        
+        // Parse the reference format (kind:pubkey:d-tag)
+        const [kindStr, pubkey, dTag] = ref.split(':');
         const kind = parseInt(kindStr);
-        if (isNaN(kind)) {
-          console.error(`Invalid kind in pointer: ${kindStr}`);
-          continue;
-        }
         
-        console.log(`Fetching ${kind} event with d-tag ${dTagOrEventId} from author ${hexPubkey}`);
+        console.log(`Fetching ${kind} event with d-tag ${dTag} from author ${pubkey}`);
         
-        // Try direct event ID fetching first
-        try {
-          console.log(`Trying to fetch event directly by ID: ${dTagOrEventId}`);
-          const directEvent = await ndk.fetchEvent({ids: [dTagOrEventId]});
-          if (directEvent) {
-            console.log(`Successfully fetched event by ID: ${dTagOrEventId}`);
-            events.push(directEvent);
-            continue; // Skip to next loop iteration
-          }
-        } catch (directFetchError) {
-          console.log(`Direct fetch failed, falling back to filters: ${directFetchError}`);
-        }
-        
-        // Create a filter as fallback
+        // Create a filter to find this specific event
         const filter: NDKFilter = {
           kinds: [kind],
-          authors: [hexPubkey],
+          authors: [pubkey],
+          '#d': [dTag]
         };
         
-        if (dTagOrEventId && dTagOrEventId.length > 0) {
-          // For parameterized replaceable events, use d-tag
-          filter['#d'] = [dTagOrEventId];
-        }
-        
-        console.log("Using filter:", JSON.stringify(filter));
-        
-        // Fetch the events with a timeout
-        const fetchPromise = ndk.fetchEvents(filter);
-        const timeoutPromise = new Promise<Set<NDKEvent>>((_, reject) => 
-          setTimeout(() => reject(new Error('Fetch timeout')), 10000)
-        );
-        
-        const fetchedEvents = await Promise.race([fetchPromise, timeoutPromise]);
-        console.log(`Found ${fetchedEvents.size} events for ${pointer}`);
+        // Try to fetch by filter first
+        const fetchedEvents = await ndk.fetchEvents(filter);
         
         if (fetchedEvents.size > 0) {
-          events.push(...Array.from(fetchedEvents));
+          events.push(Array.from(fetchedEvents)[0]);
+          continue;
+        }
+        
+        // If not found by d-tag, try to fetch by ID directly
+        console.log(`Trying to fetch event directly by ID: ${dTag}`);
+        try {
+          const event = await ndk.fetchEvent(dTag);
+          if (event) {
+            console.log(`Successfully fetched event by ID: ${dTag}`);
+            events.push(event);
+          }
+        } catch (idError) {
+          console.error(`Error fetching by ID: ${idError}`);
         }
       } catch (error) {
-        console.error(`Error fetching event with pointer ${pointer}:`, error);
-        // Continue with other events even if one fails
+        console.error(`Error fetching reference ${ref}:`, error);
       }
     }
     
@@ -181,393 +162,521 @@ class POWRPackService {
     return events;
   }
   
-    /**
-     * Analyzes templates and identifies their exercise dependencies
-     */
-    analyzeDependencies(templates: NDKEvent[], exercises: NDKEvent[]): Record<string, string[]> {
-      const dependencies: Record<string, string[]> = {};
-      const exerciseMap: Record<string, string> = {};
-      
-      console.log(`Analyzing dependencies for ${templates.length} templates and ${exercises.length} exercises`);
-      
-      // Create lookup map for exercises by reference
-      exercises.forEach(exercise => {
-        const dTag = findTagValue(exercise.tags, 'd');
-        if (dTag) {
-          const exerciseRef = `33401:${exercise.pubkey}:${dTag}`;
-          exerciseMap[exerciseRef] = exercise.id;
-          console.log(`Mapped exercise ${exercise.id} to reference ${exerciseRef}`);
-        } else {
-          console.log(`Exercise ${exercise.id} has no d-tag`);
-        }
-      });
-      
-      // Analyze each template for exercise references
-      templates.forEach(template => {
-        const requiredExercises: string[] = [];
-        const templateName = findTagValue(template.tags, 'title') || template.id.substring(0, 8);
-        
-        console.log(`Analyzing template ${templateName} (${template.id})`);
-        
-        // Find exercise references in template tags
-        template.tags.forEach(tag => {
-          if (tag[0] === 'exercise' && tag.length > 1) {
-            const exerciseRefFull = tag[1];
-            
-            // Split the reference to get the base part (without parameters)
-            const refParts = exerciseRefFull.split('::');
-            const baseRef = refParts[0];
-            
-            const exerciseId = exerciseMap[baseRef];
-            
-            if (exerciseId) {
-              requiredExercises.push(exerciseId);
-              console.log(`Template ${templateName} requires exercise ${exerciseId} via ref ${baseRef}`);
-            } else {
-              console.log(`Template ${templateName} references unknown exercise ${exerciseRefFull}`);
-            }
-          }
-        });
-        
-        dependencies[template.id] = requiredExercises;
-        console.log(`Template ${templateName} has ${requiredExercises.length} dependencies`);
-      });
-      
-      return dependencies;
-    }  
-    
   /**
-   * Import a POWR Pack and selected items into the database
+   * Analyze dependencies between templates and exercises
    */
-  async importPack(
-    packImport: POWRPackImport,
-    selection: POWRPackSelection
-  ): Promise<string> {
+  analyzeDependencies(templates: NDKEvent[], exercises: NDKEvent[]): Record<string, string[]> {
+    const dependencies: Record<string, string[]> = {};
+    const exerciseMap = new Map<string, NDKEvent>();
+    
+    // Map exercises by "kind:pubkey:d-tag" for easier lookup
+    for (const exercise of exercises) {
+      const dTag = exercise.tagValue('d');
+      if (dTag) {
+        const reference = `33401:${exercise.pubkey}:${dTag}`;
+        exerciseMap.set(reference, exercise);
+        console.log(`Mapped exercise ${exercise.id} to reference ${reference}`);
+      }
+    }
+    
+    // Analyze each template for its exercise dependencies
+    for (const template of templates) {
+      const templateId = template.id;
+      const templateName = template.tagValue('title') || 'Unnamed Template';
+      
+      console.log(`Analyzing template ${templateName} (${templateId})`);
+      dependencies[templateId] = [];
+      
+      // Get exercise references from template
+      const exerciseTags = template.getMatchingTags('exercise');
+      
+      for (const tag of exerciseTags) {
+        if (tag.length < 2) continue;
+        
+        const exerciseRef = tag[1];
+        console.log(`Template ${templateName} references ${exerciseRef}`);
+        
+        // Find the exercise in our mapped exercises
+        const exercise = exerciseMap.get(exerciseRef);
+        if (exercise) {
+          dependencies[templateId].push(exercise.id);
+          console.log(`Template ${templateName} depends on exercise ${exercise.id}`);
+        } else {
+          console.log(`Template ${templateName} references unknown exercise ${exerciseRef}`);
+        }
+      }
+      
+      console.log(`Template ${templateName} has ${dependencies[templateId].length} dependencies`);
+    }
+    
+    return dependencies;
+  }
+  
+  /**
+   * Import a POWR Pack into the local database
+   */
+  async importPack(packImport: POWRPackImport, selection: POWRPackSelection): Promise<void> {
     try {
-      const { packEvent, templates, exercises } = packImport;
-      const { selectedTemplates, selectedExercises } = selection;
+      console.log(`Importing ${selection.selectedExercises.length} exercises...`);
       
-      // Create integration helper
-      const nostrIntegration = new NostrIntegration(this.db);
+      // Map to track imported exercise IDs by various reference formats
+      const exerciseIdMap = new Map<string, string>();
       
-      // 1. Extract pack metadata
-      const title = findTagValue(packEvent.tags, 'name') || 'Unnamed Pack';
-      const description = findTagValue(packEvent.tags, 'about') || packEvent.content;
-      
-      // 2. Create pack record
-      const packId = generateId();
-      const now = Date.now();
-      
-      await this.db.withTransactionAsync(async () => {
-        // Insert pack record
-        await this.db.runAsync(
-          `INSERT INTO powr_packs (id, title, description, author_pubkey, nostr_event_id, import_date, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [packId, title, description, packEvent.pubkey, packEvent.id, now, now]
-        );
+      // First, import the selected exercises
+      for (const exerciseId of selection.selectedExercises) {
+        const exerciseEvent = packImport.exercises.find(e => e.id === exerciseId);
+        if (!exerciseEvent) continue;
         
-        // 3. Process and import selected exercises
-        const exercisesToImport = exercises.filter((e: NDKEvent) => selectedExercises.includes(e.id));
-        const importedExerciseIds: string[] = [];
-        const exerciseIdMap = new Map<string, string>(); // Map Nostr event ID to local ID
+        // Get the d-tag value from the event
+        const dTag = exerciseEvent.tagValue('d');
         
-        console.log(`Importing ${exercisesToImport.length} exercises...`);
+        // Convert to local model
+        const exerciseModel = this.nostrIntegration.convertNostrExerciseToLocal(exerciseEvent);
         
-        for (const exerciseEvent of exercisesToImport) {
-          // Convert to local model
-          const exercise = nostrIntegration.convertNostrExerciseToLocal(exerciseEvent);
-          
-          // Save to database
-          await nostrIntegration.saveImportedExercise(exercise);
-          
-          // Track imported exercise
-          importedExerciseIds.push(exercise.id);
-          exerciseIdMap.set(exerciseEvent.id, exercise.id);
-          
-          console.log(`Imported exercise: ${exercise.title} (${exercise.id}) from Nostr event ${exerciseEvent.id}`);
-          
-          // Create pack item record
-          await this.createPackItemRecord(packId, exercise.id, 'exercise', exerciseEvent.id);
+        // Save to database
+        const localId = await this.nostrIntegration.saveImportedExercise(exerciseModel, exerciseEvent);
+        
+        // Map ALL possible ways to reference this exercise:
+        
+        // 1. By event ID directly (fallback)
+        exerciseIdMap.set(exerciseId, localId);
+        
+        // 2. By standard d-tag reference format (if d-tag exists)
+        if (dTag) {
+          const dTagRef = `33401:${exerciseEvent.pubkey}:${dTag}`;
+          exerciseIdMap.set(dTagRef, localId);
+          console.log(`Mapped d-tag reference ${dTagRef} to local exercise ID ${localId}`);
         }
         
-        // 4. Process and import selected templates
-        const templatesToImport = templates.filter((t: NDKEvent) => selectedTemplates.includes(t.id));
+        // 3. By event ID as d-tag (for templates that reference this way)
+        const eventIdRef = `33401:${exerciseEvent.pubkey}:${exerciseId}`;
+        exerciseIdMap.set(eventIdRef, localId);
+        console.log(`Mapped event ID reference ${eventIdRef} to local exercise ID ${localId}`);
         
-        console.log(`Importing ${templatesToImport.length} templates...`);
+        console.log(`Imported exercise: ${exerciseModel.title} (${localId}) from Nostr event ${exerciseId}`);
+      }
+      
+      console.log(`Importing ${selection.selectedTemplates.length} templates...`);
+      
+      // Then, import the selected templates
+      for (const templateId of selection.selectedTemplates) {
+        const templateEvent = packImport.templates.find(t => t.id === templateId);
+        if (!templateEvent) continue;
         
-        for (const templateEvent of templatesToImport) {
-          // Convert to local model
-          const templateModel = nostrIntegration.convertNostrTemplateToLocal(templateEvent);
+        // Convert to local model
+        const templateModel = this.nostrIntegration.convertNostrTemplateToLocal(templateEvent);
+        
+        // Save to database
+        const localTemplateId = await this.nostrIntegration.saveImportedTemplate(templateModel, templateEvent);
+        
+        console.log(`Imported template: ${templateModel.title} (${localTemplateId}) from Nostr event ${templateId}`);
+        
+        // Get exercise references from this template
+        const exerciseRefs = this.nostrIntegration.getTemplateExerciseRefs(templateEvent);
+        
+        console.log(`Template has ${exerciseRefs.length} exercise references:`);
+        exerciseRefs.forEach(ref => console.log(`  - ${ref}`));
+        
+        // Map exercise references to local exercise IDs
+        const templateExerciseIds: string[] = [];
+        const matchedRefs: string[] = [];
+        
+        for (const ref of exerciseRefs) {
+          // Extract the base reference (before any parameters)
+          const refParts = ref.split('::');
+          const baseRef = refParts[0];
           
-          // Save to database
-          await nostrIntegration.saveImportedTemplate(templateModel);
+          console.log(`Looking for matching exercise for reference: ${baseRef}`);
           
-          console.log(`Imported template: ${templateModel.title} (${templateModel.id}) from Nostr event ${templateEvent.id}`);
-          
-          // Get exercise references from this template
-          const exerciseRefs = nostrIntegration.getTemplateExerciseRefs(templateEvent);
-          
-          console.log(`Template has ${exerciseRefs.length} exercise references:`);
-          exerciseRefs.forEach(ref => console.log(`  - ${ref}`));
-          
-          // Find the corresponding imported exercise IDs
-          const templateExerciseIds: string[] = [];
-          const matchedRefs: string[] = [];
-          
-          for (const ref of exerciseRefs) {
-            // Extract the base reference (before any parameters)
-            const refParts = ref.split('::');
-            const baseRef = refParts[0];
+          // Check if we have this reference in our map
+          if (exerciseIdMap.has(baseRef)) {
+            const localExerciseId = exerciseIdMap.get(baseRef) || '';
+            templateExerciseIds.push(localExerciseId);
+            matchedRefs.push(ref);
             
-            console.log(`Looking for matching exercise for reference: ${baseRef}`);
+            console.log(`Mapped reference ${baseRef} to local exercise ID ${localExerciseId}`);
+            continue;
+          }
+          
+          // If not found by direct reference, try to match by examining individual components
+          console.log(`No direct match for reference: ${baseRef}. Trying to match by components...`);
+          
+          // Parse the reference for fallback matching
+          const refSegments = baseRef.split(':');
+          if (refSegments.length >= 3) {
+            const refKind = refSegments[0];
+            const refPubkey = refSegments[1];
+            const refDTag = refSegments[2];
             
-            // Find the event that matches this reference
-            const matchingEvent = exercises.find(e => {
-              const dTag = findTagValue(e.tags, 'd');
-              if (!dTag) return false;
-              
-              const fullRef = `33401:${e.pubkey}:${dTag}`;
-              const match = baseRef === fullRef;
-              
-              if (match) {
-                console.log(`Found matching event: ${e.id} with d-tag: ${dTag}`);
+            // Try to find the matching exercise by looking at both event ID and d-tag
+            for (const [key, value] of exerciseIdMap.entries()) {
+              // Check if this is potentially the same exercise with a different reference format
+              if (key.includes(refPubkey) && (key.includes(refDTag) || key.endsWith(refDTag))) {
+                templateExerciseIds.push(value);
+                matchedRefs.push(ref);
+                
+                // Also add this reference format to map for future lookups
+                exerciseIdMap.set(baseRef, value);
+                
+                console.log(`Found potential match using partial comparison: ${key} -> ${value}`);
+                break;
               }
-              
-              return match;
-            });
-            
-            if (matchingEvent && exerciseIdMap.has(matchingEvent.id)) {
-              const localExerciseId = exerciseIdMap.get(matchingEvent.id) || '';
-              templateExerciseIds.push(localExerciseId);
-              matchedRefs.push(ref); // Keep the full reference including parameters
-              
-              console.log(`Mapped Nostr event ${matchingEvent.id} to local exercise ID ${localExerciseId}`);
-            } else {
-              console.log(`No matching exercise found for reference: ${baseRef}`);
             }
-          }
-          
-          // Save template-exercise relationships with parameters
-          if (templateExerciseIds.length > 0) {
-            await nostrIntegration.saveTemplateExercisesWithParams(templateModel.id, templateExerciseIds, matchedRefs);
+            
+            // If no match found yet, check if there's a direct event ID match
+            if (templateExerciseIds.length === templateExerciseIds.lastIndexOf(refDTag) + 1) {
+              // Didn't add anything in the above loop, try direct event ID lookup
+              const matchingEvent = packImport.exercises.find(e => e.id === refDTag);
+              
+              if (matchingEvent && exerciseIdMap.has(matchingEvent.id)) {
+                const localExerciseId = exerciseIdMap.get(matchingEvent.id) || '';
+                templateExerciseIds.push(localExerciseId);
+                matchedRefs.push(ref);
+                
+                // Add this reference to our map for future use
+                exerciseIdMap.set(baseRef, localExerciseId);
+                
+                console.log(`Found match by event ID: ${matchingEvent.id} -> ${localExerciseId}`);
+              } else {
+                console.log(`No matching exercise found for reference components: kind=${refKind}, pubkey=${refPubkey}, d-tag=${refDTag}`);
+              }
+            }
           } else {
-            console.log(`No exercise relationships to save for template ${templateModel.id}`);
+            console.log(`Invalid reference format: ${baseRef}`);
           }
-          
-          // Create pack item record
-          await this.createPackItemRecord(packId, templateModel.id, 'template', templateEvent.id);
-          
-          // Add diagnostic logging
-          console.log(`Checking saved template: ${templateModel.id}`);
-          const exerciseCount = await this.db.getFirstAsync<{count: number}>(
-            'SELECT COUNT(*) as count FROM template_exercises WHERE template_id = ?',
-            [templateModel.id]
-          );
-          console.log(`Template ${templateModel.title} has ${exerciseCount?.count || 0} exercises associated`);
         }
         
-        // Final diagnostic check
-        const templateCount = await this.db.getFirstAsync<{count: number}>(
-          'SELECT COUNT(*) as count FROM templates WHERE source = "nostr"'
-        );
-        console.log(`Total nostr templates in database: ${templateCount?.count || 0}`);
-        
-        const templateIds = await this.db.getAllAsync<{id: string, title: string}>(
-          'SELECT id, title FROM templates WHERE source = "nostr"'
-        );
-        console.log(`Template IDs:`);
-        templateIds.forEach(t => console.log(`  - ${t.title}: ${t.id}`));
+        // Save template-exercise relationships with parameters
+        if (templateExerciseIds.length > 0) {
+          await this.nostrIntegration.saveTemplateExercisesWithParams(
+            localTemplateId, 
+            templateExerciseIds, 
+            matchedRefs
+          );
+          
+          // Log the result 
+          console.log(`Checking saved template: ${localTemplateId}`);
+          const templateExercises = await this.db.getAllAsync<{ exercise_id: string }>(
+            `SELECT exercise_id FROM template_exercises WHERE template_id = ?`,
+            [localTemplateId]
+          );
+          console.log(`Template ${templateModel.title} has ${templateExercises.length} exercises associated`);
+        } else {
+          console.log(`No exercise relationships to save for template ${localTemplateId}`);
+        }
+      }
+      
+      // Finally, save the pack itself
+      await this.savePack(packImport.packEvent, selection);
+      
+      // Get total counts
+      const totalNostrTemplates = await this.db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM templates WHERE source = 'nostr'`
+      );
+      
+      console.log(`Total nostr templates in database: ${totalNostrTemplates?.count || 0}`);
+      
+      // Get imported template IDs for verification
+      const templates = await this.db.getAllAsync<{ id: string, title: string }>(
+        `SELECT id, title FROM templates WHERE source = 'nostr'`
+      );
+      
+      console.log(`Template IDs:`);
+      templates.forEach(t => {
+        console.log(`  - ${t.title}: ${t.id}`);
       });
-
-      return packId;
     } catch (error) {
-      console.error('Error importing POWR pack:', error);
+      console.error('Error importing pack:', error);
       throw error;
     }
   }
   
   /**
-   * Create a record of a pack item
+   * Save the pack metadata to the database
    */
-  private async createPackItemRecord(
-    packId: string,
-    itemId: string,
-    itemType: 'exercise' | 'template',
-    nostrEventId?: string,
-    itemOrder?: number
-  ): Promise<void> {
-    await this.db.runAsync(
-      `INSERT INTO powr_pack_items (pack_id, item_id, item_type, item_order, is_imported, nostr_event_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [packId, itemId, itemType, itemOrder || 0, 1, nostrEventId || null]
-    );
+  private async savePack(packEvent: NDKEvent, selection: POWRPackSelection): Promise<string> {
+    try {
+      const now = Date.now();
+      
+      // Get pack metadata
+      const title = packEvent.tagValue('name') || 'Unnamed Pack';
+      const description = packEvent.tagValue('about') || packEvent.content || '';
+      
+      // Save pack to database
+      await this.db.runAsync(
+        `INSERT INTO powr_packs (id, title, description, author_pubkey, nostr_event_id, import_date, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          selection.packId,
+          title,
+          description,
+          packEvent.pubkey,
+          packEvent.id,
+          now,
+          now
+        ]
+      );
+      
+      // Save pack items (templates and exercises)
+      let order = 0;
+      
+      // Save template items
+      for (const templateId of selection.selectedTemplates) {
+        await this.db.runAsync(
+          `INSERT INTO powr_pack_items (pack_id, item_id, item_type, item_order, is_imported, nostr_event_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            selection.packId,
+            templateId,
+            'template',
+            order++,
+            1, // Imported
+            templateId
+          ]
+        );
+      }
+      
+      // Save exercise items
+      for (const exerciseId of selection.selectedExercises) {
+        await this.db.runAsync(
+          `INSERT INTO powr_pack_items (pack_id, item_id, item_type, item_order, is_imported, nostr_event_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            selection.packId,
+            exerciseId,
+            'exercise',
+            order++,
+            1, // Imported
+            exerciseId
+          ]
+        );
+      }
+      
+      return selection.packId;
+    } catch (error) {
+      console.error('Error saving pack:', error);
+      throw error;
+    }
   }
   
   /**
-   * Get all imported packs
-   */
+ * Get all imported packs
+ */
   async getImportedPacks(): Promise<POWRPackWithContent[]> {
     try {
-      // 1. Get all packs
-      const packs = await this.db.getAllAsync<POWRPack>(
-        `SELECT id, title, description, author_pubkey as authorPubkey, 
-                nostr_event_id as nostrEventId, import_date as importDate, updated_at as updatedAt
-         FROM powr_packs
-         ORDER BY import_date DESC`
+      // Get all packs
+      const packs = await this.db.getAllAsync<{
+        id: string;
+        title: string;
+        description: string;
+        author_pubkey: string;
+        nostr_event_id: string;
+        import_date: number;
+        updated_at: number;
+      }>(
+        `SELECT * FROM powr_packs ORDER BY import_date DESC`
       );
       
-      // 2. Get content for each pack
+      // For each pack, get its templates and exercises
       const result: POWRPackWithContent[] = [];
       
-      for (const pack of packs) {
-        // Get exercises
-        const exercises = await this.db.getAllAsync<BaseExercise>(
-          `SELECT e.*
-           FROM exercises e
-           JOIN powr_pack_items ppi ON e.id = ppi.item_id
-           WHERE ppi.pack_id = ? AND ppi.item_type = 'exercise' AND ppi.is_imported = 1`,
+      for (const dbPack of packs) {
+        // Transform to match POWRPack type
+        const pack: POWRPack = {
+          id: dbPack.id,
+          title: dbPack.title,
+          description: dbPack.description || '',
+          authorPubkey: dbPack.author_pubkey,
+          nostrEventId: dbPack.nostr_event_id,
+          importDate: dbPack.import_date,
+          updatedAt: dbPack.updated_at
+        };
+        
+        // Get templates
+        const templateData = await this.db.getAllAsync<{
+          id: string;
+          title: string;
+          type: string;
+          description: string;
+          created_at: number;
+        }>(
+          `SELECT t.id, t.title, t.type, t.description, t.created_at
+          FROM templates t
+          JOIN powr_pack_items ppi ON ppi.item_id = t.nostr_event_id
+          WHERE ppi.pack_id = ? AND ppi.item_type = 'template'
+          ORDER BY ppi.item_order`,
           [pack.id]
         );
         
-        // Get templates
-        const templates = await this.db.getAllAsync<WorkoutTemplate>(
-          `SELECT t.*
-           FROM templates t
-           JOIN powr_pack_items ppi ON t.id = ppi.item_id
-           WHERE ppi.pack_id = ? AND ppi.item_type = 'template' AND ppi.is_imported = 1`,
+        // Transform template data to match WorkoutTemplate type
+        const templates: WorkoutTemplate[] = templateData.map(t => ({
+          id: t.id,
+          title: t.title,
+          type: (t.type || 'strength') as TemplateType,
+          category: 'Custom', // Default value
+          description: t.description,
+          exercises: [], // Default empty array
+          isPublic: true, // Default value
+          version: 1, // Default value
+          tags: [], // Default empty array
+          created_at: t.created_at,
+          availability: {
+            source: ['nostr']
+          }
+        }));
+        
+        // Get exercises
+        const exerciseData = await this.db.getAllAsync<{
+          id: string;
+          title: string;
+          type: string;
+          category: string;
+          description: string;
+          created_at: number;
+        }>(
+          `SELECT e.id, e.title, e.type, e.category, e.description, e.created_at
+          FROM exercises e
+          JOIN powr_pack_items ppi ON ppi.item_id = e.nostr_event_id
+          WHERE ppi.pack_id = ? AND ppi.item_type = 'exercise'
+          ORDER BY ppi.item_order`,
           [pack.id]
         );
+        
+        // Transform exercise data to match BaseExercise type
+        const exercises: BaseExercise[] = exerciseData.map(e => ({
+          id: e.id,
+          title: e.title,
+          type: e.type as ExerciseType,
+          category: e.category as ExerciseCategory,
+          description: e.description,
+          tags: [], // Default empty array
+          format: {}, // Default empty object
+          format_units: {}, // Default empty object
+          created_at: e.created_at,
+          availability: {
+            source: ['nostr']
+          }
+        }));
         
         result.push({
           pack,
-          exercises,
-          templates
+          templates,
+          exercises
         });
       }
       
       return result;
     } catch (error) {
       console.error('Error getting imported packs:', error);
-      throw error;
+      return [];
     }
   }
-  
-  /**
-   * Get a specific pack by ID
+
+    /**
+   * Create a shareable naddr for a POWR Pack
+   * @param packEvent The Nostr event for the pack
+   * @returns A shareable naddr string
    */
-  async getPackById(packId: string): Promise<POWRPackWithContent | null> {
+  createShareableNaddr(packEvent: NDKEvent): string {
     try {
-      // 1. Get pack info
-      const pack = await this.db.getFirstAsync<POWRPack>(
-        `SELECT id, title, description, author_pubkey as authorPubkey, 
-                nostr_event_id as nostrEventId, import_date as importDate, updated_at as updatedAt
-         FROM powr_packs
-         WHERE id = ?`,
-        [packId]
-      );
+      // Extract d-tag for the pack (required for naddr)
+      const dTag = packEvent.tagValue('d');
       
-      if (!pack) {
-        return null;
+      if (!dTag) {
+        throw new Error('Pack event missing required d-tag');
       }
       
-      // 2. Get exercises
-      const exercises = await this.db.getAllAsync<BaseExercise>(
-        `SELECT e.*
-         FROM exercises e
-         JOIN powr_pack_items ppi ON e.id = ppi.item_id
-         WHERE ppi.pack_id = ? AND ppi.item_type = 'exercise' AND ppi.is_imported = 1`,
-        [packId]
-      );
-      
-      // 3. Get templates
-      const templates = await this.db.getAllAsync<WorkoutTemplate>(
-        `SELECT t.*
-         FROM templates t
-         JOIN powr_pack_items ppi ON t.id = ppi.item_id
-         WHERE ppi.pack_id = ? AND ppi.item_type = 'template' AND ppi.is_imported = 1`,
-        [packId]
-      );
-      
-      return {
-        pack,
-        exercises,
-        templates
-      };
+      // Create naddr using NDK's methods
+      const naddr = packEvent.encode();
+      return naddr;
     } catch (error) {
-      console.error('Error getting pack by ID:', error);
-      throw error;
+      console.error('Error creating shareable naddr:', error);
+      
+      // Fallback: manually construct naddr if NDK's encode fails
+      try {
+        const { nip19 } = require('nostr-tools');
+        
+        const dTag = packEvent.tagValue('d') || '';
+        
+        return nip19.naddrEncode({
+          kind: packEvent.kind,
+          pubkey: packEvent.pubkey,
+          identifier: dTag,
+          relays: [] // Optional relay hints
+        });
+      } catch (fallbackError) {
+        console.error('Fallback naddr creation failed:', fallbackError);
+        throw new Error('Could not create shareable link for pack');
+      }
     }
   }
-  
+
   /**
-   * Delete a pack and optionally its contents
+   * Delete a POWR Pack
+   * @param packId The ID of the pack to delete
+   * @param keepItems Whether to keep the imported templates and exercises
    */
-  async deletePack(packId: string, keepItems: boolean = false): Promise<void> {
+  async deletePack(packId: string, keepItems: boolean = true): Promise<void> {
     try {
-      await this.db.withTransactionAsync(async () => {
-        if (!keepItems) {
-          // Get the items first so we can delete them from their respective tables
-          const items = await this.db.getAllAsync<POWRPackItem>(
-            `SELECT * FROM powr_pack_items WHERE pack_id = ? AND is_imported = 1`,
-            [packId]
+      if (!keepItems) {
+        // Get all templates and exercises from this pack
+        const templates = await this.db.getAllAsync<{ id: string }>(
+          `SELECT t.id
+           FROM templates t
+           JOIN powr_pack_items ppi ON ppi.item_id = t.nostr_event_id
+           WHERE ppi.pack_id = ? AND ppi.item_type = 'template'`,
+          [packId]
+        );
+        
+        const exercises = await this.db.getAllAsync<{ id: string }>(
+          `SELECT e.id
+           FROM exercises e
+           JOIN powr_pack_items ppi ON ppi.item_id = e.nostr_event_id
+           WHERE ppi.pack_id = ? AND ppi.item_type = 'exercise'`,
+          [packId]
+        );
+        
+        // Delete the templates
+        for (const template of templates) {
+          await this.db.runAsync(
+            `DELETE FROM template_exercises WHERE template_id = ?`,
+            [template.id]
           );
           
-          // Delete each exercise and template
-          for (const item of items as POWRPackItem[]) {
-            if (item.itemType === 'exercise') {
-              // Delete exercise
-              await this.db.runAsync(`DELETE FROM exercises WHERE id = ?`, [item.itemId]);
-            } else if (item.itemType === 'template') {
-              // Delete template and its relationships
-              await this.db.runAsync(`DELETE FROM template_exercises WHERE template_id = ?`, [item.itemId]);
-              await this.db.runAsync(`DELETE FROM templates WHERE id = ?`, [item.itemId]);
-            }
-          }
+          await this.db.runAsync(
+            `DELETE FROM templates WHERE id = ?`,
+            [template.id]
+          );
         }
         
-        // Delete the pack items
-        await this.db.runAsync(
-          `DELETE FROM powr_pack_items WHERE pack_id = ?`,
-          [packId]
-        );
-        
-        // Delete the pack
-        await this.db.runAsync(
-          `DELETE FROM powr_packs WHERE id = ?`,
-          [packId]
-        );
-      });
+        // Delete the exercises
+        for (const exercise of exercises) {
+          await this.db.runAsync(
+            `DELETE FROM exercise_tags WHERE exercise_id = ?`,
+            [exercise.id]
+          );
+          
+          await this.db.runAsync(
+            `DELETE FROM exercises WHERE id = ?`,
+            [exercise.id]
+          );
+        }
+      }
+      
+      // Delete the pack items
+      await this.db.runAsync(
+        `DELETE FROM powr_pack_items WHERE pack_id = ?`,
+        [packId]
+      );
+      
+      // Finally, delete the pack itself
+      await this.db.runAsync(
+        `DELETE FROM powr_packs WHERE id = ?`,
+        [packId]
+      );
     } catch (error) {
       console.error('Error deleting pack:', error);
       throw error;
     }
   }
-  
-  /**
-   * Create an naddr for sharing a pack
-   */
-  createShareableNaddr(packEvent: NDKEvent): string {
-    try {
-      // Extract the d-tag (identifier)
-      const dTags = packEvent.getMatchingTags('d');
-      const identifier = dTags[0]?.[1] || '';
-      
-      // Ensure kind is a definite number (use 30004 as default if undefined)
-      const kind = packEvent.kind !== undefined ? packEvent.kind : 30004;
-      
-      // Create the naddr
-      const naddr = nip19.naddrEncode({
-        pubkey: packEvent.pubkey,
-        kind: kind, // Now this is always a number
-        identifier
-      });
-      
-      return naddr;
-    } catch (error) {
-      console.error('Error creating shareable naddr:', error);
-      throw error;
-    }
-  }
 }
-
-export default POWRPackService;

@@ -14,6 +14,8 @@ export interface NostrSyncMetadata {
     pubkey: string;
     relayUrl: string;
     created_at: number;
+    dTag?: string;
+    eventId?: string;
   };
 }
 
