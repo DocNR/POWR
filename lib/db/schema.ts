@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -26,6 +26,37 @@ class Schema {
     } catch (error) {
       console.log('[Schema] Error getting version:', error);
       return 0;
+    }
+  }
+
+  // Version 8 migration - add template archive and author pubkey
+  async migrate_v8(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Running migration v8 - Template management');
+      
+      // Check if is_archived column already exists in templates table
+      const columnsResult = await db.getAllAsync<{ name: string }>(
+        "PRAGMA table_info(templates)"
+      );
+      
+      const columnNames = columnsResult.map(col => col.name);
+      
+      // Add is_archived if it doesn't exist
+      if (!columnNames.includes('is_archived')) {
+        console.log('[Schema] Adding is_archived column to templates table');
+        await db.execAsync('ALTER TABLE templates ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0');
+      }
+      
+      // Add author_pubkey if it doesn't exist
+      if (!columnNames.includes('author_pubkey')) {
+        console.log('[Schema] Adding author_pubkey column to templates table');
+        await db.execAsync('ALTER TABLE templates ADD COLUMN author_pubkey TEXT');
+      }
+      
+      console.log('[Schema] Migration v8 completed successfully');
+    } catch (error) {
+      console.error('[Schema] Error in migration v8:', error);
+      throw error;
     }
   }
 
@@ -68,6 +99,31 @@ class Schema {
       console.log('[Schema] Migration v9 completed successfully');
     } catch (error) {
       console.error('[Schema] Error in migration v9:', error);
+      throw error;
+    }
+  }
+
+  async migrate_v10(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Running migration v10 - Adding Favorites table');
+      
+      // Create favorites table if it doesn't exist
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS favorites (
+          id TEXT PRIMARY KEY,
+          content_type TEXT NOT NULL,
+          content_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          pubkey TEXT,
+          created_at INTEGER NOT NULL,
+          UNIQUE(content_type, content_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_favorites_content ON favorites(content_type, content_id);
+      `);
+      
+      console.log('[Schema] Migration v10 completed successfully');
+    } catch (error) {
+      console.error('[Schema] Error in migration v10:', error);
       throw error;
     }
   }
@@ -118,6 +174,16 @@ class Schema {
             await this.migrate_v8(db);
           }
           
+          if (currentVersion < 9) {
+            console.log(`[Schema] Running migration from version ${currentVersion} to 9`);
+            await this.migrate_v9(db);
+          }
+          
+          if (currentVersion < 10) {
+            console.log(`[Schema] Running migration from version ${currentVersion} to 10`);
+            await this.migrate_v10(db);
+          }
+          
           // Update schema version at the end of the transaction
           await this.updateSchemaVersion(db);
         });
@@ -135,10 +201,20 @@ class Schema {
         // Create all tables in their latest form
         await this.createAllTables(db);
         
-        // Run migrations if needed
+        // Run migrations if needed (same as in transaction)
         if (currentVersion < 8) {
           console.log(`[Schema] Running migration from version ${currentVersion} to 8`);
           await this.migrate_v8(db);
+        }
+        
+        if (currentVersion < 9) {
+          console.log(`[Schema] Running migration from version ${currentVersion} to 9`);
+          await this.migrate_v9(db);
+        }
+        
+        if (currentVersion < 10) {
+          console.log(`[Schema] Running migration from version ${currentVersion} to 10`);
+          await this.migrate_v10(db);
         }
         
         // Update schema version
@@ -151,38 +227,161 @@ class Schema {
       throw error;
     }
   }
-  // Version 8 migration - add template archive and author pubkey
-  async migrate_v8(db: SQLiteDatabase): Promise<void> {
+
+  private async createAllTables(db: SQLiteDatabase): Promise<void> {
     try {
-      console.log('[Schema] Running migration v8 - Template management');
+      console.log('[Schema] Creating all database tables...');
       
-      // Check if is_archived column already exists in templates table
-      const columnsResult = await db.getAllAsync<{ name: string }>(
-        "PRAGMA table_info(templates)"
-      );
+      // Create exercises table
+      console.log('[Schema] Creating exercises table...');
+      await db.execAsync(`
+        CREATE TABLE exercises (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('strength', 'cardio', 'bodyweight')),
+          category TEXT NOT NULL,
+          equipment TEXT,
+          description TEXT,
+          format_json TEXT,
+          format_units_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          source TEXT NOT NULL DEFAULT 'local',
+          nostr_event_id TEXT
+        );
+      `);
+
+      // Create exercise_tags table
+      console.log('[Schema] Creating exercise_tags table...');
+      await db.execAsync(`
+        CREATE TABLE exercise_tags (
+          exercise_id TEXT NOT NULL,
+          tag TEXT NOT NULL,
+          FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
+          UNIQUE(exercise_id, tag)
+        );
+        CREATE INDEX idx_exercise_tags ON exercise_tags(tag);
+      `);
       
-      const columnNames = columnsResult.map(col => col.name);
+      // Create nostr_events table
+      console.log('[Schema] Creating nostr_events table...');
+      await db.execAsync(`
+        CREATE TABLE nostr_events (
+          id TEXT PRIMARY KEY,
+          pubkey TEXT NOT NULL,
+          kind INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          content TEXT NOT NULL,
+          sig TEXT,
+          raw_event TEXT NOT NULL,
+          received_at INTEGER NOT NULL
+        );
+      `);
+
+      // Create event_tags table
+      console.log('[Schema] Creating event_tags table...');
+      await db.execAsync(`
+        CREATE TABLE event_tags (
+          event_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          value TEXT NOT NULL,
+          index_num INTEGER NOT NULL,
+          FOREIGN KEY(event_id) REFERENCES nostr_events(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_event_tags ON event_tags(name, value);
+      `);
       
-      // Add is_archived if it doesn't exist
-      if (!columnNames.includes('is_archived')) {
-        console.log('[Schema] Adding is_archived column to templates table');
-        await db.execAsync('ALTER TABLE templates ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0');
-      }
+      // Create templates table with new columns
+      console.log('[Schema] Creating templates table...');
+      await db.execAsync(`
+        CREATE TABLE templates (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          type TEXT NOT NULL,
+          description TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          nostr_event_id TEXT,
+          source TEXT NOT NULL DEFAULT 'local',
+          parent_id TEXT,
+          is_archived BOOLEAN NOT NULL DEFAULT 0,
+          author_pubkey TEXT
+        );
+        CREATE INDEX idx_templates_updated_at ON templates(updated_at);
+      `);
+
+      // Create template_exercises table
+      console.log('[Schema] Creating template_exercises table...');
+      await db.execAsync(`
+        CREATE TABLE template_exercises (
+          id TEXT PRIMARY KEY,
+          template_id TEXT NOT NULL,
+          exercise_id TEXT NOT NULL,
+          display_order INTEGER NOT NULL,
+          target_sets INTEGER,
+          target_reps INTEGER,
+          target_weight REAL,
+          notes TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_template_exercises_template_id ON template_exercises(template_id);
+      `);
+
+      // Create powr_packs table
+      console.log('[Schema] Creating powr_packs table...');
+      await db.execAsync(`
+        CREATE TABLE powr_packs (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          author_pubkey TEXT,
+          nostr_event_id TEXT,
+          import_date INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX idx_powr_packs_import_date ON powr_packs(import_date DESC);
+      `);
+
+      // Create powr_pack_items table
+      console.log('[Schema] Creating powr_pack_items table...');
+      await db.execAsync(`
+        CREATE TABLE powr_pack_items (
+          pack_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          item_type TEXT NOT NULL CHECK(item_type IN ('exercise', 'template')),
+          item_order INTEGER,
+          is_imported BOOLEAN NOT NULL DEFAULT 0,
+          nostr_event_id TEXT,
+          PRIMARY KEY (pack_id, item_id),
+          FOREIGN KEY (pack_id) REFERENCES powr_packs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_powr_pack_items_type ON powr_pack_items(item_type);
+      `);
       
-      // Add author_pubkey if it doesn't exist
-      if (!columnNames.includes('author_pubkey')) {
-        console.log('[Schema] Adding author_pubkey column to templates table');
-        await db.execAsync('ALTER TABLE templates ADD COLUMN author_pubkey TEXT');
-      }
+      // Create favorites table - moved inside the try block
+      console.log('[Schema] Creating favorites table...');
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS favorites (
+          id TEXT PRIMARY KEY,
+          content_type TEXT NOT NULL,
+          content_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          pubkey TEXT,
+          created_at INTEGER NOT NULL,
+          UNIQUE(content_type, content_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_favorites_content ON favorites(content_type, content_id);
+      `);
       
-      console.log('[Schema] Migration v8 completed successfully');
+      console.log('[Schema] All tables created successfully');
     } catch (error) {
-      console.error('[Schema] Error in migration v8:', error);
+      console.error('[Schema] Error in createAllTables:', error);
       throw error;
     }
   }
-  
-  // Add this method to check for and create critical tables
+
   async ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
     try {
       console.log('[Schema] Checking for missing critical tables...');
@@ -253,6 +452,7 @@ class Schema {
           CREATE INDEX IF NOT EXISTS idx_workout_sets_exercise_id ON workout_sets(workout_exercise_id);
         `);
       }
+      
       // Check if templates table exists
       const templatesTableExists = await db.getFirstAsync<{ count: number }>(
         `SELECT count(*) as count FROM sqlite_master 
@@ -301,6 +501,30 @@ class Schema {
         // If templates table exists, ensure new columns are added
         await this.migrate_v8(db);
       }
+
+      // Check if favorites table exists
+      const favoritesTableExists = await db.getFirstAsync<{ count: number }>(
+        `SELECT count(*) as count FROM sqlite_master 
+          WHERE type='table' AND name='favorites'`
+      );
+
+      if (!favoritesTableExists || favoritesTableExists.count === 0) {
+        console.log('[Schema] Creating missing favorites table...');
+        
+        // Create favorites table
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS favorites (
+            id TEXT PRIMARY KEY,
+            content_type TEXT NOT NULL,
+            content_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            pubkey TEXT,
+            created_at INTEGER NOT NULL,
+            UNIQUE(content_type, content_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_favorites_content ON favorites(content_type, content_id);
+        `);
+      }
       
       console.log('[Schema] Critical tables check complete');
     } catch (error) {
@@ -308,7 +532,7 @@ class Schema {
       throw error;
     }
   }
-  
+
   private async dropAllTables(db: SQLiteDatabase): Promise<void> {
     try {
       console.log('[Schema] Getting list of tables to drop...');
@@ -332,145 +556,6 @@ class Schema {
       }
     } catch (error) {
       console.error('[Schema] Error in dropAllTables:', error);
-      throw error;
-    }
-  }
-  private async createAllTables(db: SQLiteDatabase): Promise<void> {
-    try {
-      console.log('[Schema] Creating all database tables...');
-      
-      // Create exercises table
-      console.log('[Schema] Creating exercises table...');
-      await db.execAsync(`
-        CREATE TABLE exercises (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          type TEXT NOT NULL CHECK(type IN ('strength', 'cardio', 'bodyweight')),
-          category TEXT NOT NULL,
-          equipment TEXT,
-          description TEXT,
-          format_json TEXT,
-          format_units_json TEXT,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL,
-          source TEXT NOT NULL DEFAULT 'local',
-          nostr_event_id TEXT
-        );
-      `);
-
-      // Create exercise_tags table
-      console.log('[Schema] Creating exercise_tags table...');
-      await db.execAsync(`
-        CREATE TABLE exercise_tags (
-          exercise_id TEXT NOT NULL,
-          tag TEXT NOT NULL,
-          FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
-          UNIQUE(exercise_id, tag)
-        );
-        CREATE INDEX idx_exercise_tags ON exercise_tags(tag);
-      `);
-      
-      // Create nostr_events table
-      console.log('[Schema] Creating nostr_events table...');
-      await db.execAsync(`
-        CREATE TABLE nostr_events (
-          id TEXT PRIMARY KEY,
-          pubkey TEXT NOT NULL,
-          kind INTEGER NOT NULL,
-          created_at INTEGER NOT NULL,
-          content TEXT NOT NULL,
-          sig TEXT,
-          raw_event TEXT NOT NULL,
-          received_at INTEGER NOT NULL
-        );
-      `);
-
-      // Create event_tags table
-      console.log('[Schema] Creating event_tags table...');
-      await db.execAsync(`
-        CREATE TABLE event_tags (
-          event_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          value TEXT NOT NULL,
-          index_num INTEGER NOT NULL,
-          FOREIGN KEY(event_id) REFERENCES nostr_events(id) ON DELETE CASCADE
-        );
-        CREATE INDEX idx_event_tags ON event_tags(name, value);
-      `);
-      // Create templates table with new columns
-      console.log('[Schema] Creating templates table...');
-      await db.execAsync(`
-        CREATE TABLE templates (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          type TEXT NOT NULL,
-          description TEXT,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL,
-          nostr_event_id TEXT,
-          source TEXT NOT NULL DEFAULT 'local',
-          parent_id TEXT,
-          is_archived BOOLEAN NOT NULL DEFAULT 0,
-          author_pubkey TEXT
-        );
-        CREATE INDEX idx_templates_updated_at ON templates(updated_at);
-      `);
-
-      // Create template_exercises table
-      console.log('[Schema] Creating template_exercises table...');
-      await db.execAsync(`
-        CREATE TABLE template_exercises (
-          id TEXT PRIMARY KEY,
-          template_id TEXT NOT NULL,
-          exercise_id TEXT NOT NULL,
-          display_order INTEGER NOT NULL,
-          target_sets INTEGER,
-          target_reps INTEGER,
-          target_weight REAL,
-          notes TEXT,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL,
-          FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE
-        );
-        CREATE INDEX idx_template_exercises_template_id ON template_exercises(template_id);
-      `);
-
-      // Create powr_packs table
-      console.log('[Schema] Creating powr_packs table...');
-      await db.execAsync(`
-        CREATE TABLE powr_packs (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          description TEXT,
-          author_pubkey TEXT,
-          nostr_event_id TEXT,
-          import_date INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        );
-        CREATE INDEX idx_powr_packs_import_date ON powr_packs(import_date DESC);
-      `);
-
-      // Create powr_pack_items table
-      console.log('[Schema] Creating powr_pack_items table...');
-      await db.execAsync(`
-        CREATE TABLE powr_pack_items (
-          pack_id TEXT NOT NULL,
-          item_id TEXT NOT NULL,
-          item_type TEXT NOT NULL CHECK(item_type IN ('exercise', 'template')),
-          item_order INTEGER,
-          is_imported BOOLEAN NOT NULL DEFAULT 0,
-          nostr_event_id TEXT,
-          PRIMARY KEY (pack_id, item_id),
-          FOREIGN KEY (pack_id) REFERENCES powr_packs(id) ON DELETE CASCADE
-        );
-        CREATE INDEX idx_powr_pack_items_type ON powr_pack_items(item_type);
-      `);
-      // Create other tables...
-      // (Create your other tables here - I've removed them for brevity)
-      
-      console.log('[Schema] All tables created successfully');
-    } catch (error) {
-      console.error('[Schema] Error in createAllTables:', error);
       throw error;
     }
   }
@@ -531,3 +616,4 @@ class Schema {
 }
 
 export const schema = new Schema();
+

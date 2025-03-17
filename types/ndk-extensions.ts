@@ -10,13 +10,11 @@ declare module '@nostr-dev-kit/ndk-mobile' {
   }
   
   interface NDK {
-    // Add missing methods
-    removeRelay?(url: string): void;
-    addRelay?(url: string, opts?: { read?: boolean; write?: boolean }, authPolicy?: any): NDKRelay | undefined;
+    removeRelay(url: string): void;
+    addRelay(url: string, opts?: { read?: boolean; write?: boolean }, authPolicy?: any): NDKRelay | undefined;
   }
 }
 
-// Add methods to NDK prototype for backward compatibility
 export function extendNDK(ndk: any): any {
   // Only add methods if they don't already exist
   if (!ndk.hasOwnProperty('removeRelay')) {

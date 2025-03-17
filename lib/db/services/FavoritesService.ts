@@ -68,9 +68,33 @@ export class FavoritesService {
       throw error;
     }
   }
+
+  private async ensureTableExists(): Promise<boolean> {
+    try {
+      const tableExists = await this.db.getFirstAsync<{ count: number }>(
+        `SELECT count(*) as count FROM sqlite_master 
+         WHERE type='table' AND name='favorites'`
+      );
+      
+      if (!tableExists || tableExists.count === 0) {
+        await this.initialize();
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[FavoritesService] Error checking if table exists:', error);
+      await this.initialize();
+      return false;
+    }
+  }
   
   async isFavorite(contentType: ContentType, contentId: string): Promise<boolean> {
     try {
+      if (!(await this.ensureTableExists())) {
+        return false;
+      }
+      
       const result = await this.db.getFirstAsync<{ count: number }>(
         `SELECT COUNT(*) as count FROM favorites WHERE content_type = ? AND content_id = ?`,
         [contentType, contentId]
@@ -83,8 +107,22 @@ export class FavoritesService {
     }
   }
   
+  // Modify the getFavoriteIds method in FavoritesService.ts:
   async getFavoriteIds(contentType: ContentType): Promise<string[]> {
     try {
+      // First check if the table exists
+      const tableExists = await this.db.getFirstAsync<{ count: number }>(
+        `SELECT count(*) as count FROM sqlite_master 
+        WHERE type='table' AND name='favorites'`
+      );
+      
+      if (!tableExists || tableExists.count === 0) {
+        console.log('[FavoritesService] Favorites table does not exist yet, returning empty array');
+        // Initialize the table for next time
+        await this.initialize();
+        return [];
+      }
+      
       const result = await this.db.getAllAsync<{ content_id: string }>(
         `SELECT content_id FROM favorites WHERE content_type = ?`,
         [contentType]
@@ -99,6 +137,10 @@ export class FavoritesService {
   
   async getFavorites<T>(contentType: ContentType): Promise<Array<{id: string, content: T, addedAt: number}>> {
     try {
+      if (!(await this.ensureTableExists())) {
+        return [];
+      }
+      
       const result = await this.db.getAllAsync<{
         id: string,
         content_id: string,

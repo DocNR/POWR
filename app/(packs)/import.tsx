@@ -169,13 +169,13 @@ export default function ImportPOWRPackScreen() {
   // Get pack title from event
   const getPackTitle = (): string => {
     if (!packData?.packEvent) return 'Unknown Pack';
-    return findTagValue(packData.packEvent.tags, 'title') || 'Unnamed Pack';
+    return findTagValue(packData.packEvent.tags, 'name') || 'Unnamed Pack';
   };
 
   // Get pack description from event
   const getPackDescription = (): string => {
     if (!packData?.packEvent) return '';
-    return findTagValue(packData.packEvent.tags, 'description') || packData.packEvent.content || '';
+    return findTagValue(packData.packEvent.tags, 'about') || packData.packEvent.content || '';
   };
 
   return (

@@ -42,17 +42,57 @@ export function useSubscribe(
     setIsLoading(true);
   }, []);
   
+  // Direct fetch function for manual fetching
+  const manualFetch = useCallback(async () => {
+    if (!ndk || !filters) return;
+    
+    try {
+      console.log('[useSubscribe] Manual fetch triggered');
+      setIsLoading(true);
+      
+      const fetchedEvents = await ndk.fetchEvents(filters);
+      const eventsArray = Array.from(fetchedEvents);
+      
+      setEvents(prev => {
+        if (deduplicate) {
+          const existingIds = new Set(prev.map(e => e.id));
+          const newEvents = eventsArray.filter(e => !existingIds.has(e.id));
+          return [...prev, ...newEvents];
+        }
+        return [...prev, ...eventsArray];
+      });
+      
+      setIsLoading(false);
+      setEose(true);
+    } catch (err) {
+      console.error('[useSubscribe] Manual fetch error:', err);
+      setIsLoading(false);
+    }
+  }, [ndk, filters, deduplicate]);
+  
+  // Only run the subscription effect when dependencies change
+  const filtersKey = filters ? JSON.stringify(filters) : 'none';
+  const optionsKey = JSON.stringify(subscriptionOptions);
+  
   useEffect(() => {
     if (!ndk || !filters || !enabled) {
       setIsLoading(false);
       return;
     }
     
+    // Clean up any existing subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current.stop();
+      subscriptionRef.current = null;
+    }
+    
     setIsLoading(true);
     setEose(false);
     
     try {
-      // Create subscription with NDK Mobile
+      console.log('[useSubscribe] Creating new subscription');
+      
+      // Create subscription with NDK
       const subscription = ndk.subscribe(filters, {
         closeOnEose,
         ...subscriptionOptions
@@ -60,32 +100,39 @@ export function useSubscribe(
       
       subscriptionRef.current = subscription;
       
-      subscription.on('event', (event: NDKEvent) => {
+      // Event handler - use a function reference to avoid recreating
+      const handleEvent = (event: NDKEvent) => {
         setEvents(prev => {
           if (deduplicate && prev.some(e => e.id === event.id)) {
             return prev;
           }
           return [...prev, event];
         });
-      });
+      };
       
-      subscription.on('eose', () => {
+      // EOSE handler
+      const handleEose = () => {
         setIsLoading(false);
         setEose(true);
-      });
+      };
+      
+      subscription.on('event', handleEvent);
+      subscription.on('eose', handleEose);
+      
+      // Clean up on unmount or when dependencies change
+      return () => {
+        if (subscription) {
+          subscription.off('event', handleEvent);
+          subscription.off('eose', handleEose);
+          subscription.stop();
+        }
+        subscriptionRef.current = null;
+      };
     } catch (error) {
-      console.error('[useSubscribe] Error:', error);
+      console.error('[useSubscribe] Subscription error:', error);
       setIsLoading(false);
     }
-    
-    // Cleanup function
-    return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.stop();
-        subscriptionRef.current = null;
-      }
-    };
-  }, [ndk, enabled, closeOnEose, JSON.stringify(filters), JSON.stringify(subscriptionOptions)]);
+  }, [ndk, enabled, filtersKey, optionsKey, closeOnEose, deduplicate]);
   
   return { 
     events, 
@@ -93,6 +140,6 @@ export function useSubscribe(
     eose, 
     clearEvents, 
     resubscribe,
-    subscription: subscriptionRef.current 
+    fetchEvents: manualFetch // Function to trigger manual fetch
   };
 }

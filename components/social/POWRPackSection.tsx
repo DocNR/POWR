@@ -1,37 +1,59 @@
 // components/social/POWRPackSection.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { router } from 'expo-router';
 import { useNDK } from '@/lib/hooks/useNDK';
-import { useSubscribe } from '@/lib/hooks/useSubscribe';
 import { findTagValue } from '@/utils/nostr-utils';
 import { Text } from '@/components/ui/text';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PackageOpen, ArrowRight } from 'lucide-react-native';
+import { PackageOpen, ArrowRight, RefreshCw } from 'lucide-react-native';
 import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
-import { usePOWRPackService } from '@/components/DatabaseProvider';
 import { Clipboard } from 'react-native';
 import { nip19 } from 'nostr-tools';
 
 export default function POWRPackSection() {
   const { ndk } = useNDK();
-  const powrPackService = usePOWRPackService();
+  const [isLoading, setIsLoading] = useState(false);
   const [featuredPacks, setFeaturedPacks] = useState<NDKEvent[]>([]);
+  const [error, setError] = useState<Error | null>(null);
   
-  // Subscribe to POWR packs (kind 30004 with powrpack hashtag)
-  const { events, isLoading } = useSubscribe(
-    ndk ? [{ kinds: [30004], '#t': ['powrpack', 'fitness', 'workout'], limit: 10 }] : false,
-    { enabled: !!ndk }
-  );
-  
-  // Update featured packs when events change
-  useEffect(() => {
-    if (events.length > 0) {
-      setFeaturedPacks(events);
+  // Manual fetch function
+  const handleFetchPacks = async () => {
+    if (!ndk) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('Manually fetching POWR packs');
+      const events = await ndk.fetchEvents({ 
+        kinds: [30004], 
+        "#t": ["powrpack"],
+        limit: 20 
+      });
+      const eventsArray = Array.from(events);
+      
+      console.log(`Fetched ${eventsArray.length} events`);
+      
+      // Filter to find POWR packs
+      const powrPacks = eventsArray.filter(event => {
+        // Check if any tag has 'powrpack', 'fitness', or 'workout'
+        return event.tags.some(tag => 
+          tag[0] === 't' && ['powrpack', 'fitness', 'workout'].includes(tag[1])
+        );
+      });
+      
+      console.log(`Found ${powrPacks.length} POWR packs`);
+      setFeaturedPacks(powrPacks);
+    } catch (err) {
+      console.error('Error fetching packs:', err);
+      setError(err instanceof Error ? err : new Error('Failed to fetch packs'));
+    } finally {
+      setIsLoading(false);
     }
-  }, [events]);
+  };
   
   // Handle pack click
   const handlePackClick = (packEvent: NDKEvent) => {
@@ -42,12 +64,23 @@ export default function POWRPackSection() {
         throw new Error('Pack is missing identifier (d tag)');
       }
       
+      // Get relay hints from event tags
+      const relayHints = packEvent.tags
+        .filter(tag => tag[0] === 'r')
+        .map(tag => tag[1])
+        .filter(relay => relay.startsWith('wss://'));
+      
+      // Default relays if none found
+      const relays = relayHints.length > 0 
+        ? relayHints 
+        : ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band'];
+      
       // Create shareable naddr
       const naddr = nip19.naddrEncode({
         kind: 30004,
         pubkey: packEvent.pubkey,
         identifier: dTag,
-        relays: ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band']
+        relays
       });
       
       // Copy to clipboard
@@ -69,21 +102,30 @@ export default function POWRPackSection() {
     router.push('/(packs)/manage');
   };
   
-  // Only show section if we have packs or are loading
-  const showSection = featuredPacks.length > 0 || isLoading;
-  
-  if (!showSection) {
-    return null;
-  }
+  // Fetch packs when mounted
+  React.useEffect(() => {
+    if (ndk) {
+      handleFetchPacks();
+    }
+  }, [ndk]);
   
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>POWR Packs</Text>
-        <TouchableOpacity onPress={handleViewAll} style={styles.viewAll}>
-          <Text style={styles.viewAllText}>View All</Text>
-          <ArrowRight size={16} color="#6b7280" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            onPress={handleFetchPacks} 
+            style={styles.refreshButton}
+            disabled={isLoading}
+          >
+            <RefreshCw size={16} color="#6b7280" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleViewAll} style={styles.viewAll}>
+            <Text style={styles.viewAllText}>View All</Text>
+            <ArrowRight size={16} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
       
       <ScrollView
@@ -141,6 +183,19 @@ export default function POWRPackSection() {
               </TouchableOpacity>
             );
           })
+        ) : error ? (
+          // Error state
+          <View style={styles.emptyState}>
+            <Text style={styles.errorText}>Error loading packs</Text>
+            <Button
+              onPress={handleFetchPacks}
+              size="sm"
+              variant="outline"
+              style={styles.emptyButton}
+            >
+              <Text>Try Again</Text>
+            </Button>
+          </View>
         ) : (
           // No packs found
           <View style={styles.emptyState}>
@@ -175,6 +230,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  refreshButton: {
+    padding: 8,
+    marginRight: 8,
   },
   viewAll: {
     flexDirection: 'row',
@@ -233,7 +296,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   emptyState: {
-    width: '100%',
+    width: 280,
     padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
@@ -242,6 +305,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
     color: '#6b7280',
+  },
+  errorText: {
+    marginTop: 8,
+    marginBottom: 16,
+    color: '#ef4444',
   },
   emptyButton: {
     marginTop: 8,

@@ -14,6 +14,8 @@ import {
   WorkoutTemplate, 
   TemplateType 
 } from '@/types/templates';
+import '@/types/ndk-extensions';
+import { safeAddRelay, safeRemoveRelay } from '@/types/ndk-common';
 
 /**
  * Service for managing POWR Packs (importable collections of templates and exercises)
@@ -21,13 +23,14 @@ import {
 export default class POWRPackService {
   private db: SQLiteDatabase;
   private nostrIntegration: NostrIntegration;
+  private exerciseWithRelays: Map<string, {event: NDKEvent, relays: string[]}> = new Map();
   
   constructor(db: SQLiteDatabase) {
     this.db = db;
     this.nostrIntegration = new NostrIntegration(db);
   }
   
-  /**
+   /**
    * Fetch a POWR Pack from a Nostr address (naddr)
    */
   async fetchPackFromNaddr(naddr: string, ndk: NDK): Promise<POWRPackImport> {
@@ -45,8 +48,26 @@ export default class POWRPackService {
         throw new Error('Invalid naddr format');
       }
       
-      const { pubkey, kind, identifier } = decoded.data;
+      const { pubkey, kind, identifier, relays } = decoded.data;
       console.log(`Decoded naddr: pubkey=${pubkey}, kind=${kind}, identifier=${identifier}`);
+      console.log(`Relay hints: ${relays ? relays.join(', ') : 'none'}`);
+      
+      // Track temporarily added relays
+      const addedRelays = new Set<string>();
+      
+      // If relay hints are provided, add them to NDK's pool temporarily
+      if (relays && relays.length > 0) {
+        for (const relay of relays) {
+          try {
+            console.log(`Adding suggested relay: ${relay}`);
+            // Use type assertion
+            this.safeAddRelay(ndk, relay);
+            addedRelays.add(relay);
+          } catch (error) {
+            console.warn(`Failed to add relay ${relay}:`, error);
+          }
+        }
+      }
       
       // Create filter to fetch the pack event
       const packFilter: NDKFilter = {
@@ -59,6 +80,19 @@ export default class POWRPackService {
       
       // Fetch the pack event
       const events = await ndk.fetchEvents(packFilter);
+      
+      // Clean up - remove any temporarily added relays
+      if (addedRelays.size > 0) {
+        console.log(`Removing ${addedRelays.size} temporarily added relays`);
+        for (const relay of addedRelays) {
+          try {
+            this.safeRemoveRelay(ndk, relay);
+          } catch (err) {
+            console.warn(`Failed to remove relay ${relay}:`, err);
+          }
+        }
+      }
+      
       if (events.size === 0) {
         throw new Error('Pack not found');
       }
@@ -83,9 +117,29 @@ export default class POWRPackService {
         const addressPointer = tag[1];
         if (addressPointer.startsWith('33402:')) {
           console.log(`Found template reference: ${addressPointer}`);
+          
+          // Include any relay hints in the tag
+          if (tag.length > 2) {
+            const relayHints = tag.slice(2).filter(r => r.startsWith('wss://'));
+            if (relayHints.length > 0) {
+              templateRefs.push(`${addressPointer},${relayHints.join(',')}`);
+              continue;
+            }
+          }
+          
           templateRefs.push(addressPointer);
         } else if (addressPointer.startsWith('33401:')) {
           console.log(`Found exercise reference: ${addressPointer}`);
+          
+          // Include any relay hints in the tag
+          if (tag.length > 2) {
+            const relayHints = tag.slice(2).filter(r => r.startsWith('wss://'));
+            if (relayHints.length > 0) {
+              exerciseRefs.push(`${addressPointer},${relayHints.join(',')}`);
+              continue;
+            }
+          }
+          
           exerciseRefs.push(addressPointer);
         }
       }
@@ -118,14 +172,33 @@ export default class POWRPackService {
     console.log(`Fetching references: ${JSON.stringify(refs)}`);
     
     const events: NDKEvent[] = [];
+    const addedRelays: Set<string> = new Set(); // Track temporarily added relays
     
     for (const ref of refs) {
       try {
-        // Parse the reference format (kind:pubkey:d-tag)
-        const [kindStr, pubkey, dTag] = ref.split(':');
+        // Parse the reference format (kind:pubkey:d-tag,relay1,relay2)
+        const parts = ref.split(',');
+        const baseRef = parts[0];
+        const relayHints = parts.slice(1).filter(r => r.startsWith('wss://'));
+        
+        const [kindStr, pubkey, dTag] = baseRef.split(':');
         const kind = parseInt(kindStr);
         
         console.log(`Fetching ${kind} event with d-tag ${dTag} from author ${pubkey}`);
+        
+        // Temporarily add these relays to NDK for this specific fetch
+        if (relayHints.length > 0) {
+          console.log(`With relay hints: ${relayHints.join(', ')}`);
+          
+          for (const relay of relayHints) {
+            try {
+              this.safeAddRelay(ndk, relay);
+              addedRelays.add(relay);
+            } catch (err) {
+              console.warn(`Failed to add relay ${relay}:`, err);
+            }
+          }
+        }
         
         // Create a filter to find this specific event
         const filter: NDKFilter = {
@@ -138,7 +211,23 @@ export default class POWRPackService {
         const fetchedEvents = await ndk.fetchEvents(filter);
         
         if (fetchedEvents.size > 0) {
-          events.push(Array.from(fetchedEvents)[0]);
+          const event = Array.from(fetchedEvents)[0];
+          
+          // Add the relay hints to the event for future reference
+          if (relayHints.length > 0) {
+            relayHints.forEach(relay => {
+              // Check if the relay is already in tags
+              const existingRelayTag = event.getMatchingTags('r').some(tag => 
+                tag.length > 1 && tag[1] === relay
+              );
+              
+              if (!existingRelayTag) {
+                event.tags.push(['r', relay]);
+              }
+            });
+          }
+          
+          events.push(event);
           continue;
         }
         
@@ -148,6 +237,21 @@ export default class POWRPackService {
           const event = await ndk.fetchEvent(dTag);
           if (event) {
             console.log(`Successfully fetched event by ID: ${dTag}`);
+            
+            // Add the relay hints to the event for future reference
+            if (relayHints.length > 0) {
+              relayHints.forEach(relay => {
+                // Check if the relay is already in tags
+                const existingRelayTag = event.getMatchingTags('r').some(tag => 
+                  tag.length > 1 && tag[1] === relay
+                );
+                
+                if (!existingRelayTag) {
+                  event.tags.push(['r', relay]);
+                }
+              });
+            }
+            
             events.push(event);
           }
         } catch (idError) {
@@ -155,6 +259,18 @@ export default class POWRPackService {
         }
       } catch (error) {
         console.error(`Error fetching reference ${ref}:`, error);
+      }
+    }
+    
+    // Clean up - remove any temporarily added relays
+    if (addedRelays.size > 0) {
+      console.log(`Removing ${addedRelays.size} temporarily added relays`);
+      for (const relay of addedRelays) {
+        try {
+          this.safeRemoveRelay(ndk, relay);
+        } catch (err) {
+          console.warn(`Failed to remove relay ${relay}:`, err);
+        }
       }
     }
     
@@ -168,14 +284,27 @@ export default class POWRPackService {
   analyzeDependencies(templates: NDKEvent[], exercises: NDKEvent[]): Record<string, string[]> {
     const dependencies: Record<string, string[]> = {};
     const exerciseMap = new Map<string, NDKEvent>();
+    const exerciseWithRelays = new Map<string, {event: NDKEvent, relays: string[]}>();
     
-    // Map exercises by "kind:pubkey:d-tag" for easier lookup
+    // Map exercises by "kind:pubkey:d-tag" for easier lookup, preserving relay hints
     for (const exercise of exercises) {
       const dTag = exercise.tagValue('d');
       if (dTag) {
         const reference = `33401:${exercise.pubkey}:${dTag}`;
         exerciseMap.set(reference, exercise);
-        console.log(`Mapped exercise ${exercise.id} to reference ${reference}`);
+        
+        // Extract relay hints from event if available
+        const relays: string[] = [];
+        exercise.getMatchingTags('r').forEach(tag => {
+          if (tag.length > 1 && tag[1].startsWith('wss://')) {
+            relays.push(tag[1]);
+          }
+        });
+        
+        // Store event with its relay hints
+        exerciseWithRelays.set(reference, {event: exercise, relays});
+        
+        console.log(`Mapped exercise ${exercise.id} to reference ${reference} with ${relays.length} relay hints`);
       }
     }
     
@@ -193,23 +322,94 @@ export default class POWRPackService {
       for (const tag of exerciseTags) {
         if (tag.length < 2) continue;
         
-        const exerciseRef = tag[1];
-        console.log(`Template ${templateName} references ${exerciseRef}`);
+        // Parse the full reference with potential relay hints
+        const fullRef = tag[1];
         
-        // Find the exercise in our mapped exercises
-        const exercise = exerciseMap.get(exerciseRef);
+        // Split the reference to handle parameters first
+        const refWithParams = fullRef.split(',')[0]; // Get reference part without relay hints
+        const baseRef = refWithParams.split('::')[0]; // Extract base reference without parameters
+        
+        // Extract relay hints from the comma-separated list
+        const relayHintsFromCommas = fullRef.split(',').slice(1).filter(r => r.startsWith('wss://'));
+        
+        // Also check for relay hints in additional tag elements
+        const relayHintsFromTag = tag.slice(2).filter(item => item.startsWith('wss://'));
+        
+        // Combine all relay hints
+        const relayHints = [...relayHintsFromCommas, ...relayHintsFromTag];
+        
+        console.log(`Template ${templateName} references ${refWithParams} with ${relayHints.length} relay hints`);
+        
+        // Find the exercise in our mapped exercises using only the base reference
+        const exercise = exerciseMap.get(baseRef);
         if (exercise) {
           dependencies[templateId].push(exercise.id);
+          
+          // Add any relay hints to our stored exercise data
+          const existingData = exerciseWithRelays.get(baseRef);
+          if (existingData && relayHints.length > 0) {
+            // Merge relay hints without duplicates
+            const uniqueRelays = new Set([...existingData.relays, ...relayHints]);
+            exerciseWithRelays.set(baseRef, {
+              event: existingData.event,
+              relays: Array.from(uniqueRelays)
+            });
+            
+            console.log(`Updated relay hints for ${baseRef}: ${Array.from(uniqueRelays).join(', ')}`);
+          }
+          
           console.log(`Template ${templateName} depends on exercise ${exercise.id}`);
         } else {
-          console.log(`Template ${templateName} references unknown exercise ${exerciseRef}`);
+          console.log(`Template ${templateName} references unknown exercise ${refWithParams}`);
         }
       }
       
       console.log(`Template ${templateName} has ${dependencies[templateId].length} dependencies`);
     }
     
+    // Store the enhanced exercise mapping with relay hints in a class property
+    this.exerciseWithRelays = exerciseWithRelays;
+    
     return dependencies;
+  }
+
+  // Inside your POWRPackService class
+  private safeAddRelay(ndk: NDK, url: string): void {
+    try {
+      // Direct property access to check if method exists
+      if (typeof (ndk as any).addRelay === 'function') {
+        (ndk as any).addRelay(url);
+        console.log(`Added relay: ${url}`);
+      } else {
+        // Fallback implementation using pool
+        if (ndk.pool && ndk.pool.relays) {
+          const relay = ndk.pool.getRelay?.(url);
+          if (!relay) {
+            console.log(`Could not add relay ${url} - no implementation available`);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to add relay ${url}:`, error);
+    }
+  }
+  
+  private safeRemoveRelay(ndk: NDK, url: string): void {
+    try {
+      // Direct property access to check if method exists
+      if (typeof (ndk as any).removeRelay === 'function') {
+        (ndk as any).removeRelay(url);
+        console.log(`Removed relay: ${url}`);
+      } else {
+        // Fallback implementation using pool
+        if (ndk.pool && ndk.pool.relays) {
+          ndk.pool.relays.delete(url);
+          console.log(`Removed relay ${url} using pool.relays.delete`);
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to remove relay ${url}:`, error);
+    }
   }
   
   /**
@@ -284,7 +484,9 @@ export default class POWRPackService {
         for (const ref of exerciseRefs) {
           // Extract the base reference (before any parameters)
           const refParts = ref.split('::');
-          const baseRef = refParts[0];
+          const baseRefWithRelays = refParts[0]; // May include relay hints separated by commas
+          const parts = baseRefWithRelays.split(',');
+          const baseRef = parts[0]; // Just the kind:pubkey:d-tag part
           
           console.log(`Looking for matching exercise for reference: ${baseRef}`);
           

@@ -159,24 +159,6 @@ export default function SettingsDrawer() {
       ),
     },
     {
-      id: 'notifications',
-      icon: Bell,
-      label: 'Notifications',
-      onPress: () => closeDrawer(),
-    },
-    {
-      id: 'data-sync',
-      icon: RefreshCw,
-      label: 'Data Sync',
-      onPress: () => closeDrawer(),
-    },
-    {
-      id: 'backup-restore',
-      icon: Database,
-      label: 'Backup & Restore',
-      onPress: () => closeDrawer(),
-    },
-    {
       id: 'relays',
       icon: Globe,
       label: 'Manage Relays',
@@ -190,12 +172,6 @@ export default function SettingsDrawer() {
         closeDrawer();
         router.push("/(packs)/manage");
       },
-    },
-    {
-      id: 'device',
-      icon: Smartphone,
-      label: 'Device Settings',
-      onPress: () => closeDrawer(),
     },
     {
       id: 'nostr',

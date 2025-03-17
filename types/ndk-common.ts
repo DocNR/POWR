@@ -8,15 +8,15 @@
 
 // Define a universal NDK interface that works with both packages
 export interface NDKCommon {
-    pool: {
-      relays: Map<string, any>;
-      getRelay: (url: string) => any;
-    };
-    connect: () => Promise<void>;
-    disconnect: () => void;
-    fetchEvents: (filter: any) => Promise<Set<any>>;
-    signer?: any;
-  }
+  pool: {
+    relays: Map<string, any>;
+    getRelay: (url: string) => any;
+  };
+  connect: () => Promise<void>;
+  disconnect?: () => void; // Make disconnect optional
+  fetchEvents: (filter: any) => Promise<Set<any>>;
+  signer?: any;
+}
   
   // Define a universal NDKRelay interface
   export interface NDKRelayCommon {

@@ -267,38 +267,138 @@ export class NostrIntegration {
     return 'Custom';
   }
   
-  /**
-   * Get exercise references from a template event
-   */
+  // Add this updated method to the NostrIntegration class
+
   getTemplateExerciseRefs(templateEvent: NDKEvent): string[] {
     const exerciseTags = templateEvent.getMatchingTags('exercise');
     const exerciseRefs: string[] = [];
     
     for (const tag of exerciseTags) {
-      if (tag.length > 1) {
-        // Get the reference exactly as it appears in the tag
-        const ref = tag[1];
+      if (tag.length < 2) continue;
+      
+      let ref = tag[1];
+      
+      // Build a complete reference that includes relay hints
+      const relayHints: string[] = [];
+      
+      // Check for relay hints in the main reference (if it has commas)
+      if (ref.includes(',')) {
+        const [baseRef, ...hints] = ref.split(',');
+        ref = baseRef;
+        hints.filter(h => h.startsWith('wss://')).forEach(h => relayHints.push(h));
+      }
+      
+      // Also check for relay hints in the tag itself (additional elements)
+      for (let i = 2; i < tag.length; i++) {
+        if (tag[i].startsWith('wss://')) {
+          relayHints.push(tag[i]);
+        }
+      }
+      
+      // Add parameters if available
+      let fullRef = ref;
+      
+      // Check if params start after tag[1]
+      if (tag.length > 2 && !tag[2].startsWith('wss://')) {
+        let paramStart = 2;
         
-        // Add parameters if available
-        if (tag.length > 2) {
-          // Add parameters with "::" separator
-          const params = tag.slice(2).join(':');
-          exerciseRefs.push(`${ref}::${params}`);
-        } else {
-          exerciseRefs.push(ref);
+        // Find all non-relay parameters
+        const params: string[] = [];
+        for (let i = paramStart; i < tag.length; i++) {
+          if (!tag[i].startsWith('wss://')) {
+            params.push(tag[i]);
+          }
         }
         
-        // Log the exact reference for debugging
-        console.log(`Extracted reference from template: ${exerciseRefs[exerciseRefs.length-1]}`);
+        if (params.length > 0) {
+          // Add parameters with "::" separator
+          fullRef += `::${params.join(':')}`;
+        }
       }
+      
+      // Reconstruct the reference with relay hints
+      if (relayHints.length > 0) {
+        fullRef += `,${relayHints.join(',')}`;
+      }
+      
+      exerciseRefs.push(fullRef);
+      console.log(`Extracted reference from template: ${fullRef}`);
     }
     
     return exerciseRefs;
   }
+
+  // Add this updated method to the NostrIntegration class
+
+  async findExercisesByNostrReference(refs: string[]): Promise<Map<string, string>> {
+    try {
+      const result = new Map<string, string>();
+      
+      for (const ref of refs) {
+        // Split the reference to separate the base reference from relay hints
+        const [baseRefWithParams, ...relayHints] = ref.split(',');
+        
+        // Further split to get the basic reference and parameters
+        let baseRef = baseRefWithParams;
+        if (baseRefWithParams.includes('::')) {
+          baseRef = baseRefWithParams.split('::')[0];
+        }
+        
+        const refParts = baseRef.split(':');
+        if (refParts.length < 3) continue;
+        
+        const refKind = refParts[0];
+        const refPubkey = refParts[1];
+        const refDTag = refParts[2];
+        
+        // Try to find by d-tag and pubkey in nostr_metadata if available
+        const hasNostrMetadata = await this.columnExists('exercises', 'nostr_metadata');
+        
+        let exercise = null;
+        
+        if (hasNostrMetadata) {
+          exercise = await this.db.getFirstAsync<{ id: string }>(
+            `SELECT id FROM exercises WHERE 
+            JSON_EXTRACT(nostr_metadata, '$.pubkey') = ? AND 
+            JSON_EXTRACT(nostr_metadata, '$.dTag') = ?`,
+            [refPubkey, refDTag]
+          );
+        }
+        
+        // If not found, try matching by Nostr event ID
+        if (!exercise) {
+          exercise = await this.db.getFirstAsync<{ id: string }>(
+            `SELECT id FROM exercises WHERE nostr_event_id = ?`,
+            [refDTag]
+          );
+        }
+        
+        // If still not found, try a direct ID match (in case dTag is an event ID)
+        if (!exercise) {
+          exercise = await this.db.getFirstAsync<{ id: string }>(
+            `SELECT id FROM exercises WHERE nostr_event_id = ?`,
+            [refDTag]
+          );
+        }
+        
+        if (exercise) {
+          result.set(ref, exercise.id);
+          console.log(`Matched exercise reference ${ref} to local ID ${exercise.id}`);
+          
+          // Also store the base reference for easier future lookup
+          result.set(baseRef, exercise.id);
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error finding exercises by Nostr reference:', error);
+      return new Map();
+    }
+  }
   
-  /**
-   * Save an imported exercise to the database
-   */
+  // Add this method to the NostrIntegration class
+
   async saveImportedExercise(exercise: BaseExercise, originalEvent?: NDKEvent): Promise<string> {
     try {
       // Convert format objects to JSON strings
@@ -313,11 +413,22 @@ export class NostrIntegration {
       const dTag = originalEvent?.tagValue('d') || 
                   (exercise.availability?.lastSynced?.nostr?.metadata?.dTag || null);
       
-      // Store the d-tag in a JSON metadata field for easier searching
+      // Get relay hints from the event if available
+      const relayHints: string[] = [];
+      if (originalEvent) {
+        originalEvent.getMatchingTags('r').forEach(tag => {
+          if (tag.length > 1 && tag[1].startsWith('wss://')) {
+            relayHints.push(tag[1]);
+          }
+        });
+      }
+      
+      // Store the d-tag and relay hints in metadata
       const nostrMetadata = JSON.stringify({
         pubkey: originalEvent?.pubkey || exercise.availability?.lastSynced?.nostr?.metadata?.pubkey,
         dTag: dTag,
-        eventId: nostrEventId
+        eventId: nostrEventId,
+        relays: relayHints
       });
       
       // Check if nostr_metadata column exists
@@ -330,9 +441,9 @@ export class NostrIntegration {
       
       await this.db.runAsync(
         `INSERT INTO exercises 
-         (id, title, type, category, equipment, description, format_json, format_units_json, 
+        (id, title, type, category, equipment, description, format_json, format_units_json, 
           created_at, updated_at, source, nostr_event_id${hasNostrMetadata ? ', nostr_metadata' : ''}) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrMetadata ? ', ?' : ''})`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrMetadata ? ', ?' : ''})`,
         [
           exercise.id,
           exercise.title,
@@ -436,6 +547,14 @@ export class NostrIntegration {
         await this.db.execAsync(`ALTER TABLE template_exercises ADD COLUMN nostr_reference TEXT`);
       }
       
+      // Check if relay_hints column exists
+      const hasRelayHints = await this.columnExists('template_exercises', 'relay_hints');
+      
+      if (!hasRelayHints) {
+        console.log("Adding relay_hints column to template_exercises table");
+        await this.db.execAsync(`ALTER TABLE template_exercises ADD COLUMN relay_hints TEXT`);
+      }
+      
       // Create template exercise records
       for (let i = 0; i < exerciseIds.length; i++) {
         const exerciseId = exerciseIds[i];
@@ -446,6 +565,11 @@ export class NostrIntegration {
         const exerciseRef = exerciseRefs[i] || '';
         console.log(`Processing reference: ${exerciseRef}`);
         
+        // Extract relay hints from the reference
+        const parts = exerciseRef.split(',');
+        const baseRefWithParams = parts[0]; // This might include ::params
+        const relayHints = parts.slice(1).filter(r => r.startsWith('wss://'));
+        
         // Parse the reference format: kind:pubkey:d-tag::sets:reps:weight
         let targetSets = null;
         let targetReps = null;
@@ -453,8 +577,8 @@ export class NostrIntegration {
         let setType = null;
         
         // Check if reference contains parameters
-        if (exerciseRef.includes('::')) {
-          const [_, paramString] = exerciseRef.split('::');
+        if (baseRefWithParams.includes('::')) {
+          const [_, paramString] = baseRefWithParams.split('::');
           const params = paramString.split(':');
           
           if (params.length > 0) targetSets = params[0] ? parseInt(params[0]) : null;
@@ -465,10 +589,14 @@ export class NostrIntegration {
           console.log(`Parsed parameters: sets=${targetSets}, reps=${targetReps}, weight=${targetWeight}, type=${setType}`);
         }
         
+        // Store relay hints in JSON
+        const relayHintsJson = relayHints.length > 0 ? JSON.stringify(relayHints) : null;
+        
         await this.db.runAsync(
           `INSERT INTO template_exercises 
-           (id, template_id, exercise_id, display_order, target_sets, target_reps, target_weight, created_at, updated_at${hasNostrReference ? ', nostr_reference' : ''}) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrReference ? ', ?' : ''})`,
+          (id, template_id, exercise_id, display_order, target_sets, target_reps, target_weight, created_at, updated_at
+            ${hasNostrReference ? ', nostr_reference' : ''}${hasRelayHints ? ', relay_hints' : ''}) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?${hasNostrReference ? ', ?' : ''}${hasRelayHints ? ', ?' : ''})`,
           [
             templateExerciseId,
             templateId,
@@ -479,68 +607,18 @@ export class NostrIntegration {
             targetWeight,
             now,
             now,
-            ...(hasNostrReference ? [exerciseRef] : [])
+            ...(hasNostrReference ? [exerciseRef] : []),
+            ...(hasRelayHints ? [relayHintsJson] : [])
           ]
         );
         
-        console.log(`Saved template-exercise relationship: template=${templateId}, exercise=${exerciseId}`);
+        console.log(`Saved template-exercise relationship: template=${templateId}, exercise=${exerciseId} with ${relayHints.length} relay hints`);
       }
       
       console.log(`Successfully saved ${exerciseIds.length} template-exercise relationships for template ${templateId}`);
     } catch (error) {
       console.error('Error saving template exercises with parameters:', error);
       throw error;
-    }
-  }
-  
-  /**
-   * Find exercises by Nostr reference
-   * This method helps match references in templates to actual exercises
-   */
-  async findExercisesByNostrReference(refs: string[]): Promise<Map<string, string>> {
-    try {
-      const result = new Map<string, string>();
-      
-      for (const ref of refs) {
-        const refParts = ref.split('::')[0].split(':');
-        if (refParts.length < 3) continue;
-        
-        const refKind = refParts[0];
-        const refPubkey = refParts[1];
-        const refDTag = refParts[2];
-        
-        // Try to find by d-tag and pubkey in nostr_metadata if available
-        const hasNostrMetadata = await this.columnExists('exercises', 'nostr_metadata');
-        
-        let exercise = null;
-        
-        if (hasNostrMetadata) {
-          exercise = await this.db.getFirstAsync<{ id: string }>(
-            `SELECT id FROM exercises WHERE 
-             JSON_EXTRACT(nostr_metadata, '$.pubkey') = ? AND 
-             JSON_EXTRACT(nostr_metadata, '$.dTag') = ?`,
-            [refPubkey, refDTag]
-          );
-        }
-        
-        // Fallback: try to match by event ID
-        if (!exercise) {
-          exercise = await this.db.getFirstAsync<{ id: string }>(
-            `SELECT id FROM exercises WHERE nostr_event_id = ?`,
-            [refDTag]
-          );
-        }
-        
-        if (exercise) {
-          result.set(ref, exercise.id);
-          console.log(`Matched exercise reference ${ref} to local ID ${exercise.id}`);
-        }
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Error finding exercises by Nostr reference:', error);
-      return new Map();
     }
   }
   
