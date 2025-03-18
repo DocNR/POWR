@@ -1,3 +1,4 @@
+// components/DatabaseProvider.tsx
 import React from 'react';
 import { View, ActivityIndicator, ScrollView, Text } from 'react-native';
 import { SQLiteProvider, openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
@@ -10,6 +11,7 @@ import { TemplateService } from '@/lib/db/services/TemplateService';
 import POWRPackService from '@/lib/db/services/POWRPackService';
 import { logDatabaseInfo } from '@/lib/db/debug';
 import { useNDKStore } from '@/lib/stores/ndk';
+import { useLibraryStore } from '@/lib/stores/libraryStore';
 
 // Create context for services
 interface DatabaseServicesContextValue {
@@ -84,6 +86,15 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
       services.publicationQueue.setNDK(ndk);
     }
   }, [ndk, services]);
+
+  // Effect to trigger initial data refresh when database is ready
+  React.useEffect(() => {
+    if (isReady && services.db) {
+      console.log('[DB] Database ready - triggering initial library refresh');
+      // Refresh all library data
+      useLibraryStore.getState().refreshAll();
+    }
+  }, [isReady, services.db]);
 
   React.useEffect(() => {
     async function initDatabase() {

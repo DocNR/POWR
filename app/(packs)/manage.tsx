@@ -14,6 +14,7 @@ import { Trash2, PackageOpen, Plus, X } from 'lucide-react-native';
 import { useIconColor } from '@/lib/theme/iconUtils';
 import { useColorScheme } from '@/lib/theme/useColorScheme';
 import { COLORS } from '@/lib/theme/colors';
+import { FIXED_COLORS } from '@/lib/theme/colors';
 
 export default function ManagePOWRPacksScreen() {
   const powrPackService = usePOWRPackService();
@@ -102,7 +103,6 @@ export default function ManagePOWRPacksScreen() {
           className="mb-4"
           style={{ backgroundColor: COLORS.purple.DEFAULT }}
         >
-          <Plus size={18} color="#fff" style={{ marginRight: 8 }} />
           <Text style={{ color: '#fff', fontWeight: '500' }}>Import New Pack</Text>
         </Button>
 
@@ -173,18 +173,28 @@ export default function ManagePOWRPacksScreen() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              <Text>Delete Pack</Text>
+              <Text className="text-xl font-semibold text-foreground">Delete Pack</Text>
             </AlertDialogTitle>
             <AlertDialogDescription>
-              <Text>This will remove the POWR Pack and all its associated templates and exercises from your library.</Text>
+              <Text className="text-muted-foreground">
+                This will remove the POWR Pack and all its associated templates and exercises from your library.
+              </Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <View className="flex-row justify-center gap-3 px-4 mt-2">
-            <AlertDialogCancel onPress={() => setShowDeleteDialog(false)}>
-              <Text>Cancel</Text>
+          <View className="flex-row justify-end gap-3">
+            <AlertDialogCancel asChild>
+              <Button variant="outline" className="mr-2">
+                <Text>Cancel</Text>
+              </Button>
             </AlertDialogCancel>
-            <AlertDialogAction onPress={handleDeleteConfirm} className='bg-destructive'>
-              <Text className='text-destructive-foreground'>Delete Pack</Text>
+            <AlertDialogAction asChild>
+              <Button 
+                variant="destructive" 
+                onPress={handleDeleteConfirm}
+                style={{ backgroundColor: FIXED_COLORS.destructive }}
+              >
+                <Text style={{ color: '#FFFFFF' }}>Delete Pack</Text>
+              </Button>
             </AlertDialogAction>
           </View>
         </AlertDialogContent>

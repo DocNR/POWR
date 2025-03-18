@@ -25,7 +25,6 @@ export default function NostrLoginPrompt({ message }: NostrLoginPromptProps) {
           onPress={() => setIsLoginSheetOpen(true)}
           className="px-6"
         >
-          <Key size={18} className="mr-2" />
           <Text>Login with Nostr</Text>
         </Button>
       </View>

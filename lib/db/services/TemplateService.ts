@@ -452,6 +452,22 @@ export class TemplateService {
       throw error;
     }
   }
+
+  /**
+   * Check if a template exists in the database
+   */
+  async templateExists(id: string): Promise<boolean> {
+    try {
+      const result = await this.db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM templates WHERE id = ?',
+        [id]
+      );
+      return result ? result.count > 0 : false;
+    } catch (error) {
+      console.error('Error checking if template exists:', error);
+      return false;
+    }
+  }
   
   /**
    * Delete template from Nostr

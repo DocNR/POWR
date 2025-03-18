@@ -4,6 +4,17 @@ import { View, SectionList, TouchableOpacity, ViewToken } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Badge } from '@/components/ui/badge';
 import { ExerciseDisplay, WorkoutExercise } from '@/types/exercise';
+import { Trash2 } from 'lucide-react-native';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Create a combined interface for exercises that could have workout data
 interface DisplayWorkoutExercise extends ExerciseDisplay, WorkoutExercise {}
@@ -11,14 +22,23 @@ interface DisplayWorkoutExercise extends ExerciseDisplay, WorkoutExercise {}
 interface SimplifiedExerciseListProps {
   exercises: ExerciseDisplay[];
   onExercisePress: (exercise: ExerciseDisplay) => void;
+  onDeletePress?: (exercise: ExerciseDisplay) => void; // Add this
 }
 
 export const SimplifiedExerciseList = ({
   exercises,
-  onExercisePress
+  onExercisePress,
+  onDeletePress
 }: SimplifiedExerciseListProps) => {
   const sectionListRef = useRef<SectionList>(null);
   const [currentSection, setCurrentSection] = useState<string>('');
+  const [exerciseToDelete, setExerciseToDelete] = useState<ExerciseDisplay | null>(null);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  
+  const handleDeletePress = (exercise: ExerciseDisplay) => {
+    setExerciseToDelete(exercise);
+    setShowDeleteAlert(true);
+  };
 
   // Organize exercises into sections
   const sections = React.useMemo(() => {
@@ -50,18 +70,6 @@ export const SimplifiedExerciseList = ({
     }
   }, []);
 
-  const scrollToSection = useCallback((letter: string) => {
-    const sectionIndex = sections.findIndex(section => section.title === letter);
-    if (sectionIndex !== -1 && sectionListRef.current) {
-      sectionListRef.current.scrollToLocation({
-        animated: true,
-        sectionIndex,
-        itemIndex: 0,
-        viewPosition: 0,
-      });
-    }
-  }, [sections]);
-
   const getItemLayout = useCallback((data: any, index: number) => ({
     length: 85, // Approximate height of each item
     offset: 85 * index,
@@ -78,6 +86,7 @@ export const SimplifiedExerciseList = ({
 
   const renderExerciseItem = ({ item }: { item: ExerciseDisplay }) => {
     const firstLetter = item.title.charAt(0).toUpperCase();
+    const canDelete = item.source === 'local';
     
     return (
       <TouchableOpacity 
@@ -137,13 +146,27 @@ export const SimplifiedExerciseList = ({
         
         {/* Weight/Rep information if it was a WorkoutExercise */}
         {isWorkoutExercise(item) && (
-          <View className="items-end">
+          <View className="items-end mr-2">
             <Text className="text-muted-foreground text-sm">
               {item.sets?.[0]?.weight && `${item.sets[0].weight} lb`}
               {item.sets?.[0]?.weight && item.sets?.[0]?.reps && ' '}
               {item.sets?.[0]?.reps && `(×${item.sets[0].reps})`}
             </Text>
           </View>
+        )}
+        
+        {/* Delete button (only for local exercises) */}
+        {canDelete && onDeletePress && (
+          <TouchableOpacity 
+            onPress={(e) => {
+              e.stopPropagation(); // Prevent triggering the parent TouchableOpacity
+              onDeletePress(item);
+            }}
+            className="p-2"
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          >
+            <Trash2 size={18} color="#ef4444" />
+          </TouchableOpacity>
         )}
       </TouchableOpacity>
     );

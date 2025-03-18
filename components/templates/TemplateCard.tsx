@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Template, TemplateExerciseDisplay } from '@/types/templates';
 import { useIconColor } from '@/lib/theme/iconUtils';
+import { FIXED_COLORS } from '@/lib/theme/colors';
 
 interface TemplateCardProps {
   template: Template;
@@ -199,8 +200,12 @@ export function TemplateCard({
                       </Button>
                     </AlertDialogCancel>
                     <AlertDialogAction asChild>
-                      <Button variant="destructive" onPress={handleConfirmDelete}>
-                        <Text className="text-destructive-foreground">Delete</Text>
+                      <Button 
+                        variant="destructive" 
+                        onPress={handleConfirmDelete}
+                        style={{ backgroundColor: FIXED_COLORS.destructive }}
+                      >
+                        <Text style={{ color: '#FFFFFF' }}>Delete</Text>
                       </Button>
                     </AlertDialogAction>
                   </View>

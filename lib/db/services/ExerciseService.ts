@@ -366,6 +366,37 @@ export class ExerciseService {
     }
   }
 
+  // Add this to lib/db/services/ExerciseService.ts
+  async deleteExercise(id: string): Promise<boolean> {
+    try {
+      // First check if the exercise is from a POWR Pack
+      const exercise = await this.db.getFirstAsync<{ source: string }>(
+        'SELECT source FROM exercises WHERE id = ?',
+        [id]
+      );
+      
+      if (!exercise) {
+        throw new Error(`Exercise with ID ${id} not found`);
+      }
+      
+      if (exercise.source === 'nostr' || exercise.source === 'powr') {
+        // This is a POWR Pack exercise - don't allow direct deletion
+        throw new Error('This exercise is part of a POWR Pack and cannot be deleted individually. You can remove the entire POWR Pack from the settings menu.');
+      }
+      
+      // For local exercises, proceed with deletion
+      await this.db.runAsync('DELETE FROM exercises WHERE id = ?', [id]);
+      
+      // Also delete any references in template_exercises
+      await this.db.runAsync('DELETE FROM template_exercises WHERE exercise_id = ?', [id]);
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting exercise:', error);
+      throw error;
+    }
+  }
+
   async syncWithNostrEvent(eventId: string, exercise: Omit<BaseExercise, 'id'>): Promise<string> {
     try {
       // Check if we already have this exercise

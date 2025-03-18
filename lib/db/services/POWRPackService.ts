@@ -16,6 +16,7 @@ import {
 } from '@/types/templates';
 import '@/types/ndk-extensions';
 import { safeAddRelay, safeRemoveRelay } from '@/types/ndk-common';
+import { useLibraryStore } from '@/lib/stores/libraryStore';
 
 /**
  * Service for managing POWR Packs (importable collections of templates and exercises)
@@ -592,6 +593,11 @@ export default class POWRPackService {
       
       // Finally, save the pack itself
       await this.savePack(packImport.packEvent, selection);
+
+      // Trigger refresh of templates and exercises
+      useLibraryStore.getState().refreshTemplates();
+      useLibraryStore.getState().refreshExercises();
+      useLibraryStore.getState().refreshPacks();
       
       // Get total counts
       const totalNostrTemplates = await this.db.getFirstAsync<{ count: number }>(
@@ -948,6 +954,13 @@ export default class POWRPackService {
           `DELETE FROM powr_packs WHERE id = ?`,
           [packId]
         );
+        
+        // Trigger refresh of templates and exercises
+        useLibraryStore.getState().refreshTemplates();
+        useLibraryStore.getState().refreshExercises();
+        useLibraryStore.getState().refreshPacks();
+        // Clear any cached data
+        useLibraryStore.getState().clearCache();
         
         console.log(`[POWRPackService] Successfully deleted pack ${packId} with ${templates.length} templates and ${exerciseIdsToDelete.size} exercises`);
       });

@@ -1,6 +1,6 @@
 // app/(tabs)/library/templates.tsx
 import React, { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,8 @@ import {
   toWorkoutTemplate 
 } from '@/types/templates';
 import { useWorkoutStore } from '@/stores/workoutStore';
-import { useTemplateService } from '@/components/DatabaseProvider';
+import { useTemplates } from '@/lib/hooks/useTemplates';
+import { useIconColor } from '@/lib/theme/iconUtils';
 
 // Default available filters
 const availableFilters = {
@@ -34,27 +35,77 @@ const initialFilters: FilterOptions = {
   source: []
 };
 
-// Initial templates - empty array
-const initialTemplates: Template[] = [];
-
 export default function TemplatesScreen() {
-  const templateService = useTemplateService(); // Get the template service
+  // State for UI elements
   const [showNewTemplate, setShowNewTemplate] = useState(false);
-  const [templates, setTemplates] = useState(initialTemplates);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<FilterOptions>(initialFilters);
   const [activeFilters, setActiveFilters] = useState(0);
-  const { isActive, isMinimized } = useWorkoutStore();
-  const shouldShowFAB = !isActive || !isMinimized;
   const [debugInfo, setDebugInfo] = useState('');
   
   // State for the modal template details
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   
-  const handleDelete = (id: string) => {
-    setTemplates(current => current.filter(t => t.id !== id));
+  // Hooks
+  const { getIconProps } = useIconColor();
+  const { isActive, isMinimized } = useWorkoutStore();
+  const { 
+    templates,
+    loading,
+    error,
+    silentRefresh,
+    refreshTemplates,
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
+    archiveTemplate
+  } = useTemplates();
+  
+  // Check if floating action button should be shown
+  const shouldShowFAB = !isActive || !isMinimized;
+
+  // Convert WorkoutTemplates to Template format for the UI
+  const formattedTemplates = React.useMemo(() => {
+    return templates.map(template => {
+      // Get favorite status
+      const isFavorite = useWorkoutStore.getState().checkFavoriteStatus(template.id);
+      
+      // Convert to Template format for the UI
+      return {
+        id: template.id,
+        title: template.title,
+        type: template.type,
+        category: template.category,
+        exercises: template.exercises.map(ex => ({
+          title: ex.exercise.title,
+          targetSets: ex.targetSets || 0,
+          targetReps: ex.targetReps || 0,
+          equipment: ex.exercise.equipment
+        })),
+        tags: template.tags || [],
+        source: template.availability?.source[0] || 'local',
+        isFavorite
+      };
+    });
+  }, [templates]);
+
+  // Refresh templates when the screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      // This will refresh without showing loading indicators if possible
+      silentRefresh();
+      return () => {};
+    }, [silentRefresh])
+  );
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTemplate(id);
+    } catch (error) {
+      console.error('Error deleting template:', error);
+    }
   };
 
   const handleTemplatePress = (template: Template) => {
@@ -65,9 +116,6 @@ export default function TemplatesScreen() {
 
   const handleStartWorkout = async (template: Template) => {
     try {
-      // Convert to WorkoutTemplate format
-      const workoutTemplate = toWorkoutTemplate(template);
-      
       // Start the workout - use the template ID
       await useWorkoutStore.getState().startWorkoutFromTemplate(template.id);
       
@@ -88,15 +136,6 @@ export default function TemplatesScreen() {
       } else {
         await useWorkoutStore.getState().addFavorite(workoutTemplate);
       }
-      
-      // Update local state to reflect change
-      setTemplates(current =>
-        current.map(t =>
-          t.id === template.id
-            ? { ...t, isFavorite: !isFavorite }
-            : t
-        )
-      );
     } catch (error) {
       console.error('Error toggling favorite status:', error);
     }
@@ -118,97 +157,22 @@ export default function TemplatesScreen() {
 
   // Handle favorite change from modal
   const handleModalFavoriteChange = (templateId: string, isFavorite: boolean) => {
-    // Update local state to reflect change
-    setTemplates(current =>
-      current.map(t =>
-        t.id === templateId
-          ? { ...t, isFavorite }
-          : t
-      )
-    );
+    // The templates will be refreshed automatically through the store
   };
-
-  const handleDebugDB = async () => {
-    try {
-      // Get all templates directly
-      const allTemplates = await templateService.getAllTemplates(100);
-      
-      let info = "Database Stats:\n";
-      info += "--------------\n";
-      info += `Total templates: ${allTemplates.length}\n\n`;
-      
-      // Template list
-      info += "Templates:\n";
-      allTemplates.forEach(template => {
-        info += `- ${template.title} (${template.id}) [${template.availability?.source[0] || 'unknown'}]\n`;
-        info += `  Exercises: ${template.exercises.length}\n`;
-      });
-      
-      setDebugInfo(info);
-      console.log(info);
-    } catch (error) {
-      console.error('Debug error:', error);
-      setDebugInfo(`Error: ${String(error)}`);
-    }
-  };
-
-  // Load templates when the screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      async function loadTemplates() {
-        try {
-          console.log('[TemplateScreen] Loading templates...');
-          
-          // Load templates from the database
-          const data = await templateService.getAllTemplates(100);
-          
-          console.log(`[TemplateScreen] Loaded ${data.length} templates from database`);
-          
-          // Convert to Template[] format that the screen expects
-          const formattedTemplates: Template[] = [];
-          
-          for (const template of data) {
-            // Get favorite status
-            const isFavorite = useWorkoutStore.getState().checkFavoriteStatus(template.id);
-            
-            // Convert to Template format
-            formattedTemplates.push({
-              id: template.id,
-              title: template.title,
-              type: template.type,
-              category: template.category,
-              exercises: template.exercises.map(ex => ({
-                title: ex.exercise.title,
-                targetSets: ex.targetSets || 0,
-                targetReps: ex.targetReps || 0,
-                equipment: ex.exercise.equipment
-              })),
-              tags: template.tags || [],
-              source: template.availability?.source[0] || 'local',
-              isFavorite
-            });
-          }
-          
-          // Update the templates state
-          setTemplates(formattedTemplates);
-        } catch (error) {
-          console.error('[TemplateScreen] Error loading templates:', error);
-        }
-      }
-      
-      loadTemplates();
-      
-      return () => {};
-    }, [])
-  );
 
   const handleAddTemplate = (template: Template) => {
-    setTemplates(prev => [...prev, template]);
+    // Convert UI Template to WorkoutTemplate
+    const workoutTemplate = toWorkoutTemplate(template);
+    
+    // Create the template
+    createTemplate(workoutTemplate);
+    
+    // Close the sheet
     setShowNewTemplate(false);
   };
 
   // Filter templates based on search and applied filters
-  const filteredTemplates = templates.filter(template => {
+  const filteredTemplates = formattedTemplates.filter(template => {
     // Filter by search query
     const matchesSearch = !searchQuery || 
       template.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -278,79 +242,68 @@ export default function TemplatesScreen() {
         availableFilters={availableFilters}
       />
 
-      {/* Debug button */}
-      <View className="p-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onPress={handleDebugDB}
-        >
-          <Text className="text-xs">Debug Templates</Text>
-        </Button>
-      </View>
-
-      {/* Debug info display */}
-      {debugInfo ? (
-        <View className="px-4 py-2 mx-4 mb-2 bg-primary/10 rounded-md">
-          <ScrollView style={{ maxHeight: 150 }}>
-            <Text className="font-mono text-xs">{debugInfo}</Text>
-          </ScrollView>
+      {/* Templates list with loading state */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="small" className="mb-2" />
+          <Text className="text-muted-foreground">Loading templates...</Text>
         </View>
-      ) : null}
-
-      {/* Templates list */}
-      <ScrollView className="flex-1">
-        {/* Favorites Section */}
-        {favoriteTemplates.length > 0 && (
-          <View className="py-4">
-            <Text className="text-lg font-semibold mb-4 px-4">
-              Favorites
-            </Text>
-            <View className="gap-3">
-              {favoriteTemplates.map(template => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  onPress={() => handleTemplatePress(template)}
-                  onDelete={handleDelete}
-                  onFavorite={() => handleFavorite(template)}
-                  onStartWorkout={() => handleStartWorkout(template)}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* All Templates Section */}
-        <View className="py-4">
-          <Text className="text-lg font-semibold mb-4 px-4">
-            All Templates
-          </Text>
-          {regularTemplates.length > 0 ? (
-            <View className="gap-3">
-              {regularTemplates.map(template => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  onPress={() => handleTemplatePress(template)}
-                  onDelete={handleDelete}
-                  onFavorite={() => handleFavorite(template)}
-                  onStartWorkout={() => handleStartWorkout(template)}
-                />
-              ))}
-            </View>
-          ) : (
-            <View className="px-4">
-              <Text className="text-muted-foreground">
-                No templates found. {templates.length > 0 ? 'Try changing your filters.' : 'Create a new workout template by clicking the + button.'}
+      ) : (
+        <ScrollView className="flex-1">
+          {/* Favorites Section */}
+          {favoriteTemplates.length > 0 && (
+            <View className="py-4">
+              <Text className="text-lg font-semibold mb-4 px-4">
+                Favorites
               </Text>
+              <View className="gap-3">
+                {favoriteTemplates.map(template => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    onPress={() => handleTemplatePress(template)}
+                    onDelete={() => handleDelete(template.id)}
+                    onFavorite={() => handleFavorite(template)}
+                    onStartWorkout={() => handleStartWorkout(template)}
+                  />
+                ))}
+              </View>
             </View>
           )}
-        </View>
 
-        {/* Add some bottom padding for FAB */}
-        <View className="h-20" />
-      </ScrollView>
+          {/* All Templates Section */}
+          <View className="py-4">
+            <Text className="text-lg font-semibold mb-4 px-4">
+              All Templates
+            </Text>
+            {regularTemplates.length > 0 ? (
+              <View className="gap-3">
+                {regularTemplates.map(template => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    onPress={() => handleTemplatePress(template)}
+                    onDelete={() => handleDelete(template.id)}
+                    onFavorite={() => handleFavorite(template)}
+                    onStartWorkout={() => handleStartWorkout(template)}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View className="px-4">
+                <Text className="text-muted-foreground">
+                  {formattedTemplates.length > 0 
+                    ? 'No templates match your current filters.' 
+                    : 'No templates found. Create a new workout template by clicking the + button.'}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Add some bottom padding for FAB */}
+          <View className="h-20" />
+        </ScrollView>
+      )}
 
       {shouldShowFAB && (
         <FloatingActionButton

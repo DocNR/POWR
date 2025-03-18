@@ -1,20 +1,21 @@
-// lib/hooks/usePOWRPacks.ts
+// lib/hooks/usePOWRpacks.ts
 import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { usePOWRPackService } from '@/components/DatabaseProvider';
 import { useNDK } from '@/lib/hooks/useNDK';
 import { POWRPackWithContent, POWRPackImport, POWRPackSelection } from '@/types/powr-pack';
-import { router } from 'expo-router';
+import { usePackRefresh } from '@/lib/stores/libraryStore';
 
 export function usePOWRPacks() {
   const powrPackService = usePOWRPackService();
   const { ndk } = useNDK();
+  const { refreshCount, refreshPacks, isLoading, setLoading } = usePackRefresh();
+  
   const [packs, setPacks] = useState<POWRPackWithContent[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   
   // Load all packs
   const loadPacks = useCallback(async () => {
-    setIsLoading(true);
+    setLoading(true);
     try {
       const importedPacks = await powrPackService.getImportedPacks();
       setPacks(importedPacks);
@@ -23,14 +24,14 @@ export function usePOWRPacks() {
       console.error('Error loading POWR packs:', error);
       return [];
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [powrPackService]);
+  }, [powrPackService, setLoading]);
   
-  // Load packs on mount
+  // Load packs when refreshCount changes
   useEffect(() => {
     loadPacks();
-  }, [loadPacks]);
+  }, [refreshCount, loadPacks]);
   
   // Fetch a pack from an naddr
   const fetchPack = useCallback(async (naddr: string): Promise<POWRPackImport | null> => {
@@ -52,28 +53,28 @@ export function usePOWRPacks() {
   const importPack = useCallback(async (packImport: POWRPackImport, selection: POWRPackSelection) => {
     try {
       await powrPackService.importPack(packImport, selection);
-      await loadPacks(); // Refresh the list
+      // No need to call loadPacks here as the store refresh will trigger it
       return true;
     } catch (error) {
       console.error('Error importing pack:', error);
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to import pack');
       return false;
     }
-  }, [powrPackService, loadPacks]);
+  }, [powrPackService]);
   
   // Delete a pack
   const deletePack = useCallback(async (packId: string) => {
     try {
       // Always delete everything
       await powrPackService.deletePack(packId, false);
-      await loadPacks(); // Refresh the list
+      // No need to call loadPacks here as the store refresh will trigger it
       return true;
     } catch (error) {
       console.error('Error deleting pack:', error);
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete pack');
       return false;
     }
-  }, [powrPackService, loadPacks]);
+  }, [powrPackService]);
   
   // Helper to copy pack address to clipboard (for future implementation)
   const copyPackAddress = useCallback((naddr: string) => {
@@ -90,6 +91,7 @@ export function usePOWRPacks() {
     fetchPack,
     importPack,
     deletePack,
-    copyPackAddress
+    copyPackAddress,
+    refreshPacks // Return the refresh function from the store
   };
 }

@@ -1,5 +1,5 @@
 // lib/hooks/useExercises.ts
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { 
   ExerciseDisplay, 
@@ -10,6 +10,7 @@ import {
   toExerciseDisplay 
 } from '@/types/exercise';
 import { LibraryService } from '../db/services/LibraryService';
+import { useExerciseRefresh } from '@/lib/stores/libraryStore';
 
 // Filtering types
 export interface ExerciseFilters {
@@ -38,19 +39,27 @@ const initialStats: ExerciseStats = {
 export function useExercises() {
   const db = useSQLiteContext();
   const libraryService = React.useMemo(() => new LibraryService(db), [db]);
+  const { refreshCount, refreshExercises, isLoading, setLoading } = useExerciseRefresh();
   
   const [exercises, setExercises] = useState<ExerciseDisplay[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [filters, setFilters] = useState<ExerciseFilters>({});
   const [stats, setStats] = useState<ExerciseStats>(initialStats);
+  
+  // Add a loaded flag to track if we've successfully loaded exercises at least once
+  const hasLoadedRef = useRef(false);
 
-  // Load all exercises from the database
-  const loadExercises = useCallback(async () => {
+  // Define loadExercises before using it in useEffect
+  const loadExercises = useCallback(async (showLoading: boolean = true) => {
     try {
-      setLoading(true);
+      // Only show loading indicator if we haven't loaded before or if explicitly requested
+      if (showLoading && (!hasLoadedRef.current || exercises.length === 0)) {
+        setLoading(true);
+      }
+      
       const allExercises = await libraryService.getExercises();
       setExercises(allExercises);
+      hasLoadedRef.current = true;
       
       // Calculate stats
       const newStats = allExercises.reduce((acc: ExerciseStats, exercise: ExerciseDisplay) => {
@@ -87,7 +96,17 @@ export function useExercises() {
     } finally {
       setLoading(false);
     }
-  }, [libraryService]);
+  }, [libraryService, setLoading, exercises.length]);
+
+  // Add a silentRefresh method that doesn't show loading indicators
+  const silentRefresh = useCallback(() => {
+    loadExercises(false);
+  }, [loadExercises]);
+
+  // Load exercises when refreshCount changes
+  useEffect(() => {
+    loadExercises();
+  }, [refreshCount, loadExercises]);
 
   // Filter exercises based on current filters
   const getFilteredExercises = useCallback(() => {
@@ -142,24 +161,24 @@ export function useExercises() {
       };
 
       const id = await libraryService.addExercise(displayExercise);
-      await loadExercises(); // Reload all exercises to update stats
+      refreshExercises(); // Use the store's refresh function instead of loading directly
       return id;
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to create exercise'));
       throw err;
     }
-  }, [libraryService, loadExercises]);
+  }, [libraryService, refreshExercises]);
 
   // Delete an exercise
   const deleteExercise = useCallback(async (id: string) => {
     try {
       await libraryService.deleteExercise(id);
-      await loadExercises(); // Reload to update stats
+      refreshExercises(); // Use the store's refresh function
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to delete exercise'));
       throw err;
     }
-  }, [libraryService, loadExercises]);
+  }, [libraryService, refreshExercises]);
 
   // Update an exercise
   const updateExercise = useCallback(async (id: string, updateData: Partial<BaseExercise>) => {
@@ -189,15 +208,15 @@ export function useExercises() {
       // Add the updated exercise with the same ID
       await libraryService.addExercise(exerciseWithoutId);
       
-      // Reload exercises to get the updated list
-      await loadExercises();
+      // Refresh exercises to get the updated list
+      refreshExercises();
       
       return id;
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to update exercise'));
       throw err;
     }
-  }, [libraryService, loadExercises]);
+  }, [libraryService, refreshExercises]);
 
   // Update filters
   const updateFilters = useCallback((newFilters: Partial<ExerciseFilters>) => {
@@ -212,14 +231,9 @@ export function useExercises() {
     setFilters({});
   }, []);
 
-  // Initial load
-  useEffect(() => {
-    loadExercises();
-  }, [loadExercises]);
-
   return {
     exercises: getFilteredExercises(),
-    loading,
+    loading: isLoading,
     error,
     stats,
     filters,
@@ -228,6 +242,7 @@ export function useExercises() {
     createExercise,
     deleteExercise,
     updateExercise, 
-    refreshExercises: loadExercises
+    refreshExercises, // Return the refresh function from the store
+    silentRefresh // Add the silent refresh function
   };
 }

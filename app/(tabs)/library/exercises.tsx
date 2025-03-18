@@ -1,6 +1,6 @@
 // app/(tabs)/library/exercises.tsx
 import React, { useState } from 'react';
-import { View, ActivityIndicator, ScrollView } from 'react-native';
+import { View, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Dumbbell, ListFilter } from 'lucide-react-native';
@@ -15,6 +15,19 @@ import { useWorkoutStore } from '@/stores/workoutStore';
 import { generateId } from '@/utils/ids';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { useIconColor } from '@/lib/theme/iconUtils';
+import { useFocusEffect } from '@react-navigation/native';
+import { FIXED_COLORS } from '@/lib/theme/colors';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Text } from '@/components/ui/text';
 
 // Default available filters
 const availableFilters = {
@@ -46,6 +59,10 @@ export default function ExercisesScreen() {
   // Exercise details state
   const [selectedExercise, setSelectedExercise] = useState<ExerciseDisplay | null>(null);
   
+  // Delete alert state
+  const [exerciseToDelete, setExerciseToDelete] = useState<ExerciseDisplay | null>(null);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  
   // Other hooks
   const { isActive, isMinimized } = useWorkoutStore();
   const { currentUser } = useNDKStore();
@@ -59,9 +76,19 @@ export default function ExercisesScreen() {
     deleteExercise,
     updateExercise, 
     refreshExercises,
+    silentRefresh, // Add this
     updateFilters,
     clearFilters
-  } = useExercises();
+  } = useExercises();  
+  
+  // Add this to refresh on screen focus
+  useFocusEffect(
+    React.useCallback(() => {
+      // This will refresh without showing loading indicators if possible
+      silentRefresh();
+      return () => {};
+    }, [silentRefresh])
+  );
 
   // Filter exercises based on search query
   React.useEffect(() => {
@@ -200,38 +227,68 @@ export default function ExercisesScreen() {
     }
   };
 
+  const handleDeleteExercise = (exercise: ExerciseDisplay) => {
+    setExerciseToDelete(exercise);
+    setShowDeleteAlert(true);
+  };
+  
+  const handleConfirmDelete = async () => {
+    if (!exerciseToDelete) return;
+    
+    try {
+      await deleteExercise(exerciseToDelete.id);
+      
+      // If we were showing details for this exercise, close it
+      if (selectedExercise?.id === exerciseToDelete.id) {
+        setSelectedExercise(null);
+      }
+      
+      // Refresh the list
+      refreshExercises();
+    } catch (error) {
+      Alert.alert(
+        "Cannot Delete Exercise",
+        error instanceof Error ? error.message : 
+        "This exercise cannot be deleted. It may be part of a POWR Pack."
+      );
+    } finally {
+      setShowDeleteAlert(false);
+      setExerciseToDelete(null);
+    }
+  };
+
   return (
     <View className="flex-1 bg-background">
-          {/* Search bar with filter button */}
-          <View className="px-4 py-2 border-b border-border">
-            <View className="flex-row items-center">
-              <View className="relative flex-1">
-                <View className="absolute left-3 z-10 h-full justify-center">
-                  <Search size={18} {...getIconProps('primary')} />
+      {/* Search bar with filter button */}
+      <View className="px-4 py-2 border-b border-border">
+        <View className="flex-row items-center">
+          <View className="relative flex-1">
+            <View className="absolute left-3 z-10 h-full justify-center">
+              <Search size={18} {...getIconProps('primary')} />
+            </View>
+            <Input
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search exercises"
+              className="pl-9 pr-10 border-0 bg-background"
+            />
+            <View className="absolute right-2 z-10 h-full justify-center">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onPress={() => setFilterSheetOpen(true)}
+              >
+                <View className="relative">
+                  <ListFilter size={20} {...getIconProps('primary')} />
+                  {activeFilters > 0 && (
+                    <View className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f7931a' }} />
+                  )}
                 </View>
-                <Input
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Search exercises"
-                  className="pl-9 pr-10 border-0 bg-background"
-                />
-                <View className="absolute right-2 z-10 h-full justify-center">
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onPress={() => setFilterSheetOpen(true)}
-                  >
-                    <View className="relative">
-                      <ListFilter size={20} {...getIconProps('primary')} />
-                      {activeFilters > 0 && (
-                        <View className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f7931a' }} />
-                      )}
-                    </View>
-                  </Button>
-                </View>
-              </View>
+              </Button>
             </View>
           </View>
+        </View>
+      </View>
 
       {/* Filter Sheet */}
       <FilterSheet 
@@ -242,15 +299,23 @@ export default function ExercisesScreen() {
         availableFilters={availableFilters}
       />
 
-      {/* Exercises list */}
-      <SimplifiedExerciseList
-        exercises={exercises}
-        onExercisePress={handleExercisePress}
-      />
+      {/* Loading indicator */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="small" className="mb-2" />
+          <Text className="text-muted-foreground">Loading exercises...</Text>
+        </View>
+      ) : (
+        <SimplifiedExerciseList
+          exercises={exercises}
+          onExercisePress={handleExercisePress}
+          onDeletePress={handleDeleteExercise}
+        />
+      )}
 
       {/* Exercise details sheet */}
       <ModalExerciseDetails
-        exercise={selectedExercise} // This can now be null
+        exercise={selectedExercise}
         open={!!selectedExercise}
         onClose={() => setSelectedExercise(null)}
         onEdit={handleEdit}
@@ -272,6 +337,38 @@ export default function ExercisesScreen() {
         exerciseToEdit={exerciseToEdit}
         mode={editMode}
       />
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <Text className="text-xl font-semibold text-foreground">Delete Exercise</Text>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <Text className="text-muted-foreground">
+                Are you sure you want to delete {exerciseToDelete?.title}? This action cannot be undone.
+              </Text>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <View className="flex-row justify-end gap-3">
+            <AlertDialogCancel asChild>
+              <Button variant="outline" className="mr-2">
+                <Text>Cancel</Text>
+              </Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button 
+                variant="destructive" 
+                onPress={handleConfirmDelete}
+                style={{ backgroundColor: FIXED_COLORS.destructive }}
+              >
+                <Text style={{ color: '#FFFFFF' }}>Delete</Text>
+              </Button>
+            </AlertDialogAction>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
     </View>
   );
 }
