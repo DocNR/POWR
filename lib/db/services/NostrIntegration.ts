@@ -537,7 +537,10 @@ export class NostrIntegration {
     exerciseRefs: string[]
   ): Promise<void> {
     try {
-      console.log(`Saving ${exerciseIds.length} exercise relationships for template ${templateId}`);
+      console.log(`=== SAVING TEMPLATE EXERCISES ===`);
+      console.log(`Template ID: ${templateId}`);
+      console.log(`Exercise IDs (${exerciseIds.length}):`, exerciseIds);
+      console.log(`Exercise Refs (${exerciseRefs.length}):`, exerciseRefs);
       
       // Check if nostr_reference column exists
       const hasNostrReference = await this.columnExists('template_exercises', 'nostr_reference');
@@ -554,6 +557,12 @@ export class NostrIntegration {
         console.log("Adding relay_hints column to template_exercises table");
         await this.db.execAsync(`ALTER TABLE template_exercises ADD COLUMN relay_hints TEXT`);
       }
+      
+      // Clear out any existing entries for this template
+      await this.db.runAsync(
+        `DELETE FROM template_exercises WHERE template_id = ?`,
+        [templateId]
+      );
       
       // Create template exercise records
       for (let i = 0; i < exerciseIds.length; i++) {
@@ -615,7 +624,15 @@ export class NostrIntegration {
         console.log(`Saved template-exercise relationship: template=${templateId}, exercise=${exerciseId} with ${relayHints.length} relay hints`);
       }
       
-      console.log(`Successfully saved ${exerciseIds.length} template-exercise relationships for template ${templateId}`);
+      // Verify the relationships were saved
+      const savedRelationships = await this.db.getAllAsync<{id: string, exercise_id: string}>(
+        `SELECT id, exercise_id FROM template_exercises WHERE template_id = ?`,
+        [templateId]
+      );
+      
+      console.log(`Saved ${savedRelationships.length} template-exercise relationships for template ${templateId}`);
+      savedRelationships.forEach(rel => console.log(`  - Exercise ID: ${rel.exercise_id}`));
+      console.log(`=== END SAVING TEMPLATE EXERCISES ===`);
     } catch (error) {
       console.error('Error saving template exercises with parameters:', error);
       throw error;

@@ -487,6 +487,14 @@ export class TemplateService {
     try {
       console.log(`Fetching exercises for template ${templateId}`);
       
+      // First, just count how many there should be
+      const countResult = await this.db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM template_exercises WHERE template_id = ?`,
+        [templateId]
+      );
+      console.log(`Expected template exercises: ${countResult?.count || 0}`);
+      
+      // Now get the actual records
       const exercises = await this.db.getAllAsync<{
         id: string;
         exercise_id: string;
@@ -507,6 +515,12 @@ export class TemplateService {
       console.log(`Found ${exercises.length} template exercises in database`);
       
       if (exercises.length === 0) {
+        console.log(`No exercises found for template ${templateId} - verifying template exists...`);
+        const templateExists = await this.db.getFirstAsync<{ id: string }>(
+          `SELECT id FROM templates WHERE id = ?`,
+          [templateId]
+        );
+        console.log(`Template exists: ${templateExists ? 'Yes' : 'No'}`);
         return [];
       }
       
@@ -514,6 +528,7 @@ export class TemplateService {
       const result: TemplateExerciseWithData[] = [];
       
       for (const exerciseRow of exercises) {
+        console.log(`Looking up exercise with ID: ${exerciseRow.exercise_id}`);
         const exerciseData = await this.exerciseService.getExercise(exerciseRow.exercise_id);
         
         if (exerciseData) {
@@ -527,6 +542,8 @@ export class TemplateService {
             notes: exerciseRow.notes ?? undefined, // Convert null to undefined
             nostrReference: exerciseRow.nostr_reference ?? undefined, // Convert null to undefined
           });
+        } else {
+          console.log(`⚠️ Could not find exercise with ID: ${exerciseRow.exercise_id}`);
         }
       }
       

@@ -8,10 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { POWRPackWithContent } from '@/types/powr-pack';
-// Fix database context import
 import { usePOWRPackService } from '@/components/DatabaseProvider';
 import { formatDistanceToNow } from 'date-fns';
-import { Trash2, PackageOpen, Plus } from 'lucide-react-native';
+import { Trash2, PackageOpen, Plus, X } from 'lucide-react-native';
+import { useIconColor } from '@/lib/theme/iconUtils';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
+import { COLORS } from '@/lib/theme/colors';
 
 export default function ManagePOWRPacksScreen() {
   const powrPackService = usePOWRPackService();
@@ -19,7 +21,8 @@ export default function ManagePOWRPacksScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [keepItems, setKeepItems] = useState(true);
+  const { getIconProps } = useIconColor();
+  const { isDarkColorScheme } = useColorScheme();
 
   // Load imported packs
   useEffect(() => {
@@ -44,6 +47,11 @@ export default function ManagePOWRPacksScreen() {
     router.push('/(packs)/import');
   };
 
+  // Handle close button press
+  const handleClose = () => {
+    router.back();
+  };
+
   // Handle delete button click
   const handleDeleteClick = (packId: string) => {
     setSelectedPackId(packId);
@@ -53,9 +61,10 @@ export default function ManagePOWRPacksScreen() {
   // Handle delete confirmation
   const handleDeleteConfirm = async () => {
     if (!selectedPackId) return;
-
+  
     try {
-      await powrPackService.deletePack(selectedPackId, keepItems);
+      // Always delete everything (we no longer need the keepItems parameter)
+      await powrPackService.deletePack(selectedPackId, false);
       // Refresh the list
       loadPacks();
     } catch (error) {
@@ -77,34 +86,41 @@ export default function ManagePOWRPacksScreen() {
         options={{
           title: 'Manage POWR Packs',
           headerShown: true,
+          // Add a close button for iOS
+          headerRight: () => (
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <X {...getIconProps('primary')} size={24} />
+            </TouchableOpacity>
+          ),
         }} 
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Import button - fix icon usage */}
+        {/* Import button */}
         <Button
           onPress={handleImport}
           className="mb-4"
+          style={{ backgroundColor: COLORS.purple.DEFAULT }}
         >
-          <Plus size={18} color="#fff" className="mr-2" />
-          <Text className="text-primary-foreground">Import New Pack</Text>
+          <Plus size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={{ color: '#fff', fontWeight: '500' }}>Import New Pack</Text>
         </Button>
 
         {/* No packs message */}
         {!isLoading && packs.length === 0 && (
           <Card>
             <CardContent className="py-8 items-center">
-              <PackageOpen size={48} color="#6b7280" />
-              <Text className="text-lg font-medium mt-4 text-center">No POWR Packs Imported</Text>
-              <Text className="text-center mt-2 text-gray-500">
+              <PackageOpen size={48} {...getIconProps('muted')} />
+              <Text className="text-lg font-medium mt-4 text-center text-foreground">No POWR Packs Imported</Text>
+              <Text className="text-center mt-2 text-muted-foreground">
                 Import workout packs shared by the community to get started.
               </Text>
               <Button 
                 onPress={handleImport} 
                 className="mt-4"
-                variant="outline"
+                style={{ backgroundColor: COLORS.purple.DEFAULT }}
               >
-                <Text>Import Your First Pack</Text>
+                <Text style={{ color: '#fff', fontWeight: '500' }}>Import Your First Pack</Text>
               </Button>
             </CardContent>
           </Card>
@@ -120,7 +136,7 @@ export default function ManagePOWRPacksScreen() {
                 <View style={styles.cardHeaderContent}>
                   <View style={styles.cardHeaderText}>
                     <CardTitle>
-                      <Text className="text-lg font-semibold">{pack.title}</Text>
+                      <Text className="text-lg font-semibold text-foreground">{pack.title}</Text>
                     </CardTitle>
                     {pack.description && (
                       <CardDescription>
@@ -132,18 +148,18 @@ export default function ManagePOWRPacksScreen() {
                     onPress={() => handleDeleteClick(pack.id)}
                     style={styles.deleteButton}
                   >
-                    <Trash2 size={20} color="#ef4444" />
+                    <Trash2 {...getIconProps('destructive')} size={20} />
                   </TouchableOpacity>
                 </View>
               </CardHeader>
               <CardContent>
                 <View style={styles.statsRow}>
-                  <Text className="text-gray-500">
+                  <Text className="text-muted-foreground">
                     {templates.length} template{templates.length !== 1 ? 's' : ''} • {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
                   </Text>
                 </View>
                 <Separator className="my-2" />
-                <Text className="text-sm text-gray-500">
+                <Text className="text-sm text-muted-foreground">
                   Imported {formatImportDate(pack.importDate)}
                 </Text>
               </CardContent>
@@ -156,47 +172,21 @@ export default function ManagePOWRPacksScreen() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Pack?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Text>Delete Pack</Text>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              <Text>
-                This will remove the POWR Pack from your library. Do you want to keep the imported exercises and templates?
-              </Text>
+              <Text>This will remove the POWR Pack and all its associated templates and exercises from your library.</Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <View style={styles.dialogOptions}>
-              <Button
-                variant={keepItems ? "default" : "outline"}
-                onPress={() => setKeepItems(true)}
-                className="flex-1 mr-2"
-              >
-                <Text className={keepItems ? "text-primary-foreground" : ""}>
-                  Keep Items
-                </Text>
-              </Button>
-              <Button
-                variant={!keepItems ? "default" : "outline"}
-                onPress={() => setKeepItems(false)}
-                className="flex-1"
-              >
-                <Text className={!keepItems ? "text-primary-foreground" : ""}>
-                  Delete All
-                </Text>
-              </Button>
-            </View>
-            <View style={styles.dialogActions}>
-              <AlertDialogCancel asChild>
-                <Button variant="outline" className="mr-2">
-                  <Text>Cancel</Text>
-                </Button>
-              </AlertDialogCancel>
-              <AlertDialogAction asChild>
-                <Button variant="destructive" onPress={handleDeleteConfirm}>
-                  <Text className="text-destructive-foreground">Confirm</Text>
-                </Button>
-              </AlertDialogAction>
-            </View>
-          </AlertDialogFooter>
+          <View className="flex-row justify-center gap-3 px-4 mt-2">
+            <AlertDialogCancel onPress={() => setShowDeleteDialog(false)}>
+              <Text>Cancel</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction onPress={handleDeleteConfirm} className='bg-destructive'>
+              <Text className='text-destructive-foreground'>Delete Pack</Text>
+            </AlertDialogAction>
+          </View>
         </AlertDialogContent>
       </AlertDialog>
     </View>
@@ -228,12 +218,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  dialogOptions: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
   dialogActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+  },
+  closeButton: {
+    padding: 8,
   }
 });

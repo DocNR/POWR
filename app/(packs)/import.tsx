@@ -1,24 +1,27 @@
 // app/(packs)/import.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, ActivityIndicator, Platform } from 'react-native';
-import { router, Stack } from 'expo-router';
+import { View, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useNDK } from '@/lib/hooks/useNDK';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { nip19 } from 'nostr-tools'; // Fix import from nostr-tools
+import { nip19 } from 'nostr-tools';
 import { findTagValue } from '@/utils/nostr-utils';
-import POWRPackService from '@/lib/db/services/POWRPackService';
-import { usePOWRPackService } from '@/components/DatabaseProvider'; // Use the proper hook
+import { usePOWRPackService } from '@/components/DatabaseProvider';
 import { POWRPackImport, POWRPackSelection } from '@/types/powr-pack';
-import { InfoIcon } from 'lucide-react-native';
+import { InfoIcon, X, CheckCircle2 } from 'lucide-react-native';
+import { useIconColor } from '@/lib/theme/iconUtils';
+import { useColorScheme } from '@/lib/theme/useColorScheme';
+import { COLORS } from '@/lib/theme/colors';
 
 export default function ImportPOWRPackScreen() {
   const { ndk } = useNDK();
   const powrPackService = usePOWRPackService();
-  const [naddrInput, setNaddrInput] = useState('');
+  const params = useLocalSearchParams<{ naddr?: string }>();
+  const [naddrInput, setNaddrInput] = useState(params.naddr || '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [packData, setPackData] = useState<POWRPackImport | null>(null);
@@ -27,6 +30,25 @@ export default function ImportPOWRPackScreen() {
   const [dependencies, setDependencies] = useState<Record<string, string[]>>({});
   const [isImporting, setIsImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState(false);
+  const { getIconProps } = useIconColor();
+  const { isDarkColorScheme } = useColorScheme();
+
+  // Auto-fetch pack when naddr is provided via params
+  useEffect(() => {
+    if (params.naddr && !isLoading && !packData) {
+      setIsLoading(true);
+      handleFetchPack()
+        .catch(err => {
+          console.error("Auto-fetch error:", err);
+          setIsLoading(false);
+        });
+    }
+  }, [params.naddr]);
+
+  // Handle close button press
+  const handleClose = () => {
+    router.back();
+  };
 
   // Handle fetch button click
   const handleFetchPack = async () => {
@@ -184,6 +206,12 @@ export default function ImportPOWRPackScreen() {
         options={{
           title: 'Import POWR Pack',
           headerShown: true,
+          // Add a close button for iOS
+          headerRight: () => (
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <X {...getIconProps('primary')} size={24} />
+            </TouchableOpacity>
+          ),
         }} 
       />
 
@@ -192,10 +220,10 @@ export default function ImportPOWRPackScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Input section */}
-        <Card>
+        <Card className="mb-4">
           <CardHeader>
             <CardTitle>
-              <Text className="text-xl font-semibold">Enter POWR Pack Address</Text>
+              <Text className="text-xl font-semibold text-foreground">Enter POWR Pack Address</Text>
             </CardTitle>
             <CardDescription>
               <Text className="text-muted-foreground">Paste a POWR Pack naddr to import</Text>
@@ -212,35 +240,68 @@ export default function ImportPOWRPackScreen() {
               placeholder="naddr1..."
               value={naddrInput}
               onChangeText={setNaddrInput}
-              style={styles.input}
+              style={[styles.input, { height: 80 }]}
+              multiline={true}
+              numberOfLines={3}
+              textAlignVertical="top"
+              className="border-input"
             />
           </CardContent>
           <CardFooter>
-            <Button 
-              onPress={handleFetchPack} 
-              disabled={isLoading || !naddrInput.trim()}
-              className="w-full"
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text className="text-primary-foreground">Fetch Pack</Text>
-              )}
-            </Button>
+            {packData ? (
+              // Success indicator when pack is loaded
+              <View className="w-full flex-row items-center justify-center rounded-md p-3" style={{
+                backgroundColor: isDarkColorScheme ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                borderWidth: 1,
+                borderColor: isDarkColorScheme ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.2)'
+              }}>
+                <CheckCircle2 {...getIconProps('success')} size={16} />
+                <Text style={{ 
+                  color: COLORS.success,
+                  marginLeft: 8,
+                  fontWeight: '500'
+                }}>
+                  POWR Pack loaded successfully!
+                </Text>
+              </View>
+            ) : (
+              // Fetch button when no pack is loaded
+              <Button 
+                onPress={handleFetchPack} 
+                disabled={isLoading || !naddrInput.trim()}
+                className="w-full"
+                style={{ backgroundColor: COLORS.purple.DEFAULT }}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '500' }}>Fetch Pack</Text>
+                )}
+              </Button>
+            )}
           </CardFooter>
         </Card>
 
         {/* Error message */}
         {error && (
-          <View className="mb-4 mt-4 p-4 bg-destructive/10 border border-destructive rounded-md flex-row items-center">
-            <Text className="text-destructive ml-2">{error}</Text>
+          <View className="mb-4 p-4 rounded-md flex-row items-center" style={{
+            backgroundColor: isDarkColorScheme ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            borderWidth: 1,
+            borderColor: isDarkColorScheme ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+          }}>
+            <Text style={{ color: COLORS.destructive, marginLeft: 8 }}>{error}</Text>
           </View>
         )}
 
         {/* Success message */}
         {importSuccess && (
-          <View className="mb-4 mt-4 p-4 bg-green-50 border border-green-200 rounded-md flex-row items-center">
-            <Text className="ml-2 text-green-800">Pack successfully imported!</Text>
+          <View className="mb-4 p-4 rounded-md flex-row items-center" style={{
+            backgroundColor: isDarkColorScheme ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+            borderWidth: 1,
+            borderColor: isDarkColorScheme ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.2)'
+          }}>
+            <CheckCircle2 {...getIconProps('success')} size={16} style={{ marginRight: 8 }} />
+            <Text style={{ color: COLORS.success, fontWeight: '500' }}>Pack successfully imported!</Text>
           </View>
         )}
 
@@ -250,7 +311,7 @@ export default function ImportPOWRPackScreen() {
             <Card className="mb-4">
               <CardHeader>
                 <CardTitle>
-                  <Text className="text-xl font-semibold">{getPackTitle()}</Text>
+                  <Text className="text-xl font-semibold text-foreground">{getPackTitle()}</Text>
                 </CardTitle>
                 {getPackDescription() ? (
                   <CardDescription>
@@ -259,7 +320,7 @@ export default function ImportPOWRPackScreen() {
                 ) : null}
               </CardHeader>
               <CardContent>
-                <Text className="mb-2">Select items to import:</Text>
+                <Text className="mb-2 text-foreground">Select items to import:</Text>
               </CardContent>
             </Card>
 
@@ -268,7 +329,7 @@ export default function ImportPOWRPackScreen() {
               <Card className="mb-4">
                 <CardHeader>
                   <CardTitle>
-                    <Text className="text-lg font-semibold">Workout Templates</Text>
+                    <Text className="text-lg font-semibold text-foreground">Workout Templates</Text>
                   </CardTitle>
                   <CardDescription>
                     <Text className="text-muted-foreground">{packData.templates.length} templates available</Text>
@@ -285,10 +346,14 @@ export default function ImportPOWRPackScreen() {
                             handleTemplateChange(template.id, checked === true)
                           }
                           id={`template-${template.id}`}
+                          className="border-input"
                         />
-                        <Text className="ml-2 flex-1" onPress={() => 
-                          handleTemplateChange(template.id, !selectedTemplates.includes(template.id))
-                        }>
+                        <Text 
+                          className="ml-3 flex-1 text-foreground" 
+                          onPress={() => 
+                            handleTemplateChange(template.id, !selectedTemplates.includes(template.id))
+                          }
+                        >
                           {title}
                         </Text>
                       </View>
@@ -309,7 +374,7 @@ export default function ImportPOWRPackScreen() {
               <Card className="mb-4">
                 <CardHeader>
                   <CardTitle>
-                    <Text className="text-lg font-semibold">Exercises</Text>
+                    <Text className="text-lg font-semibold text-foreground">Exercises</Text>
                   </CardTitle>
                   <CardDescription>
                     <Text className="text-muted-foreground">{packData.exercises.length} exercises available</Text>
@@ -329,9 +394,10 @@ export default function ImportPOWRPackScreen() {
                           }
                           disabled={isRequired}
                           id={`exercise-${exercise.id}`}
+                          className="border-input"
                         />
                         <Text 
-                          className={`ml-2 flex-1 ${isRequired ? 'font-medium' : ''}`} 
+                          className={`ml-3 flex-1 ${isRequired ? 'font-medium' : ''} text-foreground`} 
                           onPress={() => {
                             if (!isRequired) {
                               handleExerciseChange(exercise.id, !selectedExercises.includes(exercise.id))
@@ -341,9 +407,11 @@ export default function ImportPOWRPackScreen() {
                           {title}
                         </Text>
                         {isRequired && (
-                          <View style={styles.requiredBadge}>
-                            <InfoIcon size={14} color="#6b7280" />
-                            <Text className="text-xs text-gray-500 ml-1">Required</Text>
+                          <View style={[styles.requiredBadge, { 
+                            backgroundColor: isDarkColorScheme ? COLORS.dark.muted : COLORS.light.muted
+                          }]}>
+                            <InfoIcon {...getIconProps('muted')} size={14} />
+                            <Text className="text-xs text-muted-foreground ml-1">Required</Text>
                           </View>
                         )}
                       </View>
@@ -363,12 +431,13 @@ export default function ImportPOWRPackScreen() {
             <Button 
               onPress={handleImport} 
               disabled={isImporting || (selectedTemplates.length === 0 && selectedExercises.length === 0)}
-              className="w-full"
+              className="w-full mb-8"
+              style={{ backgroundColor: COLORS.purple.DEFAULT }}
             >
               {isImporting ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text className="text-primary-foreground">
+                <Text style={{ color: '#fff', fontWeight: '500' }}>
                   Import {selectedTemplates.length + selectedExercises.length} Items
                 </Text>
               )}
@@ -389,25 +458,27 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   input: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
   packContent: {
-    marginTop: 16,
+    marginTop: 8,
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   requiredBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
     marginLeft: 8,
+  },
+  closeButton: {
+    padding: 8,
   }
 });

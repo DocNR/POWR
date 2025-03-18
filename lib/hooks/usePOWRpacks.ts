@@ -62,9 +62,10 @@ export function usePOWRPacks() {
   }, [powrPackService, loadPacks]);
   
   // Delete a pack
-  const deletePack = useCallback(async (packId: string, keepItems: boolean = false) => {
+  const deletePack = useCallback(async (packId: string) => {
     try {
-      await powrPackService.deletePack(packId, keepItems);
+      // Always delete everything
+      await powrPackService.deletePack(packId, false);
       await loadPacks(); // Refresh the list
       return true;
     } catch (error) {

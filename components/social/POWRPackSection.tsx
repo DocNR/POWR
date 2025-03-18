@@ -83,14 +83,12 @@ export default function POWRPackSection() {
         relays
       });
       
-      // Copy to clipboard
-      Clipboard.setString(naddr);
+      // Navigate to import screen with the naddr as a parameter
+      router.push({
+        pathname: '/(packs)/import',
+        params: { naddr }
+      });
       
-      // Navigate to import screen
-      router.push('/(packs)/import');
-      
-      // Alert user that the address has been copied
-      alert('Pack address copied to clipboard. Paste it in the import field.');
     } catch (error) {
       console.error('Error handling pack click:', error);
       alert('Failed to prepare pack for import. Please try again.');

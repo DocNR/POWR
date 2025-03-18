@@ -417,7 +417,8 @@ export default class POWRPackService {
    */
   async importPack(packImport: POWRPackImport, selection: POWRPackSelection): Promise<void> {
     try {
-      console.log(`Importing ${selection.selectedExercises.length} exercises...`);
+      console.log(`=== STARTING PACK IMPORT ===`);
+      console.log(`Importing ${selection.selectedExercises.length} exercises and ${selection.selectedTemplates.length} templates...`);
       
       // Map to track imported exercise IDs by various reference formats
       const exerciseIdMap = new Map<string, string>();
@@ -425,7 +426,10 @@ export default class POWRPackService {
       // First, import the selected exercises
       for (const exerciseId of selection.selectedExercises) {
         const exerciseEvent = packImport.exercises.find(e => e.id === exerciseId);
-        if (!exerciseEvent) continue;
+        if (!exerciseEvent) {
+          console.log(`Exercise event ${exerciseId} not found in pack data`);
+          continue;
+        }
         
         // Get the d-tag value from the event
         const dTag = exerciseEvent.tagValue('d');
@@ -456,12 +460,17 @@ export default class POWRPackService {
         console.log(`Imported exercise: ${exerciseModel.title} (${localId}) from Nostr event ${exerciseId}`);
       }
       
-      console.log(`Importing ${selection.selectedTemplates.length} templates...`);
+      console.log(`=== EXERCISE IMPORT COMPLETE ===`);
+      console.log(`Total exercise reference mappings: ${exerciseIdMap.size}`);
+      console.log(`Now importing ${selection.selectedTemplates.length} templates...`);
       
       // Then, import the selected templates
       for (const templateId of selection.selectedTemplates) {
         const templateEvent = packImport.templates.find(t => t.id === templateId);
-        if (!templateEvent) continue;
+        if (!templateEvent) {
+          console.log(`Template event ${templateId} not found in pack data`);
+          continue;
+        }
         
         // Convert to local model
         const templateModel = this.nostrIntegration.convertNostrTemplateToLocal(templateEvent);
@@ -481,6 +490,10 @@ export default class POWRPackService {
         const templateExerciseIds: string[] = [];
         const matchedRefs: string[] = [];
         
+        console.log(`=== DEBUG: Template ID Mapping Process ===`);
+        console.log(`Template Event: ${templateEvent.id}`);
+        console.log(`Template Local ID: ${localTemplateId}`);
+        
         for (const ref of exerciseRefs) {
           // Extract the base reference (before any parameters)
           const refParts = ref.split('::');
@@ -496,12 +509,12 @@ export default class POWRPackService {
             templateExerciseIds.push(localExerciseId);
             matchedRefs.push(ref);
             
-            console.log(`Mapped reference ${baseRef} to local exercise ID ${localExerciseId}`);
+            console.log(`✅ Direct match found! Mapped reference ${baseRef} to local exercise ID ${localExerciseId}`);
             continue;
           }
           
           // If not found by direct reference, try to match by examining individual components
-          console.log(`No direct match for reference: ${baseRef}. Trying to match by components...`);
+          console.log(`⚠️ No direct match for reference: ${baseRef}. Trying to match by components...`);
           
           // Parse the reference for fallback matching
           const refSegments = baseRef.split(':');
@@ -510,43 +523,52 @@ export default class POWRPackService {
             const refPubkey = refSegments[1];
             const refDTag = refSegments[2];
             
-            // Try to find the matching exercise by looking at both event ID and d-tag
-            for (const [key, value] of exerciseIdMap.entries()) {
-              // Check if this is potentially the same exercise with a different reference format
-              if (key.includes(refPubkey) && (key.includes(refDTag) || key.endsWith(refDTag))) {
-                templateExerciseIds.push(value);
-                matchedRefs.push(ref);
-                
-                // Also add this reference format to map for future lookups
-                exerciseIdMap.set(baseRef, value);
-                
-                console.log(`Found potential match using partial comparison: ${key} -> ${value}`);
-                break;
-              }
+            // Log all entries in exerciseIdMap for debugging
+            console.log(`Looking among ${exerciseIdMap.size} existing mappings:`);
+            [...exerciseIdMap.entries()].forEach(([key, value]) => {
+              console.log(`  - ${key} -> ${value}`);
+            });
+            
+            // Try to find the matching exercise by direct dTag match
+            const directDTagMatch = [...exerciseIdMap.entries()].find(([key, _]) => {
+              return key.includes(refPubkey) && key.includes(refDTag);
+            });
+            
+            if (directDTagMatch) {
+              const [matchKey, matchValue] = directDTagMatch;
+              templateExerciseIds.push(matchValue);
+              matchedRefs.push(ref);
+              
+              // Also add this reference format to map for future lookups
+              exerciseIdMap.set(baseRef, matchValue);
+              
+              console.log(`✅ Found match by dTag: ${matchKey} -> ${matchValue}`);
+              continue;
             }
             
-            // If no match found yet, check if there's a direct event ID match
-            if (templateExerciseIds.length === templateExerciseIds.lastIndexOf(refDTag) + 1) {
-              // Didn't add anything in the above loop, try direct event ID lookup
-              const matchingEvent = packImport.exercises.find(e => e.id === refDTag);
+            // Try to find the matching exercise by event ID
+            const matchingEvent = packImport.exercises.find(e => e.id === refDTag);
+            
+            if (matchingEvent && exerciseIdMap.has(matchingEvent.id)) {
+              const localExerciseId = exerciseIdMap.get(matchingEvent.id) || '';
+              templateExerciseIds.push(localExerciseId);
+              matchedRefs.push(ref);
               
-              if (matchingEvent && exerciseIdMap.has(matchingEvent.id)) {
-                const localExerciseId = exerciseIdMap.get(matchingEvent.id) || '';
-                templateExerciseIds.push(localExerciseId);
-                matchedRefs.push(ref);
-                
-                // Add this reference to our map for future use
-                exerciseIdMap.set(baseRef, localExerciseId);
-                
-                console.log(`Found match by event ID: ${matchingEvent.id} -> ${localExerciseId}`);
-              } else {
-                console.log(`No matching exercise found for reference components: kind=${refKind}, pubkey=${refPubkey}, d-tag=${refDTag}`);
-              }
+              // Add this reference to our map for future use
+              exerciseIdMap.set(baseRef, localExerciseId);
+              
+              console.log(`✅ Found match by event ID: ${matchingEvent.id} -> ${localExerciseId}`);
+              continue;
             }
+            
+            console.log(`❌ No matching exercise found for reference: ${baseRef}`);
           } else {
-            console.log(`Invalid reference format: ${baseRef}`);
+            console.log(`❌ Invalid reference format: ${baseRef}`);
           }
         }
+        
+        console.log(`Mapped ${templateExerciseIds.length}/${exerciseRefs.length} references for template ${templateModel.title}`);
+        console.log(`=== END DEBUG ===`);
         
         // Save template-exercise relationships with parameters
         if (templateExerciseIds.length > 0) {
@@ -564,7 +586,7 @@ export default class POWRPackService {
           );
           console.log(`Template ${templateModel.title} has ${templateExercises.length} exercises associated`);
         } else {
-          console.log(`No exercise relationships to save for template ${localTemplateId}`);
+          console.log(`⚠️ No exercise relationships to save for template ${localTemplateId}`);
         }
       }
       
@@ -583,10 +605,21 @@ export default class POWRPackService {
         `SELECT id, title FROM templates WHERE source = 'nostr'`
       );
       
-      console.log(`Template IDs:`);
+      console.log(`Imported Template IDs:`);
       templates.forEach(t => {
         console.log(`  - ${t.title}: ${t.id}`);
       });
+      
+      // Verify template-exercise relationships
+      for (const template of templates) {
+        const relationships = await this.db.getAllAsync<{ count: number }>(
+          `SELECT COUNT(*) as count FROM template_exercises WHERE template_id = ?`,
+          [template.id]
+        );
+        console.log(`Template ${template.title}: ${relationships[0]?.count || 0} exercises`);
+      }
+      
+      console.log(`=== PACK IMPORT COMPLETE ===`);
     } catch (error) {
       console.error('Error importing pack:', error);
       throw error;
@@ -814,70 +847,112 @@ export default class POWRPackService {
   }
 
   /**
-   * Delete a POWR Pack
+   * Delete a POWR Pack and all its associated content
    * @param packId The ID of the pack to delete
-   * @param keepItems Whether to keep the imported templates and exercises
+   * @param keepItems DEPRECATED parameter kept for backward compatibility
    */
-  async deletePack(packId: string, keepItems: boolean = true): Promise<void> {
+  async deletePack(packId: string, keepItems: boolean = false): Promise<void> {
     try {
-      if (!keepItems) {
-        // Get all templates and exercises from this pack
-        const templates = await this.db.getAllAsync<{ id: string }>(
-          `SELECT t.id
-           FROM templates t
-           JOIN powr_pack_items ppi ON ppi.item_id = t.nostr_event_id
-           WHERE ppi.pack_id = ? AND ppi.item_type = 'template'`,
+      console.log(`[POWRPackService] Starting deletion of pack ${packId}`);
+      
+      // Always delete everything, ignore keepItems parameter
+      await this.db.withTransactionAsync(async () => {
+        // First, get all templates and exercises from this pack
+        console.log(`[POWRPackService] Finding templates associated with pack ${packId}`);
+        const templates = await this.db.getAllAsync<{ id: string, nostr_event_id: string }>(
+          `SELECT t.id, t.nostr_event_id
+          FROM templates t
+          JOIN powr_pack_items ppi ON ppi.item_id = t.nostr_event_id
+          WHERE ppi.pack_id = ? AND ppi.item_type = 'template'`,
           [packId]
         );
+        console.log(`[POWRPackService] Found ${templates.length} templates to delete`);
         
-        const exercises = await this.db.getAllAsync<{ id: string }>(
-          `SELECT e.id
-           FROM exercises e
-           JOIN powr_pack_items ppi ON ppi.item_id = e.nostr_event_id
-           WHERE ppi.pack_id = ? AND ppi.item_type = 'exercise'`,
+        console.log(`[POWRPackService] Finding exercises associated with pack ${packId}`);
+        const exercises = await this.db.getAllAsync<{ id: string, nostr_event_id: string }>(
+          `SELECT e.id, e.nostr_event_id
+          FROM exercises e
+          JOIN powr_pack_items ppi ON ppi.item_id = e.nostr_event_id
+          WHERE ppi.pack_id = ? AND ppi.item_type = 'exercise'`,
           [packId]
         );
+        console.log(`[POWRPackService] Found ${exercises.length} exercises to delete`);
         
-        // Delete the templates
+        // Find any additional exercises that are only referenced by templates in this pack
+        console.log(`[POWRPackService] Finding template exercises`);
+        const templateIds = templates.map(t => t.id);
+        let additionalExerciseIds: string[] = [];
+        
+        if (templateIds.length > 0) {
+          const templateExercises = await this.db.getAllAsync<{ exercise_id: string }>(
+            `SELECT DISTINCT exercise_id 
+            FROM template_exercises 
+            WHERE template_id IN (${templateIds.map(() => '?').join(',')})`,
+            templateIds
+          );
+          
+          additionalExerciseIds = templateExercises.map(te => te.exercise_id);
+          console.log(`[POWRPackService] Found ${additionalExerciseIds.length} additional exercises from templates`);
+        }
+        
+        // Delete the templates and their exercises
         for (const template of templates) {
+          console.log(`[POWRPackService] Deleting template ${template.id}`);
+          
+          // Delete template exercises first
           await this.db.runAsync(
             `DELETE FROM template_exercises WHERE template_id = ?`,
             [template.id]
           );
           
+          // Then delete the template
           await this.db.runAsync(
             `DELETE FROM templates WHERE id = ?`,
             [template.id]
           );
         }
         
+        // Build a set of all exercise IDs to delete
+        const exerciseIdsToDelete = new Set([
+          ...exercises.map(e => e.id),
+          ...additionalExerciseIds
+        ]);
+        
         // Delete the exercises
-        for (const exercise of exercises) {
+        for (const exerciseId of exerciseIdsToDelete) {
+          console.log(`[POWRPackService] Deleting exercise ${exerciseId}`);
+          
+          // Delete exercise tags first
           await this.db.runAsync(
             `DELETE FROM exercise_tags WHERE exercise_id = ?`,
-            [exercise.id]
+            [exerciseId]
           );
           
+          // Then delete the exercise
           await this.db.runAsync(
             `DELETE FROM exercises WHERE id = ?`,
-            [exercise.id]
+            [exerciseId]
           );
         }
-      }
-      
-      // Delete the pack items
-      await this.db.runAsync(
-        `DELETE FROM powr_pack_items WHERE pack_id = ?`,
-        [packId]
-      );
-      
-      // Finally, delete the pack itself
-      await this.db.runAsync(
-        `DELETE FROM powr_packs WHERE id = ?`,
-        [packId]
-      );
+        
+        // Delete the pack items
+        console.log(`[POWRPackService] Deleting pack items for pack ${packId}`);
+        await this.db.runAsync(
+          `DELETE FROM powr_pack_items WHERE pack_id = ?`,
+          [packId]
+        );
+        
+        // Finally, delete the pack itself
+        console.log(`[POWRPackService] Deleting pack ${packId}`);
+        await this.db.runAsync(
+          `DELETE FROM powr_packs WHERE id = ?`,
+          [packId]
+        );
+        
+        console.log(`[POWRPackService] Successfully deleted pack ${packId} with ${templates.length} templates and ${exerciseIdsToDelete.size} exercises`);
+      });
     } catch (error) {
-      console.error('Error deleting pack:', error);
+      console.error(`[POWRPackService] Error deleting pack ${packId}:`, error);
       throw error;
     }
   }

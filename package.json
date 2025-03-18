@@ -73,7 +73,7 @@
     "expo-random": "^14.0.1",
     "expo-router": "~4.0.16",
     "expo-secure-store": "~14.0.1",
-    "expo-splash-screen": "~0.29.20",
+    "expo-splash-screen": "~0.29.22",
     "expo-sqlite": "~15.1.2",
     "expo-status-bar": "~2.0.1",
     "expo-system-ui": "~4.0.8",
@@ -97,7 +97,8 @@
     "tailwind-merge": "^2.2.1",
     "tailwindcss": "3.3.5",
     "tailwindcss-animate": "^1.0.7",
-    "zustand": "^4.5.6"
+    "zustand": "^4.5.6",
+    "expo-av": "~15.0.2"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
