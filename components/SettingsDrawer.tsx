@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSettingsDrawer } from '@/lib/contexts/SettingsDrawerContext';
 import { 
   Moon, Sun, LogOut, User, ChevronRight, X, Bell, HelpCircle, 
-  Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe, PackageOpen
+  Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe, PackageOpen, Trash2
 } from 'lucide-react-native';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { FIXED_COLORS } from '@/lib/theme/colors';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useLibraryStore } from '@/lib/stores/libraryStore';
+import { useWorkoutStore } from '@/stores/workoutStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.85;
@@ -38,6 +42,7 @@ type MenuItem = {
   label: string;
   onPress: () => void;
   rightElement?: React.ReactNode;
+  variant?: 'default' | 'destructive';
 };
 
 export default function SettingsDrawer() {
@@ -50,6 +55,10 @@ export default function SettingsDrawer() {
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
   const [showSignOutAlert, setShowSignOutAlert] = useState(false);
   const [showRelayManager, setShowRelayManager] = useState(false);
+  const [showResetDataAlert, setShowResetDataAlert] = useState(false);
+  
+  // Database access for reset functionality
+  const db = useSQLiteContext();
   
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -143,6 +152,47 @@ export default function SettingsDrawer() {
       console.log('Show Nostr settings');
     }
   };
+  
+  // Handle reset app data button click
+  const handleResetData = () => {
+    setShowResetDataAlert(true);
+  };
+  
+  // Reset app data function
+  const resetAllData = async () => {
+    try {
+      // Clear database tables
+      await db.execAsync(`
+        DELETE FROM workouts;
+        DELETE FROM workout_exercises;
+        DELETE FROM workout_sets;
+        DELETE FROM templates;
+        DELETE FROM template_exercises;
+        DELETE FROM exercises;
+        DELETE FROM exercise_tags;
+        DELETE FROM powr_packs;
+        DELETE FROM powr_pack_items;
+        DELETE FROM favorites;  /* Add this line */
+      `);
+      
+      // Clear store state
+      useLibraryStore.getState().clearCache();
+      useLibraryStore.getState().refreshAll();
+      
+      // Also reset the workout store to clear favorite IDs in memory
+      useWorkoutStore.getState().reset();
+      
+      // Close dialogs
+      setShowResetDataAlert(false);
+      closeDrawer();
+      
+      // Show success message
+      alert("All app data has been reset successfully.");
+    } catch (error) {
+      console.error("Error resetting data:", error);
+      alert("There was a problem resetting your data. Please try again.");
+    }
+  };
 
   // Define menu items
   const menuItems: MenuItem[] = [
@@ -184,6 +234,21 @@ export default function SettingsDrawer() {
       icon: HelpCircle,
       label: 'About',
       onPress: () => closeDrawer(),
+    },
+    // Add separator before danger zone
+    {
+      id: 'separator',
+      icon: () => null,
+      label: '',
+      onPress: () => {},
+    },
+    // Reset App Data option - danger zone
+    {
+      id: 'reset-data',
+      icon: Trash2,
+      label: 'Reset App Data',
+      onPress: handleResetData,
+      variant: 'destructive'
     },
   ];
 
@@ -275,24 +340,36 @@ export default function SettingsDrawer() {
             >
               {menuItems.map((item, index) => (
                 <View key={item.id}>
-                  <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={item.onPress}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.menuItemLeft}>
-                      <item.icon size={22} color={theme.colors.text} />
-                      <Text className="text-base ml-3">{item.label}</Text>
+                  {item.id === 'separator' ? (
+                    <View className="my-3">
+                      <Text className="text-xs text-muted-foreground mb-1">DANGER ZONE</Text>
+                      <Separator className="mb-1" />
                     </View>
-                    
-                    {item.rightElement ? (
-                      item.rightElement
-                    ) : (
-                      <ChevronRight size={20} color={theme.colors.text} />
-                    )}
-                  </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={item.onPress}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.menuItemLeft}>
+                        <item.icon 
+                          size={22} 
+                          color={item.variant === 'destructive' ? FIXED_COLORS.destructive : theme.colors.text} 
+                        />
+                        <Text className={`text-base ml-3 ${item.variant === 'destructive' ? 'text-destructive' : ''}`}>
+                          {item.label}
+                        </Text>
+                      </View>
+                      
+                      {item.rightElement ? (
+                        item.rightElement
+                      ) : (
+                        <ChevronRight size={20} color={theme.colors.text} />
+                      )}
+                    </TouchableOpacity>
+                  )}
                   
-                  {index < menuItems.length - 1 && (
+                  {index < menuItems.length - 1 && item.id !== 'separator' && (
                     <Separator className="mb-1 mt-1" />
                   )}
                 </View>
@@ -333,25 +410,64 @@ export default function SettingsDrawer() {
       <AlertDialog open={showSignOutAlert} onOpenChange={setShowSignOutAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>For Real?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Text className="text-xl font-semibold text-foreground">For Real?</Text>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              <Text>
+              <Text className="text-muted-foreground">
                 Are you sure you want to sign out? Make sure you've backed up your private key. 
                 Lost keys cannot be recovered and all your data will be inaccessible.
               </Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onPress={() => setShowSignOutAlert(false)}>
-              <Text>Cancel</Text>
+          <View className="flex-row justify-end gap-3">
+            <AlertDialogCancel asChild>
+              <Button variant="outline" className="mr-2">
+                <Text>Cancel</Text>
+              </Button>
             </AlertDialogCancel>
-            <AlertDialogAction 
-              onPress={confirmSignOut}
-              className="bg-destructive text-destructive-foreground"
-            >
-              <Text>Sign Out</Text>
+            <AlertDialogAction asChild>
+              <Button 
+                variant="destructive" 
+                onPress={confirmSignOut}
+                style={{ backgroundColor: FIXED_COLORS.destructive }}
+              >
+                <Text style={{ color: '#FFFFFF' }}>Sign Out</Text>
+              </Button>
             </AlertDialogAction>
-          </AlertDialogFooter>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Reset App Data Alert Dialog */}
+      <AlertDialog open={showResetDataAlert} onOpenChange={setShowResetDataAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <Text className="text-xl font-semibold text-foreground">Reset App Data</Text>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <Text className="text-muted-foreground">
+                This will delete ALL workouts, templates and exercises. This action cannot be undone.
+              </Text>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <View className="flex-row justify-end gap-3">
+            <AlertDialogCancel asChild>
+              <Button variant="outline" className="mr-2">
+                <Text>Cancel</Text>
+              </Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button 
+                variant="destructive" 
+                onPress={resetAllData}
+                style={{ backgroundColor: FIXED_COLORS.destructive }}
+              >
+                <Text style={{ color: '#FFFFFF' }}>Reset Everything</Text>
+              </Button>
+            </AlertDialogAction>
+          </View>
         </AlertDialogContent>
       </AlertDialog>
     </>

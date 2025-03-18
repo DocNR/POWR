@@ -13,40 +13,114 @@ import { NDKEvent } from '@nostr-dev-kit/ndk-mobile';
 import { Clipboard } from 'react-native';
 import { nip19 } from 'nostr-tools';
 
+// Define a simplified version of a pack for state management
+interface SimplifiedPack {
+  id: string;
+  pubkey: string;
+  tags: string[][];
+  content: string;
+  created_at?: number;
+  kind?: number;
+}
+
 export default function POWRPackSection() {
   const { ndk } = useNDK();
   const [isLoading, setIsLoading] = useState(false);
-  const [featuredPacks, setFeaturedPacks] = useState<NDKEvent[]>([]);
+  // Change the state type to allow simplified pack structure
+  const [featuredPacks, setFeaturedPacks] = useState<SimplifiedPack[]>([]);
   const [error, setError] = useState<Error | null>(null);
   
   // Manual fetch function
   const handleFetchPacks = async () => {
     if (!ndk) return;
     
+    // Known reliable POWR publishers
+    const knownPublishers = [
+      "55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21", // Walter Sobchak account
+      // Add other trusted publishers here as you discover them
+    ];
+    
+    // List of known good relays
+    const relays = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band', 'wss://purplepag.es'];
+    console.log('Explicitly connecting to relays:', relays);
+    
+    // Connect to each relay
+    for (const relay of relays) {
+      try {
+        // Use type assertion to avoid TypeScript errors
+        if (typeof (ndk as any).addRelay === 'function') {
+          await (ndk as any).addRelay(relay);
+          console.log(`Connected to relay: ${relay}`);
+        } else if (ndk.pool) {
+          // Alternative approach using pool
+          console.log('Using pool to connect to relay:', relay);
+        }
+      } catch (err) {
+        console.error(`Error connecting to relay ${relay}:`, err);
+      }
+    }
+
+    console.log('NDK connection status:', ndk.pool?.relays?.size || 0, 'relays connected');
+    
     try {
       setIsLoading(true);
       setError(null);
       
-      console.log('Manually fetching POWR packs');
-      const events = await ndk.fetchEvents({ 
-        kinds: [30004], 
-        "#t": ["powrpack"],
-        limit: 20 
-      });
-      const eventsArray = Array.from(events);
+      console.log('Fetching POWR packs from known publishers');
       
-      console.log(`Fetched ${eventsArray.length} events`);
-      
-      // Filter to find POWR packs
-      const powrPacks = eventsArray.filter(event => {
-        // Check if any tag has 'powrpack', 'fitness', or 'workout'
-        return event.tags.some(tag => 
-          tag[0] === 't' && ['powrpack', 'fitness', 'workout'].includes(tag[1])
-        );
+      // 1. Only use the most reliable approach - fetch from known publishers
+      console.log('Fetching from known publishers:', knownPublishers);
+      const publisherEvents = await ndk.fetchEvents({ 
+        kinds: [30004],
+        authors: knownPublishers,
+        limit: 30
       });
       
-      console.log(`Found ${powrPacks.length} POWR packs`);
-      setFeaturedPacks(powrPacks);
+      // Debug log
+      console.log(`Fetched ${publisherEvents.size} events from known publishers`);
+      
+      // Process the events directly
+      if (publisherEvents.size > 0) {
+        const events = Array.from(publisherEvents);
+        
+        // Log first event info
+        const firstEvent = events[0];
+        console.log('First event basic info:', {
+          id: firstEvent.id,
+          kind: firstEvent.kind,
+          pubkey: firstEvent.pubkey,
+          tagsCount: firstEvent.tags?.length || 0,
+          contentPreview: firstEvent.content?.substring(0, 50)
+        });
+        
+        // Create simplified packs immediately
+        const simplifiedPacks: SimplifiedPack[] = events.map(event => {
+          return {
+            id: event.id,
+            pubkey: event.pubkey,
+            kind: event.kind,
+            tags: [...event.tags], // Create a copy
+            content: event.content,
+            created_at: event.created_at
+          };
+        });
+        
+        console.log(`Created ${simplifiedPacks.length} simplified packs`);
+        
+        // For deeper debugging
+        if (simplifiedPacks.length > 0) {
+          console.log('First simplified pack:', {
+            id: simplifiedPacks[0].id,
+            tagsCount: simplifiedPacks[0].tags.length
+          });
+        }
+        
+        // Set state with simplified packs
+        setFeaturedPacks(simplifiedPacks);
+        console.log('Set featuredPacks state with simplified packs');
+      } else {
+        console.log('No packs found from known publishers');
+      }
     } catch (err) {
       console.error('Error fetching packs:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch packs'));
@@ -56,19 +130,19 @@ export default function POWRPackSection() {
   };
   
   // Handle pack click
-  const handlePackClick = (packEvent: NDKEvent) => {
+  const handlePackClick = (pack: SimplifiedPack) => {
     try {
       // Get dTag for the pack
-      const dTag = findTagValue(packEvent.tags, 'd');
+      const dTag = findTagValue(pack.tags, 'd');
       if (!dTag) {
         throw new Error('Pack is missing identifier (d tag)');
       }
       
       // Get relay hints from event tags
-      const relayHints = packEvent.tags
+      const relayHints = pack.tags
         .filter(tag => tag[0] === 'r')
         .map(tag => tag[1])
-        .filter(relay => relay.startsWith('wss://'));
+        .filter(relay => relay && relay.startsWith('wss://'));
       
       // Default relays if none found
       const relays = relayHints.length > 0 
@@ -77,8 +151,8 @@ export default function POWRPackSection() {
       
       // Create shareable naddr
       const naddr = nip19.naddrEncode({
-        kind: 30004,
-        pubkey: packEvent.pubkey,
+        kind: pack.kind || 30004,
+        pubkey: pack.pubkey,
         identifier: dTag,
         relays
       });
@@ -102,10 +176,25 @@ export default function POWRPackSection() {
   
   // Fetch packs when mounted
   React.useEffect(() => {
+    console.log('NDK status:', ndk ? 'initialized' : 'not initialized');
+    
     if (ndk) {
-      handleFetchPacks();
+      // Add a small delay to ensure NDK is fully connected to relays
+      const timer = setTimeout(() => {
+        console.log('Attempting fetch after delay');
+        handleFetchPacks();
+      }, 2000); // 2 second delay
+      
+      return () => clearTimeout(timer);
     }
   }, [ndk]);
+  
+  // Add debug logging for rendering
+  console.log('Rendering packs, count:', featuredPacks.length);
+  if (featuredPacks.length > 0) {
+    console.log('First pack keys:', Object.keys(featuredPacks[0]));
+    console.log('First pack has tags:', featuredPacks[0].tags ? featuredPacks[0].tags.length : 'no tags');
+  }
   
   return (
     <View style={styles.container}>
@@ -150,16 +239,26 @@ export default function POWRPackSection() {
           ))
         ) : featuredPacks.length > 0 ? (
           // Pack cards
-          featuredPacks.map(pack => {
-            const title = findTagValue(pack.tags, 'name') || 'Unnamed Pack';
-            const description = findTagValue(pack.tags, 'about') || '';
-            const image = findTagValue(pack.tags, 'image') || null;
-            const exerciseCount = pack.tags.filter(t => t[0] === 'a' && t[1].startsWith('33401')).length;
-            const templateCount = pack.tags.filter(t => t[0] === 'a' && t[1].startsWith('33402')).length;
+          featuredPacks.map((pack, idx) => {
+            console.log(`Rendering pack ${idx}, tags exist:`, pack.tags ? 'yes' : 'no');
+            const title = findTagValue(pack.tags || [], 'name') || 'Unnamed Pack';
+            const description = findTagValue(pack.tags || [], 'about') || '';
+            const image = findTagValue(pack.tags || [], 'image') || null;
+            
+            // Add fallback for tags
+            const tags = pack.tags || [];
+            
+            const exerciseCount = tags.filter(t => 
+              t[0] === 'a' && t[1]?.startsWith('33401:')
+            ).length;
+            
+            const templateCount = tags.filter(t => 
+              t[0] === 'a' && t[1]?.startsWith('33402:')
+            ).length;
             
             return (
               <TouchableOpacity 
-                key={pack.id} 
+                key={pack.id || `pack-${idx}`} 
                 onPress={() => handlePackClick(pack)}
                 activeOpacity={0.7}
               >

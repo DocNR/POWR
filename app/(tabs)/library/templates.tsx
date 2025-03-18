@@ -20,6 +20,7 @@ import {
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { useTemplates } from '@/lib/hooks/useTemplates';
 import { useIconColor } from '@/lib/theme/iconUtils';
+import { useLibraryStore } from '@/lib/stores/libraryStore';
 
 // Default available filters
 const availableFilters = {
@@ -136,10 +137,13 @@ export default function TemplatesScreen() {
       } else {
         await useWorkoutStore.getState().addFavorite(workoutTemplate);
       }
+      
+      // Add this line to trigger a refresh after favorite toggle
+      useLibraryStore.getState().refreshTemplates();
     } catch (error) {
       console.error('Error toggling favorite status:', error);
     }
-  };  
+  };
 
   const handleApplyFilters = (filters: FilterOptions) => {
     setCurrentFilters(filters);
