@@ -188,14 +188,7 @@ export default function POWRPackSection() {
       return () => clearTimeout(timer);
     }
   }, [ndk]);
-  
-  // Add debug logging for rendering
-  console.log('Rendering packs, count:', featuredPacks.length);
-  if (featuredPacks.length > 0) {
-    console.log('First pack keys:', Object.keys(featuredPacks[0]));
-    console.log('First pack has tags:', featuredPacks[0].tags ? featuredPacks[0].tags.length : 'no tags');
-  }
-  
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -240,10 +233,10 @@ export default function POWRPackSection() {
         ) : featuredPacks.length > 0 ? (
           // Pack cards
           featuredPacks.map((pack, idx) => {
-            console.log(`Rendering pack ${idx}, tags exist:`, pack.tags ? 'yes' : 'no');
             const title = findTagValue(pack.tags || [], 'name') || 'Unnamed Pack';
             const description = findTagValue(pack.tags || [], 'about') || '';
-            const image = findTagValue(pack.tags || [], 'image') || null;
+            const image = findTagValue(pack.tags || [], 'image') || 
+              findTagValue(pack.tags || [], 'picture') || null;
             
             // Add fallback for tags
             const tags = pack.tags || [];
@@ -265,7 +258,13 @@ export default function POWRPackSection() {
                 <Card style={styles.packCard}>
                   <CardContent style={styles.cardContent}>
                     {image ? (
-                      <Image source={{ uri: image }} style={styles.packImage} />
+                      <Image 
+                        source={{ uri: image }} 
+                        style={styles.packImage}
+                        onError={(error) => {
+                          console.error(`Failed to load image: ${image}`, error.nativeEvent.error);
+                        }}
+                      />
                     ) : (
                       <View style={styles.placeholderImage}>
                         <PackageOpen size={32} color="#6b7280" />

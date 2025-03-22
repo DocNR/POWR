@@ -5,6 +5,60 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 20, 2025
+
+## Improved
+- Enhanced Social Feed UI
+  - Redesigned feed posts with divider-based layout instead of cards
+  - Implemented edge-to-edge content display with hairline separators
+  - Optimized post spacing for more compact, Twitter-like appearance
+  - Reduced vertical padding between post elements
+  - Tightened spacing between content and action buttons
+  - Fixed image loading for POWR Pack images
+  - Enhanced overall feed performance with component memoization
+  - Improved empty state messaging
+  - Fixed infinite loop issues in feed subscription management
+  - Added proper feed reset and refresh functionality
+  - Enhanced debugging tools for relay connection troubleshooting
+  - Improved feed state management with proper lifecycle handling
+  - Optimized rendering for long lists with virtualized FlatList
+  - Added scrollToTop functionality for new content
+
+# Changelog - March 19, 2025
+
+## Added
+- Social Feed Integration
+  - Implemented tabbed social feed with Following, POWR, and Global tabs
+  - Created EnhancedSocialPost component for rendering workout events
+  - Added support for viewing workout records, exercise templates, and workout templates
+  - Implemented post interaction features (likes, comments)
+  - Added workout detail screen for viewing complete workout information
+  - Integrated with Nostr protocol for decentralized social content
+  - Created SocialFeedService for fetching and managing social content
+  - Implemented useFollowingFeed, usePOWRFeed, and useGlobalFeed hooks
+  - Added user profile integration with avatar display
+  - Created POWRPackSection for discovering shared workout templates
+
+## Improved
+- Enhanced profile handling
+  - Added robust error management for profile image loading
+  - Implemented proper state management to prevent infinite update loops
+  - Better memory management with cleanup on component unmount
+- Workout content display
+  - Created rich workout event cards with detailed exercise information
+  - Added support for displaying workout duration, exercises, and performance metrics
+  - Implemented proper text handling for React Native
+- Nostr integration
+  - Added support for exercise, template, and workout event kinds
+  - Implemented event parsing for different content types
+  - Created useSocialFeed hook with pagination support
+  - Enhanced NDK integration with better error handling
+- UI/UX enhancements
+  - Added pull-to-refresh for feed updates
+  - Implemented load more functionality for pagination
+  - Created skeleton loading states for better loading experience
+  - Enhanced navigation between feed and detail screens
+
 # Changelog - March 12, 2025
 
 ## Added

@@ -1,5 +1,5 @@
 // lib/hooks/useProfile.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NDKUser, NDKUserProfile } from '@nostr-dev-kit/ndk-mobile';
 import { useNDK } from './useNDK';
 
@@ -10,11 +10,24 @@ export function useProfile(pubkey: string | undefined) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   
+  // Reference to track if component is mounted
+  const isMountedRef = useRef(true);
+  
+  // Reset mounted ref when component unmounts
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  
   useEffect(() => {
     if (!ndk || !pubkey) {
       setIsLoading(false);
       return;
     }
+    
+    let isEffectActive = true;
     
     const fetchProfile = async () => {
       try {
@@ -35,21 +48,32 @@ export function useProfile(pubkey: string | undefined) {
           }
         }
         
-        setUser(ndkUser);
-        setProfile(ndkUser.profile || null);
-        setIsLoading(false);
+        // Only update state if component is still mounted and effect is active
+        if (isMountedRef.current && isEffectActive) {
+          setUser(ndkUser);
+          setProfile(ndkUser.profile || null);
+          setIsLoading(false);
+        }
       } catch (err) {
         console.error('Error fetching profile:', err);
-        setError(err instanceof Error ? err : new Error('Failed to fetch profile'));
-        setIsLoading(false);
+        // Only update state if component is still mounted and effect is active
+        if (isMountedRef.current && isEffectActive) {
+          setError(err instanceof Error ? err : new Error('Failed to fetch profile'));
+          setIsLoading(false);
+        }
       }
     };
     
     fetchProfile();
+    
+    // Cleanup function to prevent state updates if the effect is cleaned up
+    return () => {
+      isEffectActive = false;
+    };
   }, [ndk, pubkey]);
   
   const refreshProfile = async () => {
-    if (!ndk || !pubkey) return;
+    if (!ndk || !pubkey || !isMountedRef.current) return;
     
     try {
       setIsLoading(true);
@@ -58,12 +82,19 @@ export function useProfile(pubkey: string | undefined) {
       const ndkUser = ndk.getUser({ pubkey });
       await ndkUser.fetchProfile();
       
-      setUser(ndkUser);
-      setProfile(ndkUser.profile || null);
+      // Only update state if component is still mounted
+      if (isMountedRef.current) {
+        setUser(ndkUser);
+        setProfile(ndkUser.profile || null);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to refresh profile'));
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err : new Error('Failed to refresh profile'));
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
   
