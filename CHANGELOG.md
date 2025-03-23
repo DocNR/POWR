@@ -5,6 +5,31 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 22, 2025
+
+## Added
+- Enhanced Profile Tab with new features
+  - Implemented tabbed interface with Overview, Activity, Progress, and Settings
+  - Added Terms of Service modal with comprehensive content
+  - Created dedicated settings screen with improved organization
+  - Added dark mode toggle in settings
+  - Implemented proper text visibility in both light and dark modes
+  - Added Nostr publishing settings with clear explanations
+  - Created analytics service for workout progress tracking
+  - Added progress visualization with charts and statistics
+  - Implemented activity feed for personal workout history
+
+## Fixed
+- Dark mode text visibility issues
+  - Added explicit text-foreground classes to ensure visibility
+  - Updated button variants to use purple for better contrast
+  - Fixed modal content visibility in dark mode
+  - Improved component styling for consistent appearance
+- TypeScript errors in navigation
+  - Fixed router.push path format in SettingsDrawer
+  - Updated import paths for better type safety
+  - Improved component props typing
+
 # Changelog - March 20, 2025
 
 ## Improved

@@ -5,7 +5,7 @@ import { Text } from '@/components/ui/text';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Workout } from '@/types/workout';
 import { format } from 'date-fns';
-import { WorkoutHistoryService } from '@/lib/db/services/WorkoutHIstoryService';
+import { WorkoutHistoryService } from '@/lib/db/services/WorkoutHistoryService';
 import WorkoutCard from '@/components/workout/WorkoutCard';
 
 // Mock data for when database tables aren't yet created

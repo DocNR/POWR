@@ -61,7 +61,7 @@ export type UpdateEntryFn = (id: string, updater: (entry: AnyFeedEntry) => AnyFe
 
 // Feed filter options
 export interface FeedFilterOptions {
-  feedType: 'following' | 'powr' | 'global';
+  feedType: 'following' | 'powr' | 'global' | 'user-activity';
   since?: number;
   until?: number;
   limit?: number;
@@ -78,5 +78,5 @@ export interface FeedOptions {
   enabled?: boolean;
   filterFn?: FeedEntryFilterFn;
   sortFn?: (a: AnyFeedEntry, b: AnyFeedEntry) => number;
-  feedType?: 'following' | 'powr' | 'global'; // Added this property
+  feedType?: 'following' | 'powr' | 'global' | 'user-activity'; // Added this property
 }

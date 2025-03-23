@@ -285,6 +285,61 @@ export function usePOWRFeed(options: FeedOptions = {}) {
  * Hook for the Global tab in the social feed
  * Shows all workout-related content
  */
+/**
+ * Hook for the user's own activity feed
+ * Shows only the user's own posts and workouts
+ */
+export function useUserActivityFeed(options: FeedOptions = {}) {
+  const { currentUser } = useNDKCurrentUser();
+  const { ndk } = useNDK();
+  
+  // Create filters for user's own content
+  const userFilters = useMemo<NDKFilter[]>(() => {
+    if (!currentUser?.pubkey) return [];
+    
+    return [
+      {
+        kinds: [1] as any[], // Social posts
+        authors: [currentUser.pubkey],
+        limit: 30
+      },
+      {
+        kinds: [30023] as any[], // Articles
+        authors: [currentUser.pubkey],
+        limit: 20
+      },
+      {
+        kinds: [1301, 33401, 33402] as any[], // Workout-specific content
+        authors: [currentUser.pubkey],
+        limit: 30
+      }
+    ];
+  }, [currentUser?.pubkey]);
+  
+  // Use feed events hook
+  const feed = useFeedEvents(
+    currentUser?.pubkey ? userFilters : false,
+    {
+      subId: 'user-activity-feed',
+      feedType: 'user-activity',
+      ...options
+    }
+  );
+  
+  // Feed monitor for auto-refresh
+  const monitor = useFeedMonitor({
+    onRefresh: async () => {
+      return feed.resetFeed();
+    }
+  });
+  
+  return {
+    ...feed,
+    ...monitor,
+    hasContent: feed.entries.length > 0
+  };
+}
+
 export function useGlobalFeed(options: FeedOptions = {}) {
   // Global filters - focus on workout content
   const globalFilters = useMemo<NDKFilter[]>(() => [

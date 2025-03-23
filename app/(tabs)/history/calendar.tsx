@@ -7,7 +7,7 @@ import { Workout } from '@/types/workout';
 import { format, isSameDay } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { WorkoutHistoryService } from '@/lib/db/services/WorkoutHIstoryService';
+import { WorkoutHistoryService } from '@/lib/db/services/WorkoutHistoryService';
 import WorkoutCard from '@/components/workout/WorkoutCard';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react-native';
 

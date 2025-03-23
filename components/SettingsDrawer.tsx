@@ -101,7 +101,7 @@ export default function SettingsDrawer() {
     // Go to the profile tab which should have login functionality
     closeDrawer();
     setTimeout(() => {
-      router.push("/(tabs)/profile");
+      router.push("/");
     }, 300);
   };
 
