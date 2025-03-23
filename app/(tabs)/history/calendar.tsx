@@ -7,9 +7,10 @@ import { Workout } from '@/types/workout';
 import { format, isSameDay } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { WorkoutHistoryService } from '@/lib/db/services/WorkoutHistoryService';
 import WorkoutCard from '@/components/workout/WorkoutCard';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react-native';
+import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
+import { useWorkoutHistory } from '@/lib/hooks/useWorkoutHistory';
 
 // Add custom styles for 1/7 width (for calendar days)
 const styles = {
@@ -18,6 +19,11 @@ const styles = {
 
 // Week days for the calendar view - Fixed the duplicate key issue
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Define colors for icons and styling
+const primaryColor = "#8b5cf6"; // Purple color
+const mutedColor = "#9ca3af"; // Gray color
+const primaryBgColor = "rgba(139, 92, 246, 0.2)"; // Semi-transparent purple for date highlights
 
 // Mock data for when database tables aren't yet created
 const mockWorkouts: Workout[] = [
@@ -57,50 +63,50 @@ export default function CalendarScreen() {
   const [useMockData, setUseMockData] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Initialize workout history service
-  const workoutHistoryService = React.useMemo(() => new WorkoutHistoryService(db), [db]);
+  const { isAuthenticated } = useNDKCurrentUser();
+  const [includeNostr, setIncludeNostr] = useState(true);
   
-  // Load workouts function
-  const loadWorkouts = async () => {
-    try {
+  // Use the unified workout history hook
+  const { 
+    workouts: allWorkouts, 
+    loading, 
+    refresh, 
+    getWorkoutsByDate,
+    service: workoutHistoryService
+  } = useWorkoutHistory({
+    includeNostr: includeNostr,
+    realtime: true
+  });
+  
+  // Set workouts from the hook
+  useEffect(() => {
+    if (loading) {
       setIsLoading(true);
-      const allWorkouts = await workoutHistoryService.getAllWorkouts();
+    } else {
       setWorkouts(allWorkouts);
-      setUseMockData(false);
-    } catch (error) {
-      console.error('Error loading workouts:', error);
+      setIsLoading(false);
+      setRefreshing(false);
       
-      // Check if the error is about missing tables
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('no such table')) {
-        console.log('Using mock data because workout tables not yet created');
+      // Check if we need to use mock data (empty workouts)
+      if (allWorkouts.length === 0) {
+        console.log('No workouts found, using mock data');
         setWorkouts(mockWorkouts);
         setUseMockData(true);
       } else {
-        // For other errors, just show empty state
-        setWorkouts([]);
         setUseMockData(false);
       }
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
     }
-  };
-  
-  // Initial load workouts
-  useEffect(() => {
-    loadWorkouts();
-  }, [workoutHistoryService]);
+  }, [allWorkouts, loading]);
   
   // Pull to refresh handler
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    loadWorkouts();
-  }, []);
+    refresh();
+  }, [refresh]);
   
-  // Load workout dates for selected month
+  // Load workout dates for the selected month
   useEffect(() => {
-    const getWorkoutDatesForMonth = async () => {
+    const loadDatesForMonth = async () => {
       try {
         const year = selectedMonth.getFullYear();
         const month = selectedMonth.getMonth();
@@ -116,28 +122,24 @@ export default function CalendarScreen() {
             })
             .map(workout => new Date(workout.startTime));
         } else {
-          // Try to use the service method if it exists and table exists
-          try {
-            if (typeof workoutHistoryService.getWorkoutDatesInMonth === 'function') {
-              dates = await workoutHistoryService.getWorkoutDatesInMonth(year, month);
-            } else {
-              // Otherwise filter from loaded workouts
-              dates = workouts
-                .filter(workout => {
-                  const date = new Date(workout.startTime);
-                  return date.getFullYear() === year && date.getMonth() === month;
-                })
-                .map(workout => new Date(workout.startTime));
-            }
-          } catch (error) {
-            console.error('Error getting workout dates:', error);
-            // If table doesn't exist, use empty array
-            dates = [];
-          }
+          // Use the service to get dates
+          dates = await workoutHistoryService.getWorkoutDatesInMonth(year, month);
+          
+          // Also check all workouts manually as a fallback
+          const manualDates = allWorkouts
+            .filter(workout => {
+              const date = new Date(workout.startTime);
+              return date.getFullYear() === year && date.getMonth() === month;
+            })
+            .map(workout => new Date(workout.startTime));
+          
+          // Combine both sets of dates
+          dates = [...dates, ...manualDates];
         }
         
         // Convert to strings for the Set
         const dateStrings = dates.map(date => format(date, 'yyyy-MM-dd'));
+        console.log(`Found ${dateStrings.length} workout dates for ${year}-${month+1}:`, dateStrings);
         setWorkoutDates(new Set(dateStrings));
       } catch (error) {
         console.error('Error getting workout dates:', error);
@@ -145,8 +147,8 @@ export default function CalendarScreen() {
       }
     };
     
-    getWorkoutDatesForMonth();
-  }, [selectedMonth, workouts, workoutHistoryService, useMockData]);
+    loadDatesForMonth();
+  }, [selectedMonth, workouts, allWorkouts, workoutHistoryService, useMockData]);
   
   // Get dates for current month's calendar
   const getDaysInMonth = (year: number, month: number) => {
@@ -188,7 +190,10 @@ export default function CalendarScreen() {
   // Check if a date has workouts
   const hasWorkout = (date: Date | null) => {
     if (!date) return false;
-    return workoutDates.has(format(date, 'yyyy-MM-dd'));
+    const dateString = format(date, 'yyyy-MM-dd');
+    const result = workoutDates.has(dateString);
+    console.log(`Checking if ${dateString} has workouts: ${result}`);
+    return result;
   };
   
   // Handle date selection in calendar
@@ -197,7 +202,7 @@ export default function CalendarScreen() {
     setSelectedDate(date);
   };
   
-  // Get workouts for selected date
+  // Get workouts for the selected date
   const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<Workout[]>([]);
   const [loadingDateWorkouts, setLoadingDateWorkouts] = useState(false);
   
@@ -205,30 +210,31 @@ export default function CalendarScreen() {
     const loadWorkoutsForDate = async () => {
       try {
         setLoadingDateWorkouts(true);
+        console.log(`Loading workouts for date: ${format(selectedDate, 'yyyy-MM-dd')}`);
         
         if (useMockData) {
           // Use mock data filtering
           const filtered = workouts.filter(workout => 
             isSameDay(new Date(workout.startTime), selectedDate)
           );
+          console.log(`Found ${filtered.length} mock workouts for selected date`);
           setSelectedDateWorkouts(filtered);
         } else {
-          try {
-            if (typeof workoutHistoryService.getWorkoutsByDate === 'function') {
-              // Use the service method if available
-              const dateWorkouts = await workoutHistoryService.getWorkoutsByDate(selectedDate);
-              setSelectedDateWorkouts(dateWorkouts);
-            } else {
-              // Fall back to filtering the already loaded workouts
-              const filtered = workouts.filter(workout => 
-                isSameDay(new Date(workout.startTime), selectedDate)
-              );
-              setSelectedDateWorkouts(filtered);
-            }
-          } catch (error) {
-            // Handle the case where the workout table doesn't exist
-            console.error('Error loading workouts for date:', error);
-            setSelectedDateWorkouts([]);
+          // Use the hook's getWorkoutsByDate method
+          console.log('Calling getWorkoutsByDate...');
+          const dateWorkouts = await getWorkoutsByDate(selectedDate);
+          console.log(`getWorkoutsByDate returned ${dateWorkouts.length} workouts`);
+          
+          // If no workouts found, try filtering from all workouts as a fallback
+          if (dateWorkouts.length === 0 && allWorkouts.length > 0) {
+            console.log('No workouts found with getWorkoutsByDate, trying manual filtering');
+            const filtered = allWorkouts.filter(workout => 
+              isSameDay(new Date(workout.startTime), selectedDate)
+            );
+            console.log(`Found ${filtered.length} workouts by manual filtering`);
+            setSelectedDateWorkouts(filtered);
+          } else {
+            setSelectedDateWorkouts(dateWorkouts);
           }
         }
       } catch (error) {
@@ -240,7 +246,7 @@ export default function CalendarScreen() {
     };
     
     loadWorkoutsForDate();
-  }, [selectedDate, workouts, workoutHistoryService, useMockData]);
+  }, [selectedDate, workouts, allWorkouts, getWorkoutsByDate, useMockData]);
   
   return (
     <View className="flex-1 bg-background">
@@ -262,7 +268,7 @@ export default function CalendarScreen() {
           {/* Calendar section */}
           <View className="mb-6">
             <View className="flex-row items-center mb-4">
-              <Calendar size={20} className="text-primary mr-2" />
+              <Calendar size={20} color={primaryColor} style={{ marginRight: 8 }} />
               <Text className="text-lg font-semibold">Workout Calendar</Text>
             </View>
             
@@ -274,7 +280,7 @@ export default function CalendarScreen() {
                     onPress={goToPreviousMonth}
                     className="p-2 rounded-full bg-muted"
                   >
-                    <ChevronLeft size={20} className="text-foreground" />
+                    <ChevronLeft size={20} color={mutedColor} />
                   </TouchableOpacity>
                   
                   <Text className="text-foreground text-lg font-semibold">
@@ -285,7 +291,7 @@ export default function CalendarScreen() {
                     onPress={goToNextMonth}
                     className="p-2 rounded-full bg-muted"
                   >
-                    <ChevronRight size={20} className="text-foreground" />
+                    <ChevronRight size={20} color={mutedColor} />
                   </TouchableOpacity>
                 </View>
                 
@@ -311,18 +317,32 @@ export default function CalendarScreen() {
                       <View className="aspect-square items-center justify-center">
                         {date ? (
                           <View 
-                            className={cn(
-                              "w-8 h-8 rounded-full items-center justify-center",
-                              isSameDay(date, selectedDate) && !hasWorkout(date) && "bg-muted",
-                              hasWorkout(date) && "bg-primary",
-                              isSameDay(date, new Date()) && !hasWorkout(date) && !isSameDay(date, selectedDate) && "border border-primary"
-                            )}
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 20, // Make it a perfect circle
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: isSameDay(date, selectedDate) 
+                                ? (hasWorkout(date) ? primaryColor : '#f3f4f6') // Selected date
+                                : (hasWorkout(date) ? primaryBgColor : 'transparent'), // Date with workout
+                              borderWidth: isSameDay(date, new Date()) && !hasWorkout(date) && !isSameDay(date, selectedDate) ? 2 : 0,
+                              borderColor: primaryColor,
+                              // Remove shadow effects that might be causing the weird shape
+                              shadowColor: 'transparent',
+                              shadowOffset: { width: 0, height: 0 },
+                              shadowOpacity: 0,
+                              shadowRadius: 0,
+                              elevation: 0
+                            }}
                           >
                             <Text 
-                              className={cn(
-                                "text-foreground",
-                                hasWorkout(date) && "text-primary-foreground font-medium"
-                              )}
+                              style={{
+                                color: isSameDay(date, selectedDate) && hasWorkout(date) 
+                                  ? '#ffffff' // White text for selected date with workout
+                                  : (hasWorkout(date) ? primaryColor : '#374151'), // Purple text for dates with workouts
+                                fontWeight: hasWorkout(date) ? '600' : 'normal'
+                              }}
                             >
                               {date.getDate()}
                             </Text>

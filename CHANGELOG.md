@@ -5,6 +5,39 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 24, 2025
+
+## Added
+- Unified workout history service and hook
+  - Created `UnifiedWorkoutHistoryService` that combines functionality from multiple services
+  - Implemented `useWorkoutHistory` hook for simplified data access
+  - Added real-time Nostr updates with subscription support
+  - Improved filtering capabilities across local and Nostr workouts
+  - Enhanced type safety with better interfaces
+  - Added comprehensive migration guide for developers
+
+## Improved
+- Consolidated workout history architecture
+  - Reduced code duplication across services
+  - Simplified API for accessing workout data
+  - Enhanced performance with optimized database queries
+  - Better error handling throughout the system
+  - Improved documentation with migration examples
+  - Enhanced calendar view with fallback filtering for dates
+
+## Fixed
+- Calendar view now properly shows workouts when clicking on dates
+  - Added fallback mechanism to filter workouts manually if database query returns no results
+  - Improved logging for better debugging
+  - Fixed edge cases where workouts wouldn't appear in the calendar view
+
+## Removed
+- Legacy workout history services
+  - Removed `EnhancedWorkoutHistoryService`
+  - Removed `NostrWorkoutHistoryService`
+  - Removed `useNostrWorkoutHistory` hook
+  - Completed migration to unified workout history API
+
 # Changelog - March 23, 2025
 
 ## Fixed
@@ -22,12 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added checks to verify if exercises exist in the database
   - Fixed TypeScript errors in exercise existence checks
   - Improved error handling throughout the service
+- Calendar view UI and functionality
+  - Fixed date highlighting shape to use clean circles instead of hexagons
+  - Removed shadow effects causing visual distortion in calendar dates
+  - Improved workout date detection with better fallback mechanisms
+  - Enhanced exercise name display in workout cards
 
 ## Improved
 - Enhanced debugging capabilities
   - Added comprehensive logging in EnhancedWorkoutHistoryService
   - Improved error state handling in workout detail screen
   - Better error messages for troubleshooting
+- Calendar view reliability
+  - Added fallback date filtering when database queries return no results
+  - Improved workout date detection with combined data sources
+  - Enhanced visual consistency of date highlighting
 
 # Changelog - March 22, 2025
 
