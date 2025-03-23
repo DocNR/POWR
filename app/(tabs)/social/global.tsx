@@ -1,5 +1,5 @@
 // app/(tabs)/social/global.tsx
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { View, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import EnhancedSocialPost from '@/components/social/EnhancedSocialPost';
@@ -7,6 +7,7 @@ import { useGlobalFeed } from '@/lib/hooks/useFeedHooks';
 import { router } from 'expo-router';
 import { ChevronUp } from 'lucide-react-native';
 import { AnyFeedEntry } from '@/types/feed';
+import { withOfflineState } from '@/components/social/SocialOfflineState';
 
 // Define the conversion function here to avoid import issues
 function convertToLegacyFeedItem(entry: AnyFeedEntry) {
@@ -19,7 +20,7 @@ function convertToLegacyFeedItem(entry: AnyFeedEntry) {
   };
 }
 
-export default function GlobalScreen() {
+function GlobalScreen() {
   const { 
     entries, 
     newEntries, 
@@ -35,7 +36,7 @@ export default function GlobalScreen() {
   const listRef = useRef<FlatList>(null);
   
   // Show new entries button when we have new content
-  React.useEffect(() => {
+  useEffect(() => {
     if (newEntries.length > 0) {
       setShowNewButton(true);
     }
@@ -128,3 +129,6 @@ export default function GlobalScreen() {
     </View>
   );
 }
+
+// Export the component wrapped with the offline state HOC
+export default withOfflineState(GlobalScreen);

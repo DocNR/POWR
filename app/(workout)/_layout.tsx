@@ -53,6 +53,15 @@ export default function WorkoutLayout() {
             gestureDirection: 'horizontal',
           }}
         />
+        <Stack.Screen 
+          name="workout/[id]"
+          options={{
+            presentation: 'card',
+            animation: 'default',
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        />
       </Stack>
     </>
   );

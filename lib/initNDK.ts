@@ -4,6 +4,10 @@ import NDK, { NDKCacheAdapterSqlite } from '@nostr-dev-kit/ndk-mobile';
 import * as SecureStore from 'expo-secure-store';
 import { RelayService, DEFAULT_RELAYS } from '@/lib/db/services/RelayService';
 import { extendNDK } from '@/types/ndk-extensions';
+import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
+
+// Connection timeout in milliseconds
+const CONNECTION_TIMEOUT = 5000;
 
 /**
  * Initialize NDK with relays
@@ -46,12 +50,43 @@ export async function initializeNDK() {
   // Set the NDK instance in the RelayService
   relayService.setNDK(ndk);
   
+  // Check network connectivity before attempting to connect
+  const connectivityService = ConnectivityService.getInstance();
+  const isOnline = await connectivityService.checkNetworkStatus();
+  
+  if (!isOnline) {
+    console.log('[NDK] No network connectivity detected, skipping relay connections');
+    return { 
+      ndk, 
+      relayService,
+      connectedRelayCount: 0,
+      connectedRelays: [],
+      offlineMode: true
+    };
+  }
+  
   try {
-    console.log('[NDK] Connecting to relays...');
-    await ndk.connect();
+    console.log('[NDK] Connecting to relays with timeout...');
     
-    // Wait a moment for connections to establish
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Create a promise that will reject after the timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT);
+    });
+    
+    // Race the connect operation against the timeout
+    await Promise.race([
+      ndk.connect(),
+      timeoutPromise
+    ]).catch(error => {
+      if (error.message === 'Connection timeout') {
+        console.warn('[NDK] Connection timeout reached, continuing in offline mode');
+        throw error; // Re-throw to be caught by outer try/catch
+      }
+      throw error;
+    });
+    
+    // Wait a moment for connections to establish (but with a shorter timeout)
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Get updated relay statuses
     const relaysWithStatus = await relayService.getAllRelaysWithStatus();
@@ -73,7 +108,8 @@ export async function initializeNDK() {
       ndk, 
       relayService,
       connectedRelayCount: connectedRelays.length,
-      connectedRelays
+      connectedRelays,
+      offlineMode: connectedRelays.length === 0
     };
   } catch (error) {
     console.error('[NDK] Error during connection:', error);
@@ -82,7 +118,8 @@ export async function initializeNDK() {
       ndk, 
       relayService,
       connectedRelayCount: 0,
-      connectedRelays: []
+      connectedRelays: [],
+      offlineMode: true
     };
   }
 }

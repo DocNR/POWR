@@ -2,6 +2,8 @@
 import { Workout } from '@/types/workout';
 import { WorkoutService } from '@/lib/db/services/WorkoutService';
 import { NostrWorkoutService } from '@/lib/db/services/NostrWorkoutService';
+import { NostrWorkoutHistoryService } from '@/lib/db/services/NostrWorkoutHistoryService';
+import { UnifiedWorkoutHistoryService } from '@/lib/db/services/UnifiedWorkoutHistoryService';
 
 /**
  * Workout statistics data structure
@@ -13,6 +15,29 @@ export interface WorkoutStats {
   averageIntensity: number;
   exerciseDistribution: Record<string, number>;
   frequencyByDay: number[]; // 0 = Sunday, 6 = Saturday
+}
+
+/**
+ * Analytics data for a specific period
+ */
+export interface AnalyticsData {
+  date: Date;
+  workoutCount: number;
+  totalVolume: number;
+  totalDuration: number;
+  exerciseCount: number;
+}
+
+/**
+ * Summary statistics for the profile overview
+ */
+export interface SummaryStatistics {
+  totalWorkouts: number;
+  totalVolume: number;
+  totalExercises: number;
+  averageDuration: number;
+  currentStreak: number;
+  longestStreak: number;
 }
 
 /**
@@ -40,6 +65,20 @@ export interface PersonalRecord {
     value: number;
     date: number;
   };
+  metric?: 'weight' | 'reps' | 'volume';
+}
+
+/**
+ * Exercise progress data structure
+ */
+export interface ExerciseProgress {
+  exerciseId: string;
+  exerciseName: string;
+  dataPoints: {
+    date: Date;
+    value: number;
+    workoutId: string;
+  }[];
 }
 
 /**
@@ -48,7 +87,10 @@ export interface PersonalRecord {
 export class AnalyticsService {
   private workoutService: WorkoutService | null = null;
   private nostrWorkoutService: NostrWorkoutService | null = null;
+  private nostrWorkoutHistoryService: NostrWorkoutHistoryService | null = null;
+  private unifiedWorkoutHistoryService: UnifiedWorkoutHistoryService | null = null;
   private cache = new Map<string, any>();
+  private includeNostr: boolean = true;
   
   // Set the workout service (called from React components)
   setWorkoutService(service: WorkoutService): void {
@@ -58,6 +100,26 @@ export class AnalyticsService {
   // Set the Nostr workout service (called from React components)
   setNostrWorkoutService(service: NostrWorkoutService): void {
     this.nostrWorkoutService = service;
+  }
+  
+  // Set the Nostr workout history service (called from React components)
+  setNostrWorkoutHistoryService(service: NostrWorkoutHistoryService | UnifiedWorkoutHistoryService): void {
+    if (service instanceof NostrWorkoutHistoryService) {
+      this.nostrWorkoutHistoryService = service;
+    } else {
+      this.unifiedWorkoutHistoryService = service;
+    }
+  }
+  
+  // Set the Unified workout history service (called from React components)
+  setUnifiedWorkoutHistoryService(service: UnifiedWorkoutHistoryService): void {
+    this.unifiedWorkoutHistoryService = service;
+  }
+  
+  // Set whether to include Nostr workouts in analytics
+  setIncludeNostr(include: boolean): void {
+    this.includeNostr = include;
+    this.invalidateCache(); // Clear cache when this setting changes
   }
   
   /**
@@ -278,7 +340,23 @@ export class AnalyticsService {
         break;
     }
     
-    // Get workouts from both local and Nostr sources
+    // If we have the UnifiedWorkoutHistoryService, use it to get all workouts
+    if (this.unifiedWorkoutHistoryService) {
+      return this.unifiedWorkoutHistoryService.getAllWorkouts({
+        includeNostr: this.includeNostr,
+        isAuthenticated: true
+      });
+    }
+    
+    // Fallback to NostrWorkoutHistoryService if UnifiedWorkoutHistoryService is not available
+    if (this.nostrWorkoutHistoryService) {
+      return this.nostrWorkoutHistoryService.getAllWorkouts({
+        includeNostr: this.includeNostr,
+        isAuthenticated: true
+      });
+    }
+    
+    // Fallback to using WorkoutService if NostrWorkoutHistoryService is not available
     let localWorkouts: Workout[] = [];
     if (this.workoutService) {
       localWorkouts = await this.workoutService.getWorkoutsByDateRange(startDate.getTime(), now.getTime());
@@ -299,6 +377,287 @@ export class AnalyticsService {
     }
     
     return allWorkouts.sort((a, b) => b.startTime - a.startTime);
+  }
+  
+  /**
+   * Get workout frequency data for a specific period
+   */
+  async getWorkoutFrequency(period: 'daily' | 'weekly' | 'monthly', limit: number = 30): Promise<AnalyticsData[]> {
+    const cacheKey = `frequency-${period}-${limit}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    
+    const now = new Date();
+    let startDate: Date;
+    
+    // Determine date range based on period
+    switch (period) {
+      case 'daily':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - limit);
+        break;
+      case 'weekly':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - (limit * 7));
+        break;
+      case 'monthly':
+        startDate = new Date(now);
+        startDate.setMonth(now.getMonth() - limit);
+        break;
+    }
+    
+    // Get workouts in the date range
+    const workouts = await this.getWorkoutsForPeriod('all');
+    const filteredWorkouts = workouts.filter(w => w.startTime >= startDate.getTime());
+    
+    // Group workouts by period
+    const groupedData = new Map<string, AnalyticsData>();
+    
+    filteredWorkouts.forEach(workout => {
+      const date = new Date(workout.startTime);
+      let key: string;
+      
+      // Format date key based on period
+      switch (period) {
+        case 'daily':
+          key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+          break;
+        case 'weekly':
+          // Get the week number (approximate)
+          const weekNum = Math.floor(date.getDate() / 7);
+          key = `${date.getFullYear()}-${date.getMonth() + 1}-W${weekNum}`;
+          break;
+        case 'monthly':
+          key = `${date.getFullYear()}-${date.getMonth() + 1}`;
+          break;
+      }
+      
+      // Initialize or update group data
+      if (!groupedData.has(key)) {
+        groupedData.set(key, {
+          date: new Date(date),
+          workoutCount: 0,
+          totalVolume: 0,
+          totalDuration: 0,
+          exerciseCount: 0
+        });
+      }
+      
+      const data = groupedData.get(key)!;
+      data.workoutCount++;
+      data.totalVolume += workout.totalVolume || 0;
+      data.totalDuration += (workout.endTime || date.getTime()) - workout.startTime;
+      data.exerciseCount += workout.exercises?.length || 0;
+    });
+    
+    // Convert to array and sort by date
+    const result = Array.from(groupedData.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    
+    this.cache.set(cacheKey, result);
+    return result;
+  }
+  
+  /**
+   * Get volume progression data for a specific period
+   */
+  async getVolumeProgression(period: 'daily' | 'weekly' | 'monthly', limit: number = 30): Promise<AnalyticsData[]> {
+    // This uses the same data as getWorkoutFrequency but is separated for clarity
+    return this.getWorkoutFrequency(period, limit);
+  }
+  
+  /**
+   * Get streak metrics (current and longest streak)
+   */
+  async getStreakMetrics(): Promise<{ current: number; longest: number }> {
+    const cacheKey = 'streak-metrics';
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    
+    // Get all workouts
+    const workouts = await this.getWorkoutsForPeriod('all');
+    
+    // Extract dates and sort them
+    const dates = workouts.map(w => new Date(w.startTime).toISOString().split('T')[0]);
+    const uniqueDates = [...new Set(dates)].sort();
+    
+    // Calculate current streak
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let currentStreakCount = 0;
+    
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Check if the most recent workout was today or yesterday
+    if (uniqueDates.length > 0) {
+      const lastWorkoutDate = uniqueDates[uniqueDates.length - 1];
+      const lastWorkoutTime = new Date(lastWorkoutDate).getTime();
+      const todayTime = new Date(today).getTime();
+      
+      // If the last workout was within the last 48 hours, count the streak
+      if (todayTime - lastWorkoutTime <= 48 * 60 * 60 * 1000) {
+        currentStreakCount = 1;
+        
+        // Count consecutive days backwards
+        for (let i = uniqueDates.length - 2; i >= 0; i--) {
+          const currentDate = new Date(uniqueDates[i]);
+          const nextDate = new Date(uniqueDates[i + 1]);
+          
+          // Check if dates are consecutive
+          const diffTime = nextDate.getTime() - currentDate.getTime();
+          const diffDays = diffTime / (1000 * 60 * 60 * 24);
+          
+          if (diffDays <= 1.1) { // Allow for some time zone differences
+            currentStreakCount++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+    
+    // Calculate longest streak
+    let tempStreak = 1;
+    for (let i = 1; i < uniqueDates.length; i++) {
+      const currentDate = new Date(uniqueDates[i - 1]);
+      const nextDate = new Date(uniqueDates[i]);
+      
+      // Check if dates are consecutive
+      const diffTime = nextDate.getTime() - currentDate.getTime();
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      
+      if (diffDays <= 1.1) { // Allow for some time zone differences
+        tempStreak++;
+      } else {
+        if (tempStreak > longestStreak) {
+          longestStreak = tempStreak;
+        }
+        tempStreak = 1;
+      }
+    }
+    
+    // Check if the final streak is the longest
+    if (tempStreak > longestStreak) {
+      longestStreak = tempStreak;
+    }
+    
+    const result = {
+      current: currentStreakCount,
+      longest: longestStreak
+    };
+    
+    this.cache.set(cacheKey, result);
+    return result;
+  }
+  
+  /**
+   * Get summary statistics for the profile overview
+   */
+  async getSummaryStatistics(): Promise<SummaryStatistics> {
+    const cacheKey = 'summary-statistics';
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    
+    // Get all workouts
+    const workouts = await this.getWorkoutsForPeriod('all');
+    
+    // Calculate total workouts
+    const totalWorkouts = workouts.length;
+    
+    // Calculate total volume
+    const totalVolume = workouts.reduce((sum, workout) => sum + (workout.totalVolume || 0), 0);
+    
+    // Calculate total unique exercises
+    const exerciseIds = new Set<string>();
+    workouts.forEach(workout => {
+      workout.exercises?.forEach(exercise => {
+        exerciseIds.add(exercise.exerciseId || exercise.id);
+      });
+    });
+    const totalExercises = exerciseIds.size;
+    
+    // Calculate average duration
+    const totalDuration = workouts.reduce((sum, workout) => {
+      const duration = (workout.endTime || workout.startTime) - workout.startTime;
+      return sum + duration;
+    }, 0);
+    const averageDuration = totalWorkouts > 0 ? totalDuration / totalWorkouts : 0;
+    
+    // Get streak metrics
+    const { current, longest } = await this.getStreakMetrics();
+    
+    const result = {
+      totalWorkouts,
+      totalVolume,
+      totalExercises,
+      averageDuration,
+      currentStreak: current,
+      longestStreak: longest
+    };
+    
+    this.cache.set(cacheKey, result);
+    return result;
+  }
+  
+  /**
+   * Get most frequent exercises
+   */
+  async getMostFrequentExercises(limit: number = 5): Promise<{ exerciseId: string; exerciseName: string; count: number }[]> {
+    const cacheKey = `frequent-exercises-${limit}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    
+    // Get all workouts
+    const workouts = await this.getWorkoutsForPeriod('all');
+    
+    // Count exercise occurrences
+    const exerciseCounts = new Map<string, { name: string; count: number }>();
+    
+    workouts.forEach(workout => {
+      workout.exercises?.forEach(exercise => {
+        const id = exercise.exerciseId || exercise.id;
+        if (!exerciseCounts.has(id)) {
+          exerciseCounts.set(id, { name: exercise.title, count: 0 });
+        }
+        exerciseCounts.get(id)!.count++;
+      });
+    });
+    
+    // Convert to array and sort by count
+    const result = Array.from(exerciseCounts.entries())
+      .map(([id, data]) => ({
+        exerciseId: id,
+        exerciseName: data.name,
+        count: data.count
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit);
+    
+    this.cache.set(cacheKey, result);
+    return result;
+  }
+  
+  /**
+   * Get workout distribution by day of week
+   */
+  async getWorkoutsByDayOfWeek(): Promise<{ day: number; count: number }[]> {
+    const cacheKey = 'workouts-by-day';
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    
+    // Get all workouts
+    const workouts = await this.getWorkoutsForPeriod('all');
+    
+    // Initialize counts for each day (0 = Sunday, 6 = Saturday)
+    const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+    
+    // Count workouts by day
+    workouts.forEach(workout => {
+      const day = new Date(workout.startTime).getDay();
+      dayCounts[day]++;
+    });
+    
+    // Convert to result format
+    const result = dayCounts.map((count, day) => ({ day, count }));
+    
+    this.cache.set(cacheKey, result);
+    return result;
   }
   
   /**

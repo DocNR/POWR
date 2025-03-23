@@ -34,6 +34,11 @@ export interface LastSyncedInfo {
 export interface ContentAvailability {
   source: StorageSource[];
   lastSynced?: LastSyncedInfo;
+  
+  // Nostr-specific fields for enhanced tracking
+  nostrEventId?: string;
+  nostrPublishedAt?: number;
+  nostrRelayCount?: number;
 }
 
 /**

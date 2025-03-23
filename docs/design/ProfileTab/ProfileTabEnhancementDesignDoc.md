@@ -2,146 +2,188 @@
 
 ## Overview
 
-This document outlines the design and implementation of the enhanced Profile tab for the POWR app. The enhancement includes a tabbed interface with separate screens for profile overview, activity feed, progress analytics, and settings.
+The Profile Tab will be enhanced to include user analytics, progress tracking, and personal social feed. This document outlines the design and implementation plan for these enhancements.
 
-## Motivation
+## Goals
 
-The original Profile tab was limited to displaying basic user information. With the growing social and analytics features of the app, we need a more comprehensive profile experience that:
+- Provide users with a comprehensive view of their workout progress and analytics
+- Create a personalized social feed experience within the profile tab
+- Improve user engagement by showcasing growth and achievements
+- Integrate Nostr functionality for cross-device synchronization
 
-1. Showcases the user's identity and achievements
-2. Displays workout activity in a social feed format
-3. Provides analytics and progress tracking
-4. Offers easy access to settings and preferences
+## Tab Structure
 
-By moving analytics and progress tracking to the Profile tab, we create a more cohesive user experience that focuses on personal growth and achievement.
+The Profile Tab will be organized into the following sections:
 
-## Design
+1. **Overview** - User profile information and summary statistics
+2. **Activity** - Personal social feed showing the user's workout posts
+3. **Progress** - Analytics and progress tracking visualizations
+4. **Settings** - Account settings, preferences, and Nostr integration
 
-### Tab Structure
+## Detailed Design
 
-The enhanced Profile tab is organized into four sub-tabs:
+### Overview Section
 
-1. **Overview**: Displays user profile information, stats summary, and quick access to recent records and activity
-2. **Activity**: Shows a chronological feed of the user's workout posts
-3. **Progress**: Provides analytics and progress tracking with charts and personal records
-4. **Settings**: Contains profile editing, privacy controls, and app preferences
+The Overview section will serve as the landing page for the Profile Tab and will include:
 
-### Navigation
+- User profile photo, name, and bio
+- Summary statistics:
+  - Total workouts completed
+  - Total volume lifted
+  - Workout streak
+  - Favorite exercises
+- Quick access buttons to key features
+- Nostr connection status
 
-The tabs are implemented using Expo Router's `Tabs` component, with appropriate icons for each tab:
+### Activity Section
 
-- Overview: User icon
-- Activity: Activity icon
-- Progress: BarChart2 icon
-- Settings: Settings icon
+The Activity section will display the user's personal social feed:
 
-### Data Flow
+- Chronological list of the user's workout posts
+- Ability to view, edit, and delete posts
+- Interaction metrics (likes, comments)
+- Options to share workouts to the global feed
+- Filter options for viewing different types of activities
 
-The Profile tab components interact with several services:
+### Progress Section
 
-1. **NDK Services**: For user profile data and authentication
-2. **WorkoutService**: For accessing workout history
-3. **AnalyticsService**: For calculating statistics and progress metrics
+The Progress section will provide detailed analytics and visualizations:
 
-## Implementation Details
+- **Workout Volume Chart**
+  - Weekly/monthly volume progression
+  - Filterable by exercise category or specific exercises
+  
+- **Strength Progress Tracking**
+  - Personal records for key exercises
+  - Progression charts for main lifts
+  - Comparison to previous periods
+  
+- **Workout Consistency**
+  - Calendar heatmap showing workout frequency
+  - Streak tracking and milestone celebrations
+  - Weekly workout distribution
 
-### New Components and Files
+- **Body Metrics** (future enhancement)
+  - Weight tracking
+  - Body measurements
+  - Progress photos
 
-1. **Tab Layout**:
-   - `app/(tabs)/profile/_layout.tsx`: Defines the tab structure and navigation
+### Settings Section
 
-2. **Tab Screens**:
-   - `app/(tabs)/profile/overview.tsx`: Profile information and summary
-   - `app/(tabs)/profile/activity.tsx`: Workout activity feed
-   - `app/(tabs)/profile/progress.tsx`: Analytics and progress tracking
-   - `app/(tabs)/profile/settings.tsx`: User settings and preferences
+The Settings section will include:
 
-3. **Services**:
-   - `lib/services/AnalyticsService.ts`: Service for calculating workout statistics and progress data
-   - `lib/hooks/useAnalytics.ts`: React hook for accessing the analytics service
+- Profile information management
+- Nostr account connection and management
+- Data synchronization preferences
+- Privacy settings for social sharing
+- App preferences and customization
+- Export and backup options
 
-### Analytics Service
+## Implementation Plan
 
-The AnalyticsService provides methods for:
+### Phase 1: Core Structure
 
-1. **Workout Statistics**: Calculate aggregate statistics like total workouts, duration, volume, etc.
-2. **Exercise Progress**: Track progress for specific exercises over time
-3. **Personal Records**: Identify and track personal records for exercises
+1. Create the tab navigation structure with the four main sections
+2. Implement the Overview section with basic profile information
+3. Set up the Settings section with account management
 
-The service is designed to work with both local and Nostr-based workout data, providing a unified view of the user's progress.
+### Phase 2: Analytics and Progress
 
-### Authentication Integration
+1. Implement data collection and processing for analytics
+2. Create visualization components for progress tracking
+3. Develop the Progress section with charts and metrics
+4. Add personal records tracking and milestone celebrations
 
-The Profile tab is integrated with the Nostr authentication system:
+### Phase 3: Personal Social Feed
 
-- Unauthenticated users see a login prompt in the Overview tab
-- All tabs show appropriate UI for unauthenticated users
-- The NostrLoginSheet is accessible from the Overview tab
+1. Implement the Activity section with the personal feed
+2. Add post management functionality
+3. Integrate with the global social feed
+4. Implement interaction features
 
-## User Experience
+### Phase 4: Nostr Integration
 
-### Overview Tab
-
-The Overview tab provides a comprehensive view of the user's profile:
-
-- Profile picture and banner image
-- Display name and username
-- About/bio text
-- Summary statistics (workouts, templates, programs)
-- Recent personal records
-- Recent activity
-- Quick actions for profile management
-
-### Activity Tab
-
-The Activity tab displays the user's workout posts in a chronological feed:
-
-- Each post shows the workout details
-- Posts are formatted similar to the social feed
-- Empty state for users with no activity
-
-### Progress Tab
-
-The Progress tab visualizes the user's fitness journey:
-
-- Period selector (week, month, year, all-time)
-- Workout summary statistics
-- Workout frequency chart
-- Exercise distribution chart
-- Personal records list
-- Empty states for users with no data
-
-### Settings Tab
-
-The Settings tab provides access to user preferences:
-
-- Profile information editing
-- Privacy settings
-- Notification preferences
-- Account management
-
-## Future Enhancements
-
-1. **Workout Streaks**: Track and display workout consistency
-2. **Goal Setting**: Allow users to set and track fitness goals
-3. **Comparison Analytics**: Compare current performance with past periods
-4. **Social Integration**: Show followers/following counts and management
-5. **Achievement Badges**: Gamification elements for workout milestones
+1. Enhance Nostr connectivity for profile data
+2. Implement cross-device synchronization for progress data
+3. Add backup and restore functionality via Nostr
 
 ## Technical Considerations
 
+### Data Storage
+
+- Local SQLite database for workout and progress data
+- Nostr for cross-device synchronization and backup
+- Efficient querying for analytics calculations
+
 ### Performance
 
-- The AnalyticsService uses caching to minimize recalculations
-- Data is loaded asynchronously to keep the UI responsive
-- Charts and visualizations use efficient rendering techniques
+- Optimize chart rendering for smooth performance
+- Implement pagination for social feed
+- Use memoization for expensive calculations
 
-### Data Privacy
+### Privacy
 
-- Analytics are calculated locally on the device
-- Sharing controls allow users to decide what data is public
-- Personal records can be selectively shared
+- Clear user control over what data is shared
+- Secure handling of personal information
+- Transparent data synchronization options
+
+## UI/UX Design
+
+### Overview Section
+
+```
++---------------------------------------+
+|                                       |
+|  [Profile Photo]  Username            |
+|                   Bio                 |
+|                                       |
++---------------------------------------+
+|                                       |
+|  Total Workouts    Total Volume       |
+|  123               45,678 lbs         |
+|                                       |
+|  Current Streak    Favorite Exercise  |
+|  7 days            Bench Press        |
+|                                       |
++---------------------------------------+
+|                                       |
+|  [Quick Actions]                      |
+|                                       |
++---------------------------------------+
+```
+
+### Progress Section
+
+```
++---------------------------------------+
+|                                       |
+|  [Time Period Selector]               |
+|                                       |
++---------------------------------------+
+|                                       |
+|  Volume Progression                   |
+|                                       |
+|  [Chart]                              |
+|                                       |
++---------------------------------------+
+|                                       |
+|  Strength Progress                    |
+|                                       |
+|  [Exercise Selector]                  |
+|                                       |
+|  [Progress Chart]                     |
+|                                       |
++---------------------------------------+
+|                                       |
+|  Workout Consistency                  |
+|                                       |
+|  [Calendar Heatmap]                   |
+|                                       |
++---------------------------------------+
+```
 
 ## Conclusion
 
-The enhanced Profile tab transforms the user experience by providing a comprehensive view of the user's identity, activity, and progress. By centralizing these features in the Profile tab, we create a more intuitive and engaging experience that encourages users to track their fitness journey and celebrate their achievements.
+The enhanced Profile Tab will provide users with a comprehensive view of their fitness journey, combining social elements with detailed analytics and progress tracking. By centralizing these features in the Profile Tab, users will have a more cohesive experience that emphasizes personal growth and achievement.
+
+The implementation will be phased to ensure each component is properly developed and integrated, with a focus on performance and user experience throughout the process.

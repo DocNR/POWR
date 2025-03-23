@@ -5,7 +5,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, Platform, ActivityIndicator } from 'react-native';
 import { NAV_THEME } from '@/lib/theme/constants';
 import { useColorScheme } from '@/lib/theme/useColorScheme';
 import { PortalHost } from '@rn-primitives/portal';
@@ -16,24 +16,48 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SettingsDrawerProvider } from '@/lib/contexts/SettingsDrawerContext';
 import SettingsDrawer from '@/components/SettingsDrawer';
 import RelayInitializer from '@/components/RelayInitializer';
+import OfflineIndicator from '@/components/OfflineIndicator';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { useWorkoutStore } from '@/stores/workoutStore';
-// Import splash screens with fallback mechanism
+import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
+// Import splash screens with improved fallback mechanism
 let SplashComponent: React.ComponentType<{onFinish: () => void}>;
+let useVideoSplash = false;
 
-// First try to import the video splash screen
-try {
-  // Try to dynamically import the Video component 
-  const Video = require('expo-av').Video;
-  // If successful, import the VideoSplashScreen
-  SplashComponent = require('@/components/VideoSplashScreen').default;
-  console.log('Successfully imported VideoSplashScreen');
-} catch (e) {
-  console.warn('Failed to import VideoSplashScreen or expo-av:', e);
-  // If that fails, use the simple splash screen
+// Determine if we should use video splash based on platform
+if (Platform.OS === 'ios') {
+  // On iOS, try to use the video splash screen
+  try {
+    // Check if expo-av is available
+    require('expo-av');
+    useVideoSplash = true;
+    console.log('expo-av is available, will use VideoSplashScreen on iOS');
+  } catch (e) {
+    console.warn('expo-av not available on iOS:', e);
+    useVideoSplash = false;
+  }
+} else {
+  // On Android, directly use SimpleSplashScreen to avoid issues
+  console.log('Android platform detected, using SimpleSplashScreen');
+  useVideoSplash = false;
+}
+
+// Import the appropriate splash screen component
+if (useVideoSplash) {
+  try {
+    SplashComponent = require('@/components/VideoSplashScreen').default;
+    console.log('Successfully imported VideoSplashScreen');
+  } catch (e) {
+    console.warn('Failed to import VideoSplashScreen:', e);
+    useVideoSplash = false;
+  }
+}
+
+// If video splash is not available or failed to import, use simple splash
+if (!useVideoSplash) {
   try {
     SplashComponent = require('@/components/SimpleSplashScreen').default;
-    console.log('Using SimpleSplashScreen as fallback');
+    console.log('Using SimpleSplashScreen');
   } catch (simpleSplashError) {
     console.warn('Failed to import SimpleSplashScreen:', simpleSplashError);
     // Last resort fallback is an inline component
@@ -42,13 +66,27 @@ try {
         // Call onFinish after a short delay
         const timer = setTimeout(() => {
           onFinish();
-        }, 500);
+        }, 1000);
         return () => clearTimeout(timer);
       }, [onFinish]);
       
       return (
-        <View className="flex-1 items-center justify-center bg-black">
-          <Text className="text-white text-xl">Loading POWR...</Text>
+        <View style={{
+          flex: 1,
+          backgroundColor: '#000000',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <Text style={{
+            color: '#ffffff',
+            fontSize: 32,
+            fontWeight: 'bold',
+          }}>POWR</Text>
+          <ActivityIndicator 
+            size="large" 
+            color="#ffffff" 
+            style={{ marginTop: 30 }}
+          />
         </View>
       );
     };
@@ -85,16 +123,51 @@ export default function RootLayout() {
           }
           setAndroidNavigationBar(colorScheme);
           
-          // Initialize NDK
-          await init();
+          // Initialize connectivity service first
+          const connectivityService = ConnectivityService.getInstance();
+          const isOnline = await connectivityService.checkNetworkStatus();
+          console.log(`Network connectivity: ${isOnline ? 'online' : 'offline'}`);
           
-          // Load favorites from SQLite
-          await useWorkoutStore.getState().loadFavorites();
+          // Start database initialization and NDK initialization in parallel
+          const initPromises = [];
+          
+          // Initialize NDK with timeout
+          const ndkPromise = init().catch(error => {
+            console.error('NDK initialization error:', error);
+            // Continue even if NDK fails
+            return { offlineMode: true };
+          });
+          initPromises.push(ndkPromise);
+          
+          // Load favorites from SQLite (local operation)
+          const favoritesPromise = useWorkoutStore.getState().loadFavorites()
+            .catch(error => {
+              console.error('Error loading favorites:', error);
+              // Continue even if loading favorites fails
+            });
+          initPromises.push(favoritesPromise);
+          
+          // Wait for all initialization tasks with a timeout
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Initialization timeout')), 10000)
+          );
+          
+          try {
+            // Use Promise.allSettled to continue even if some promises fail
+            await Promise.race([
+              Promise.allSettled(initPromises),
+              timeoutPromise
+            ]);
+          } catch (error) {
+            console.warn('Some initialization tasks timed out, continuing anyway:', error);
+          }
           
           console.log('App initialization completed!');
           setIsInitialized(true);
         } catch (error) {
           console.error('Failed to initialize:', error);
+          // Still mark as initialized to prevent hanging
+          setIsInitialized(true);
         }
       })();
     }
@@ -155,6 +228,9 @@ export default function RootLayout() {
             <SettingsDrawerProvider>
               {/* Add RelayInitializer here - it loads relay data once NDK is available */}
               <RelayInitializer />
+              
+              {/* Add OfflineIndicator to show network status */}
+              <OfflineIndicator />
               
               <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
               <Stack screenOptions={{ headerShown: false }}>

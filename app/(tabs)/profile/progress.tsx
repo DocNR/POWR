@@ -1,13 +1,14 @@
 // app/(tabs)/profile/progress.tsx
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Switch, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
 import { ActivityIndicator } from 'react-native';
 import { useAnalytics } from '@/lib/hooks/useAnalytics';
-import { WorkoutStats, PersonalRecord } from '@/lib/services/AnalyticsService';
+import { WorkoutStats, PersonalRecord, analyticsService } from '@/lib/services/AnalyticsService';
+import { CloudIcon } from 'lucide-react-native';
 
 // Period selector component
 function PeriodSelector({ period, setPeriod }: { 
@@ -66,14 +67,19 @@ export default function ProgressScreen() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<WorkoutStats | null>(null);
   const [records, setRecords] = useState<PersonalRecord[]>([]);
+  const [includeNostr, setIncludeNostr] = useState(true);
   
-  // Load workout statistics when period changes
+  // Load workout statistics when period or includeNostr changes
   useEffect(() => {
     async function loadStats() {
       if (!isAuthenticated) return;
       
       try {
         setLoading(true);
+        
+        // Pass includeNostr flag to analytics service
+        analyticsService.setIncludeNostr(includeNostr);
+        
         const workoutStats = await analytics.getWorkoutStats(period);
         setStats(workoutStats);
         
@@ -88,7 +94,7 @@ export default function ProgressScreen() {
     }
     
     loadStats();
-  }, [isAuthenticated, period, analytics]);
+  }, [isAuthenticated, period, includeNostr, analytics]);
   
   // Workout frequency chart
   const WorkoutFrequencyChart = () => {
@@ -180,10 +186,36 @@ export default function ProgressScreen() {
   
   return (
     <ScrollView className="flex-1 p-4">
-      <PeriodSelector period={period} setPeriod={setPeriod} />
+      <View className="flex-row justify-between items-center px-4 mb-2">
+        <PeriodSelector period={period} setPeriod={setPeriod} />
+        
+        {isAuthenticated && (
+          <TouchableOpacity 
+            onPress={() => setIncludeNostr(!includeNostr)}
+            className="flex-row items-center"
+          >
+            <CloudIcon 
+              size={16} 
+              className={includeNostr ? "text-primary" : "text-muted-foreground"} 
+            />
+            <Text 
+              className={`ml-1 text-sm ${includeNostr ? "text-primary" : "text-muted-foreground"}`}
+            >
+              Nostr
+            </Text>
+            <Switch 
+              value={includeNostr} 
+              onValueChange={setIncludeNostr}
+              trackColor={{ false: '#767577', true: 'hsl(var(--purple))' }}
+              thumbColor={'#f4f3f4'}
+              className="ml-1"
+            />
+          </TouchableOpacity>
+        )}
+      </View>
       
       {/* Workout Summary */}
-      <Card className="mb-4">
+      <Card className={`mb-4 ${isAuthenticated && includeNostr ? "border-primary" : ""}`}>
         <CardContent className="p-4">
           <Text className="text-lg font-semibold mb-2">Workout Summary</Text>
           <Text className="mb-1">Workouts: {stats?.workoutCount || 0}</Text>
@@ -193,7 +225,7 @@ export default function ProgressScreen() {
       </Card>
       
       {/* Workout Frequency Chart */}
-      <Card className="mb-4">
+      <Card className={`mb-4 ${isAuthenticated && includeNostr ? "border-primary" : ""}`}>
         <CardContent className="p-4">
           <Text className="text-lg font-semibold mb-2">Workout Frequency</Text>
           <WorkoutFrequencyChart />
@@ -201,7 +233,7 @@ export default function ProgressScreen() {
       </Card>
       
       {/* Muscle Group Distribution */}
-      <Card className="mb-4">
+      <Card className={`mb-4 ${isAuthenticated && includeNostr ? "border-primary" : ""}`}>
         <CardContent className="p-4">
           <Text className="text-lg font-semibold mb-2">Exercise Distribution</Text>
           <ExerciseDistributionChart />
@@ -209,7 +241,7 @@ export default function ProgressScreen() {
       </Card>
       
       {/* Personal Records */}
-      <Card className="mb-4">
+      <Card className={`mb-4 ${isAuthenticated && includeNostr ? "border-primary" : ""}`}>
         <CardContent className="p-4">
           <Text className="text-lg font-semibold mb-2">Personal Records</Text>
           {records.length === 0 ? (
@@ -235,14 +267,17 @@ export default function ProgressScreen() {
         </CardContent>
       </Card>
       
-      {/* Note about future implementation */}
-      <Card className="mb-4">
-        <CardContent className="p-4">
-          <Text className="text-muted-foreground text-center">
-            Note: This is a placeholder UI. In the future, this tab will display real analytics based on your workout history.
-          </Text>
-        </CardContent>
-      </Card>
+      {/* Nostr integration note */}
+      {isAuthenticated && includeNostr && (
+        <Card className="mb-4 border-primary">
+          <CardContent className="p-4 flex-row items-center">
+            <CloudIcon size={16} className="text-primary mr-2" />
+            <Text className="text-muted-foreground flex-1">
+              Analytics include workouts from Nostr. Toggle the switch above to view only local workouts.
+            </Text>
+          </CardContent>
+        </Card>
+      )}
     </ScrollView>
   );
 }

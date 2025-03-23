@@ -4,15 +4,16 @@ import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { WorkoutHistoryService } from '@/lib/db/services/EnhancedWorkoutHistoryService';
+import { useWorkoutHistory } from '@/lib/hooks/useWorkoutHistory';
 import WorkoutDetailView from '@/components/workout/WorkoutDetailView';
 import { Workout } from '@/types/workout';
 import { useNDK, useNDKAuth, useNDKEvents } from '@/lib/hooks/useNDK';
 import { NostrWorkoutService } from '@/lib/db/services/NostrWorkoutService';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { Share } from 'react-native';
+import { withWorkoutOfflineState } from '@/components/workout/WorkoutOfflineState';
 
-export default function WorkoutDetailScreen() {
+function WorkoutDetailScreen() {
   // Add error state
   const [error, setError] = useState<string | null>(null);
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,8 +29,8 @@ export default function WorkoutDetailScreen() {
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   
-  // Initialize service
-  const workoutHistoryService = React.useMemo(() => new WorkoutHistoryService(db), [db]);
+  // Use the unified workout history hook
+  const { getWorkoutDetails, publishWorkoutToNostr, service: workoutHistoryService } = useWorkoutHistory();
   
   // Load workout details
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function WorkoutDetailScreen() {
       try {
         setIsLoading(true);
         setError(null); // Reset error state
-        console.log('Calling workoutHistoryService.getWorkoutDetails...');
+        console.log('Calling getWorkoutDetails...');
         
         // Add timeout to prevent infinite loading
         const timeoutPromise = new Promise<null>((_, reject) => {
@@ -53,7 +54,7 @@ export default function WorkoutDetailScreen() {
         
         // Race the workout details fetch against the timeout
         const workoutDetails = await Promise.race([
-          workoutHistoryService.getWorkoutDetails(id),
+          getWorkoutDetails(id),
           timeoutPromise
         ]) as Workout | null;
         
@@ -77,11 +78,11 @@ export default function WorkoutDetailScreen() {
     };
     
     loadWorkout();
-  }, [id, workoutHistoryService]);
+  }, [id, getWorkoutDetails]);
   
   // Handle publishing to Nostr
   const handlePublish = async () => {
-    if (!workout || !ndk || !isAuthenticated) {
+    if (!workout || !isAuthenticated) {
       alert('You need to be logged in to Nostr to publish workouts');
       return;
     }
@@ -89,32 +90,17 @@ export default function WorkoutDetailScreen() {
     try {
       setIsPublishing(true);
       
-      // Create Nostr event
-      const nostrEvent = NostrWorkoutService.createCompleteWorkoutEvent(workout);
+      // Use the hook's publishWorkoutToNostr method
+      const eventId = await publishWorkoutToNostr(workout.id);
       
-      // Publish event using the kind, content, and tags from the created event
-      const publishedEvent = await publishEvent(
-        nostrEvent.kind,
-        nostrEvent.content,
-        nostrEvent.tags
-      );
-      
-      if (publishedEvent?.id) {
-        // Update local database with Nostr event ID
-        const relayCount = ndk.pool?.relays.size || 0;
+      if (eventId) {
+        // Reload the workout to get the updated data
+        const updatedWorkout = await workoutHistoryService.getWorkoutDetails(workout.id);
+        if (updatedWorkout) {
+          setWorkout(updatedWorkout);
+        }
         
-        // Update workout in memory
-        setWorkout({
-          ...workout,
-          availability: {
-            ...workout.availability,
-            nostrEventId: publishedEvent.id,
-            nostrPublishedAt: Date.now(),
-            nostrRelayCount: relayCount
-          }
-        });
-        
-        console.log(`Workout published to Nostr with event ID: ${publishedEvent.id}`);
+        console.log(`Workout published to Nostr with event ID: ${eventId}`);
         alert('Workout published successfully!');
       }
     } catch (error) {
@@ -127,19 +113,39 @@ export default function WorkoutDetailScreen() {
   
   // Handle importing from Nostr to local
   const handleImport = async () => {
-    if (!workout) return;
+    if (!workout || !workout.availability?.nostrEventId) return;
     
     try {
       setIsImporting(true);
       
-      // Import workout to local database
-      // This would be implemented in a future version
-      console.log('Importing workout from Nostr to local database');
+      // Use WorkoutHistoryService to update the workout's source to include both local and nostr
+      const workoutId = workout.id;
       
-      // For now, just show a message
-      alert('Workout import functionality will be available in a future update');
+      // Get the workout sync status
+      const syncStatus = await workoutHistoryService.getWorkoutSyncStatus(workoutId);
+      
+      if (syncStatus && !syncStatus.isLocal) {
+        // Update the workout to be available locally as well
+        await workoutHistoryService.updateWorkoutNostrStatus(
+          workoutId,
+          workout.availability.nostrEventId || '',
+          syncStatus.relayCount || 1
+        );
+      }
+      
+      if (workoutId) {
+        // Reload the workout to get the updated data
+        const updatedWorkout = await workoutHistoryService.getWorkoutDetails(workoutId);
+        if (updatedWorkout) {
+          setWorkout(updatedWorkout);
+        }
+        
+        console.log(`Workout imported to local database with ID: ${workoutId}`);
+        alert('Workout imported successfully!');
+      }
     } catch (error) {
       console.error('Error importing workout:', error);
+      alert('Failed to import workout. Please try again.');
     } finally {
       setIsImporting(false);
     }
@@ -238,3 +244,6 @@ export default function WorkoutDetailScreen() {
     </View>
   );
 }
+
+// Export the component wrapped with the offline state HOC
+export default withWorkoutOfflineState(WorkoutDetailScreen);

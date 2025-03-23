@@ -9,6 +9,7 @@ import { useNDKCurrentUser, useNDK } from '@/lib/hooks/useNDK';
 import { useFollowingFeed } from '@/lib/hooks/useFeedHooks';
 import { ChevronUp, Bug } from 'lucide-react-native';
 import { AnyFeedEntry } from '@/types/feed';
+import { withOfflineState } from '@/components/social/SocialOfflineState';
 
 // Define the conversion function here to avoid import issues
 function convertToLegacyFeedItem(entry: AnyFeedEntry) {
@@ -21,7 +22,7 @@ function convertToLegacyFeedItem(entry: AnyFeedEntry) {
   };
 }
 
-export default function FollowingScreen() {
+function FollowingScreen() {
   const { isAuthenticated, currentUser } = useNDKCurrentUser();
   const { ndk } = useNDK();
   const { 
@@ -262,3 +263,6 @@ export default function FollowingScreen() {
     </View>
   );
 }
+
+// Export the component wrapped with the offline state HOC
+export default withOfflineState(FollowingScreen);

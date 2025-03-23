@@ -3,6 +3,7 @@ import type { WorkoutTemplate, TemplateType } from './templates';
 import type { BaseExercise } from './exercise';
 import type { SyncableContent } from './shared';
 import type { NostrEvent } from './nostr';
+import { generateId } from '@/utils/ids';
 
 /**
  * Core workout status types
@@ -200,13 +201,13 @@ export type WorkoutAction =
  */
 export function templateToWorkout(template: WorkoutTemplate): Workout {
   return {
-    id: crypto.randomUUID(),
+    id: generateId('nostr'),
     title: template.title,
     type: template.type,
     exercises: template.exercises.map(ex => ({
       ...ex.exercise,
       sets: Array(ex.targetSets).fill({
-        id: crypto.randomUUID(),
+        id: generateId('nostr'),
         type: 'normal',
         reps: ex.targetReps,
         isCompleted: false

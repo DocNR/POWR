@@ -35,7 +35,16 @@ Rationale:
 - Allows specialized UI for each view type
 - Analytics and progress tracking will be moved to the Profile tab for better user context
 
-### 2. Data Aggregation Strategy
+### 2. Authentication State Handling
+Show only local workouts when the user is not authenticated with Nostr, with clear messaging about the benefits of logging in.
+
+Rationale:
+- Provides immediate value without requiring authentication
+- Creates a clear upgrade path for users
+- Simplifies initial implementation
+- Follows progressive disclosure principles
+
+### 3. Data Aggregation Strategy
 Implement a dedicated analytics service that pre-processes workout data for visualization. This service will be shared with the Profile tab's analytics features.
 
 Rationale:
@@ -44,7 +53,7 @@ Rationale:
 - Separates presentation logic from data processing
 - Supports both history visualization and profile analytics
 
-### 3. History Visualization Approach
+### 4. History Visualization Approach
 Focus on providing clear, chronological views of workout history with rich filtering and search capabilities.
 
 Rationale:
@@ -53,7 +62,7 @@ Rationale:
 - Filtering by exercise, type, and other attributes enables targeted review
 - Integration with Profile tab analytics provides deeper insights when needed
 
-### 4. Nostr Integration Strategy
+### 5. Nostr Integration Strategy
 Implement a tiered approach to Nostr integration, starting with basic publishing capabilities in the MVP and expanding to full synchronization in future versions.
 
 Rationale:
@@ -62,7 +71,59 @@ Rationale:
 - Addresses core user needs first
 - Builds foundation for more advanced features
 
+### 6. Visual Indicators for Nostr Workouts
+Use the app's primary purple color as a visual indicator for Nostr-published workouts, applied to strategic UI elements.
+
+Rationale:
+- Creates clear visual distinction between local and Nostr workouts
+- Leverages existing brand color for positive association
+- Provides consistent visual language across the app
+- Enhances scannability of workout history
+
 ## Technical Design
+
+### Visual Design for Nostr Integration
+
+#### Workout Source Indicators
+We will use the following visual indicators to clearly communicate workout source:
+
+1. **Local-only workouts**: Standard card with gray icon
+2. **Nostr-published workouts**: 
+   - Primary purple border or accent
+   - Purple cloud icon
+   - Optional purple title text
+3. **Nostr-only workouts** (not stored locally):
+   - Full purple background with white text
+   - Cloud download icon for import action
+
+#### Authentication State UI
+When not authenticated:
+- Show only local workouts
+- Display a banner with login prompt
+- Use the NostrLoginSheet component for consistent login experience
+- Provide clear messaging about benefits of Nostr login
+
+```tsx
+// Example authentication state handling
+{!isAuthenticated ? (
+  <View className="p-4 mb-4 border border-primary rounded-md">
+    <Text className="text-foreground mb-2">
+      Login with Nostr to access more features:
+    </Text>
+    <Text className="text-muted-foreground mb-4">
+      • Sync workouts across devices
+      • Back up your workout history
+      • Share workouts with friends
+    </Text>
+    <Button 
+      variant="purple" 
+      onPress={() => setIsLoginSheetOpen(true)}
+    >
+      <Text className="text-white">Login with Nostr</Text>
+    </Button>
+  </View>
+) : null}
+```
 
 ### Core Components
 
@@ -334,12 +395,46 @@ Note: Analytics Dashboard and Progress Tracking features have been moved to the 
 - Full cross-device synchronization via Nostr
 - Collaborative workouts with friends
 
+### Advanced Nostr Integration (Future Epochs)
+- **Two-Way Synchronization**:
+  - Automatic sync of workouts between devices
+  - Conflict resolution for workouts modified on multiple devices
+  - Background sync with configurable frequency
+  - Offline queue for changes made without connectivity
+
+- **Relay Selection & Management**:
+  - User-configurable relay preferences
+  - Performance-based relay prioritization
+  - Automatic relay discovery
+  - Relay health monitoring and fallback strategies
+
+- **Enhanced Privacy Controls**:
+  - Granular sharing permissions for workout data
+  - Private/public workout toggles
+  - Selective metric sharing (e.g., share exercises but not weights)
+  - Time-limited sharing options
+
+- **Data Portability & Backup**:
+  - Automated backup to preferred relays
+  - Export/import of complete workout history
+  - Migration tools between apps supporting the same Nostr standards
+  - Archiving options for older workouts
+
+- **Social Features**:
+  - Workout sharing with specific users or groups
+  - Collaborative workout planning
+  - Training partner matching
+  - Coach/client relationship management
+  - Achievement sharing and celebrations
+
 ### Known Limitations
 - Performance may degrade with very large workout histories
 - Complex analytics require significant processing
 - Limited by available device storage
 - Some features require online connectivity
 - Nostr relay availability affects sync reliability
+- Initial implementation will have limited cross-device sync capabilities
+- Relay selection and management will be simplified in early versions
 
 ## Integration with Profile Tab
 

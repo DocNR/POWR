@@ -35,11 +35,11 @@ export default function CompleteWorkoutScreen() {
     return null;
   }
   
+  // Get the completeWorkout function from the store
+  const { completeWorkout } = useWorkoutStore();
+  
   // Handle complete with options
   const handleComplete = async (options: WorkoutCompletionOptions) => {
-    // Get a fresh reference to completeWorkout
-    const { completeWorkout } = useWorkoutStore.getState();
-    
     // Complete the workout with the provided options
     await completeWorkout(options);
   };

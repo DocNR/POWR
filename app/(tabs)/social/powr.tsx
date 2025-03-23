@@ -8,6 +8,7 @@ import POWRPackSection from '@/components/social/POWRPackSection';
 import { usePOWRFeed } from '@/lib/hooks/useFeedHooks';
 import { router } from 'expo-router';
 import { AnyFeedEntry } from '@/types/feed';
+import { withOfflineState } from '@/components/social/SocialOfflineState';
 
 // Define the conversion function here to avoid import issues
 function convertToLegacyFeedItem(entry: AnyFeedEntry) {
@@ -20,7 +21,7 @@ function convertToLegacyFeedItem(entry: AnyFeedEntry) {
   };
 }
 
-export default function PowerScreen() {
+function PowerScreen() {
   const { 
     entries, 
     newEntries, 
@@ -147,3 +148,6 @@ export default function PowerScreen() {
     </View>
   );
 }
+
+// Export the component wrapped with the offline state HOC
+export default withOfflineState(PowerScreen);

@@ -5,6 +5,56 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 25, 2025
+
+## Added
+- NDK Mobile Cache Integration Plan
+  - Created comprehensive cache management documentation
+  - Designed profile image caching system
+  - Planned publication queue service enhancements
+  - Outlined social feed caching improvements
+  - Documented workout history caching strategy
+  - Planned exercise library and template caching
+  - Designed contact list and following caching
+  - Outlined general media cache service
+- Enhanced offline functionality
+  - Added OfflineIndicator component for app-wide status display
+  - Created SocialOfflineState component for graceful social feed degradation
+  - Implemented WorkoutOfflineState component for workout screen fallbacks
+  - Enhanced ConnectivityService with better network detection
+  - Added offline mode detection in RelayInitializer
+  - Implemented graceful fallbacks for unavailable content
+  - Added cached data display when offline
+  - Created user-friendly offline messaging
+
+## Improved
+- Splash screen reliability
+  - Enhanced SimpleSplashScreen with better error handling
+  - Improved platform detection for video vs. static splash
+  - Added fallback mechanisms for failed image loading
+  - Enhanced logging for better debugging
+  - Fixed Android-specific issues with splash screen
+- Offline user experience
+  - Added visual indicators for offline state
+  - Implemented graceful degradation of network-dependent features
+  - Enhanced error handling for network failures
+  - Added automatic retry mechanisms when connectivity is restored
+  - Improved caching of previously viewed content
+  - Enhanced state persistence during offline periods
+  - Added connectivity-aware component rendering
+
+## Fixed
+- Text rendering in React Native components
+  - Fixed "Text strings must be rendered within a <Text> component" error
+  - Improved card component to properly handle text children
+  - Enhanced error handling for text rendering issues
+  - Added better component composition for text containers
+- Network-related crashes
+  - Fixed uncaught promise rejections in network requests
+  - Added proper error boundaries for network-dependent components
+  - Implemented timeout handling for stalled requests
+  - Enhanced error messaging for network failures
+
 # Changelog - March 24, 2025
 
 ## Added

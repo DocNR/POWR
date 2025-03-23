@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -127,6 +127,24 @@ class Schema {
       throw error;
     }
   }
+  
+  async migrate_v11(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Running migration v11 - Adding Nostr fields to workouts');
+      
+      // Import the migration functions
+      const { addNostrFieldsToWorkouts, createNostrWorkoutsTable } = await import('./migrations/add-nostr-fields-to-workouts');
+      
+      // Run the migrations
+      await addNostrFieldsToWorkouts(db);
+      await createNostrWorkoutsTable(db);
+      
+      console.log('[Schema] Migration v11 completed successfully');
+    } catch (error) {
+      console.error('[Schema] Error in migration v11:', error);
+      throw error;
+    }
+  }
 
   async createTables(db: SQLiteDatabase): Promise<void> {
     try {
@@ -184,6 +202,11 @@ class Schema {
             await this.migrate_v10(db);
           }
           
+          if (currentVersion < 11) {
+            console.log(`[Schema] Running migration from version ${currentVersion} to 11`);
+            await this.migrate_v11(db);
+          }
+          
           // Update schema version at the end of the transaction
           await this.updateSchemaVersion(db);
         });
@@ -215,6 +238,11 @@ class Schema {
         if (currentVersion < 10) {
           console.log(`[Schema] Running migration from version ${currentVersion} to 10`);
           await this.migrate_v10(db);
+        }
+        
+        if (currentVersion < 11) {
+          console.log(`[Schema] Running migration from version ${currentVersion} to 11`);
+          await this.migrate_v11(db);
         }
         
         // Update schema version
@@ -616,4 +644,3 @@ class Schema {
 }
 
 export const schema = new Schema();
-
