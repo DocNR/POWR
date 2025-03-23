@@ -5,6 +5,30 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 23, 2025
+
+## Fixed
+- History tab navigation issues
+  - Fixed nested screens warning by renaming "history" screen to "workouts" in history tab
+  - Updated initialRouteName to match the new screen name
+  - Improved navigation between history tab and workout detail screen
+- Workout detail screen improvements
+  - Added timeout to prevent infinite loading state
+  - Enhanced error handling with proper error state display
+  - Added "Go Back" button for error recovery
+  - Fixed TypeScript errors with proper imports
+- Enhanced workout history service
+  - Added detailed logging for exercise loading process
+  - Added checks to verify if exercises exist in the database
+  - Fixed TypeScript errors in exercise existence checks
+  - Improved error handling throughout the service
+
+## Improved
+- Enhanced debugging capabilities
+  - Added comprehensive logging in EnhancedWorkoutHistoryService
+  - Improved error state handling in workout detail screen
+  - Better error messages for troubleshooting
+
 # Changelog - March 22, 2025
 
 ## Added

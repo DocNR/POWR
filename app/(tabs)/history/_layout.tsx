@@ -17,7 +17,7 @@ export default function HistoryLayout() {
       <Header useLogo={true} showNotifications={true} />
 
       <Tab.Navigator
-        initialRouteName="history"
+        initialRouteName="workouts"
         screenOptions={{
           tabBarActiveTintColor: theme.colors.tabIndicator,
           tabBarInactiveTintColor: theme.colors.tabInactive,
@@ -41,7 +41,7 @@ export default function HistoryLayout() {
         }}
       >
         <Tab.Screen
-          name="history"
+          name="workouts"  // Changed from "history"
           component={HistoryScreen}
           options={{ title: 'History' }}
         />
