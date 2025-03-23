@@ -31,6 +31,11 @@ type CreationStep = 'type' | 'info' | 'exercises' | 'config' | 'review';
 // Purple color used throughout the app
 const purpleColor = 'hsl(261, 90%, 66%)';
 
+// Enhanced template exercise display that includes the original exercise object
+interface EnhancedTemplateExerciseDisplay extends TemplateExerciseDisplay {
+  exercise: ExerciseDisplay;
+}
+
 // Step 0: Workout Type Selection
 interface WorkoutTypeStepProps {
   onSelectType: (type: TemplateType) => void;
@@ -234,6 +239,7 @@ function ExerciseSelectionStep({
   };
   
   const handleContinue = () => {
+    // Get the full exercise objects with their original IDs
     const selected = exercises.filter(e => selectedIds.includes(e.id));
     onExercisesSelected(selected);
   };
@@ -322,7 +328,7 @@ function ExerciseSelectionStep({
 // Step 3: Exercise Configuration
 interface ExerciseConfigStepProps {
   exercises: ExerciseDisplay[];
-  config: TemplateExerciseDisplay[];
+  config: EnhancedTemplateExerciseDisplay[];
   onUpdateConfig: (index: number, sets: number, reps: number) => void;
   onNext: () => void;
   onBack: () => void;
@@ -397,7 +403,7 @@ interface ReviewStepProps {
   description: string;
   category: TemplateCategory;
   type: TemplateType;
-  exercises: Template['exercises'];
+  exercises: EnhancedTemplateExerciseDisplay[];
   onSubmit: () => void;
   onBack: () => void;
 }
@@ -469,7 +475,7 @@ export function NewTemplateSheet({ isOpen, onClose, onSubmit }: NewTemplateSheet
   const [workoutType, setWorkoutType] = useState<TemplateType>('strength');
   const [exercises, setExercises] = useState<ExerciseDisplay[]>([]);
   const [selectedExercises, setSelectedExercises] = useState<ExerciseDisplay[]>([]);
-  const [configuredExercises, setConfiguredExercises] = useState<Template['exercises']>([]);
+  const [configuredExercises, setConfiguredExercises] = useState<EnhancedTemplateExerciseDisplay[]>([]);
   const { isDarkColorScheme } = useColorScheme();
 
   // Template info
@@ -544,9 +550,10 @@ export function NewTemplateSheet({ isOpen, onClose, onSubmit }: NewTemplateSheet
   const handleSelectExercises = (selected: ExerciseDisplay[]) => {
     setSelectedExercises(selected);
     
-    // Pre-populate configured exercises
+    // Pre-populate configured exercises with full exercise objects
     const initialConfig = selected.map(exercise => ({
       title: exercise.title,
+      exercise: exercise, // Store the complete exercise object with its original ID
       targetSets: 0,
       targetReps: 0
     }));

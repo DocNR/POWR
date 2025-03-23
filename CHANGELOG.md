@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optimized rendering for long lists with virtualized FlatList
   - Added scrollToTop functionality for new content
 
+## Fixed
+- Template creation issue: preserved original exercise IDs when creating templates to ensure proper exercise references
+  - Modified NewTemplateSheet to store full exercise objects
+  - Updated handleAddTemplate to use original exercise IDs
+  - Fixed type definitions to support enhanced template exercises
+
 # Changelog - March 19, 2025
 
 ## Added

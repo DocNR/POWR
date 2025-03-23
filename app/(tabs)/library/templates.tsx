@@ -15,8 +15,22 @@ import { Button } from '@/components/ui/button';
 import { 
   Template, 
   TemplateCategory,
+  TemplateExerciseConfig,
+  TemplateExerciseDisplay,
   toWorkoutTemplate 
 } from '@/types/templates';
+import { generateId } from '@/utils/ids';
+import { ExerciseDisplay } from '@/types/exercise';
+
+// Enhanced template exercise display that includes the original exercise object
+interface EnhancedTemplateExerciseDisplay {
+  title: string;
+  targetSets: number;
+  targetReps: number;
+  equipment?: string;
+  notes?: string;
+  exercise: ExerciseDisplay;
+}
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { useTemplates } from '@/lib/hooks/useTemplates';
 import { useIconColor } from '@/lib/theme/iconUtils';
@@ -165,8 +179,28 @@ export default function TemplatesScreen() {
   };
 
   const handleAddTemplate = (template: Template) => {
-    // Convert UI Template to WorkoutTemplate
-    const workoutTemplate = toWorkoutTemplate(template);
+    // The template exercises should already have the exercise property from NewTemplateSheet
+    // We know the exercises have the exercise property because we modified NewTemplateSheet
+    const enhancedExercises = template.exercises as unknown as EnhancedTemplateExerciseDisplay[];
+    
+    // Convert UI Template to WorkoutTemplate, but preserve exercise IDs
+    const baseWorkoutTemplate = toWorkoutTemplate(template);
+    
+    // Modify the exercises to use the original exercise objects with their IDs
+    const workoutTemplate = {
+      ...baseWorkoutTemplate,
+      exercises: enhancedExercises.map(ex => {
+        // Create a proper TemplateExerciseConfig object
+        const config: TemplateExerciseConfig = {
+          id: generateId(), // ID for the template_exercise relationship
+          exercise: ex.exercise, // Use the original exercise object with its ID
+          targetSets: ex.targetSets,
+          targetReps: ex.targetReps,
+          notes: ex.notes
+        };
+        return config;
+      })
+    };
     
     // Create the template
     createTemplate(workoutTemplate);
