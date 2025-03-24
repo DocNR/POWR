@@ -1,14 +1,210 @@
 // lib/social/SocialFeedService.ts
-import NDK, { NDKEvent, NDKFilter, NDKSubscription } from '@nostr-dev-kit/ndk-mobile';
+import NDK, { NDKEvent, NDKFilter, NDKSubscription, NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk-mobile';
 import { POWR_EVENT_KINDS } from '@/types/nostr-workout';
 import { NostrWorkoutService } from '@/lib/db/services/NostrWorkoutService';
 import { Workout } from '@/types/workout';
+import { SQLiteDatabase } from 'expo-sqlite';
+import { getSocialFeedCache } from '@/lib/db/services/SocialFeedCache';
+import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
+import { POWR_PUBKEY_HEX } from '@/lib/hooks/useFeedHooks';
 
 export class SocialFeedService {
   private ndk: NDK;
+  private socialFeedCache: ReturnType<typeof getSocialFeedCache> | null = null;
+  private db: SQLiteDatabase | null = null;
 
-  constructor(ndk: NDK) {
+  constructor(ndk: NDK, db?: SQLiteDatabase) {
     this.ndk = ndk;
+    
+    if (db) {
+      this.db = db;
+      try {
+        this.socialFeedCache = getSocialFeedCache(db);
+        this.socialFeedCache.setNDK(ndk);
+      } catch (error) {
+        console.error('[SocialFeedService] Error initializing SocialFeedCache:', error);
+        // Continue without cache - we'll still be able to fetch from network
+        this.socialFeedCache = null;
+      }
+    }
+  }
+  
+  /**
+   * Get cached events for a feed
+   * @param feedType Type of feed (following, powr, global)
+   * @param limit Maximum number of events to return
+   * @param since Timestamp to fetch events since (inclusive)
+   * @param until Timestamp to fetch events until (inclusive)
+   * @returns Array of cached events
+   */
+  async getCachedEvents(
+    feedType: string,
+    limit: number = 20,
+    since?: number,
+    until?: number
+  ): Promise<NDKEvent[]> {
+    if (!this.socialFeedCache) {
+      return [];
+    }
+    
+    try {
+      return await this.socialFeedCache.getCachedEvents(feedType, limit, since, until);
+    } catch (error) {
+      console.error('[SocialFeedService] Error retrieving cached events:', error);
+      // Return empty array on error
+      return [];
+    }
+  }
+
+  /**
+   * Build filters for a feed subscription
+   * @param options Filter options
+   * @returns NDK filter object or array of filters
+   */
+  buildFilters(options: {
+    feedType: 'following' | 'powr' | 'global' | 'profile';
+    since?: number;
+    until?: number;
+    limit?: number;
+    authors?: string[];
+    kinds?: number[];
+  }): NDKFilter | NDKFilter[] {
+    const { feedType, since, until, limit, authors, kinds } = options;
+    
+    // Default to events in the last 24 hours if no since provided
+    const defaultSince = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+    
+    // Fitness-related tags for filtering
+    const tagFilter = [
+      'workout', 'fitness', 'powr', '31days', 
+      'crossfit', 'wod', 'gym', 'strength', 
+      'cardio', 'training', 'exercise'
+    ];
+    
+    // Determine which kinds to include
+    const workoutKinds: number[] = [];
+    const socialKinds: number[] = [];
+    
+    // Add workout-specific kinds (1301, 33401, 33402)
+    if (!kinds || kinds.some(k => [1301, 33401, 33402].includes(k))) {
+      [1301, 33401, 33402]
+        .filter(k => !kinds || kinds.includes(k))
+        .forEach(k => workoutKinds.push(k));
+    }
+    
+    // Add social post kind (1) and article kind (30023)
+    if (!kinds || kinds.includes(1)) {
+      socialKinds.push(1);
+    }
+    
+    if (!kinds || kinds.includes(30023)) {
+      socialKinds.push(30023);
+    }
+    
+    // Base filter properties
+    const baseFilter: Record<string, any> = {
+      since: since || defaultSince,
+      limit: limit || 30,
+    };
+    
+    if (until) {
+      baseFilter.until = until;
+    }
+    
+    // Special handling for different feed types
+    if (feedType === 'profile') {
+      // Profile feed: Show all of a user's posts
+      if (!Array.isArray(authors) || authors.length === 0) {
+        console.error('[SocialFeedService] Profile feed requires authors');
+        return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
+      }
+      
+      // For profile feed, we create two filters:
+      // 1. All workout-related kinds from the user
+      // 2. Social posts and articles from the user (with or without tags)
+      return [
+        // Workout-related kinds (no tag filtering)
+        {
+          ...baseFilter,
+          kinds: workoutKinds,
+          authors: authors,
+        },
+        // Social posts and articles (no tag filtering for profile)
+        {
+          ...baseFilter,
+          kinds: socialKinds,
+          authors: authors,
+        }
+      ];
+    } else if (feedType === 'powr') {
+      // POWR feed: Show all content from POWR account(s)
+      if (!Array.isArray(authors) || authors.length === 0) {
+        console.error('[SocialFeedService] POWR feed requires authors');
+        return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
+      }
+      
+      // For POWR feed, we don't apply tag filtering
+      return {
+        ...baseFilter,
+        kinds: [...workoutKinds, ...socialKinds],
+        authors: authors,
+      };
+    } else if (feedType === 'following') {
+      // Following feed: Show content from followed users
+      if (!Array.isArray(authors) || authors.length === 0) {
+        console.error('[SocialFeedService] Following feed requires authors');
+        return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
+      }
+      
+      // For following feed, we create two filters:
+      // 1. All workout-related kinds from followed users
+      // 2. Social posts and articles from followed users with fitness tags
+      
+      // Log the authors to help with debugging
+      console.log(`[SocialFeedService] Following feed with ${authors.length} authors:`, 
+        authors.length > 5 ? authors.slice(0, 5).join(', ') + '...' : authors.join(', '));
+      
+      // Always include POWR account in following feed
+      let followingAuthors = [...authors];
+      if (POWR_PUBKEY_HEX && !followingAuthors.includes(POWR_PUBKEY_HEX)) {
+        followingAuthors.push(POWR_PUBKEY_HEX);
+        console.log('[SocialFeedService] Added POWR account to following feed authors');
+      }
+      
+      return [
+        // Workout-related kinds (no tag filtering)
+        {
+          ...baseFilter,
+          kinds: workoutKinds,
+          authors: followingAuthors,
+        },
+        // Social posts and articles (with tag filtering)
+        {
+          ...baseFilter,
+          kinds: socialKinds,
+          authors: followingAuthors,
+          '#t': tagFilter,
+        }
+      ];
+    } else {
+      // Global feed: Show content from anyone
+      // For global feed, we create two filters:
+      // 1. All workout-related kinds from anyone
+      // 2. Social posts and articles from anyone with fitness tags
+      return [
+        // Workout-related kinds (no tag filtering)
+        {
+          ...baseFilter,
+          kinds: workoutKinds,
+        },
+        // Social posts and articles (with tag filtering)
+        {
+          ...baseFilter,
+          kinds: socialKinds,
+          '#t': tagFilter,
+        }
+      ];
+    }
   }
 
   /**
@@ -16,134 +212,57 @@ export class SocialFeedService {
    * @param options Subscription options
    * @returns Subscription object with unsubscribe method
    */
-	subscribeFeed(options: {
-		feedType: 'following' | 'powr' | 'global';
-		since?: number;
-		until?: number;
-		limit?: number;
-		authors?: string[];
-		kinds?: number[];
-		onEvent: (event: NDKEvent) => void;
-		onEose?: () => void;
-	}): Promise<{ unsubscribe: () => void }> {
-		const { feedType, since, until, limit, authors, kinds, onEvent, onEose } = options;
+  subscribeFeed(options: {
+    feedType: 'following' | 'powr' | 'global' | 'profile';
+    since?: number;
+    until?: number;
+    limit?: number;
+    authors?: string[];
+    kinds?: number[];
+    onEvent: (event: NDKEvent) => void;
+    onEose?: () => void;
+  }): Promise<{ unsubscribe: () => void }> {
+    const { feedType, onEvent, onEose } = options;
+    
+    // Build the filter using our buildFilters method
+    const consolidatedFilter = this.buildFilters(options);
+    
+    // Log the consolidated filter
+    console.log(`[SocialFeedService] Subscribing to ${feedType} feed with filter:`, consolidatedFilter);
 		
-		// Default to events in the last 24 hours if no since provided
-		const defaultSince = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+		// Create a single subscription with the consolidated filter
+		const subscription = this.ndk.subscribe(consolidatedFilter, {
+			closeOnEose: false // Keep subscription open for real-time updates
+		});
 		
-		// Create filters based on feedType
-		const filters: NDKFilter[] = [];
-		
-		// Workout content filter
-		if (!kinds || kinds.some(k => [1301, 33401, 33402].includes(k))) {
-			const workoutFilter: NDKFilter = {
-				kinds: [1301, 33401, 33402].filter(k => !kinds || kinds.includes(k)) as any[],
-				since: since || defaultSince,
-				limit: limit || 20,
-			};
-			
-			if (until) {
-				workoutFilter.until = until;
-			}
-			
-			if (feedType === 'following' || feedType === 'powr') {
-				if (Array.isArray(authors) && authors.length > 0) {
-					workoutFilter.authors = authors;
+		// Set up event handler
+		subscription.on('event', (event: NDKEvent) => {
+			// Cache the event if we have a cache
+			if (this.socialFeedCache) {
+				try {
+					this.socialFeedCache.cacheEvent(event, feedType)
+						.catch(err => console.error('[SocialFeedService] Error caching event:', err));
+				} catch (error) {
+					console.error('[SocialFeedService] Exception while caching event:', error);
+					// Continue even if caching fails - we'll still pass the event to the callback
 				}
 			}
 			
-			filters.push(workoutFilter);
-		}
+			// Pass the event to the callback
+			onEvent(event);
+		});
 		
-		// Social post filter
-		if (!kinds || kinds.includes(1)) {
-			const socialPostFilter: NDKFilter = {
-				kinds: [1] as any[],
-				since: since || defaultSince,
-				limit: limit || 20,
-			};
-			
-			if (until) {
-				socialPostFilter.until = until;
-			}
-			
-			if (feedType === 'following' || feedType === 'powr') {
-				if (Array.isArray(authors) && authors.length > 0) {
-					socialPostFilter.authors = authors;
-				}
-			} else if (feedType === 'global') {
-				// For global feed, add some relevant tags for filtering
-				socialPostFilter['#t'] = ['workout', 'fitness', 'powr'];
-			}
-			
-			filters.push(socialPostFilter);
-		}
-		
-		// Article filter
-		if (!kinds || kinds.includes(30023)) {
-			const articleFilter: NDKFilter = {
-				kinds: [30023] as any[],
-				since: since || defaultSince,
-				limit: limit || 20,
-			};
-			
-			if (until) {
-				articleFilter.until = until;
-			}
-			
-			if (feedType === 'following' || feedType === 'powr') {
-				if (Array.isArray(authors) && authors.length > 0) {
-					articleFilter.authors = authors;
-				}
-			}
-			
-			filters.push(articleFilter);
-		}
-		
-		// Special case for POWR feed - also include draft articles
-		if (feedType === 'powr' && (!kinds || kinds.includes(30024))) {
-			const draftFilter: NDKFilter = {
-				kinds: [30024] as any[],
-				since: since || defaultSince,
-				limit: limit || 20,
-			};
-			
-			if (until) {
-				draftFilter.until = until;
-			}
-			
-			if (Array.isArray(authors) && authors.length > 0) {
-				draftFilter.authors = authors;
-			}
-			
-			filters.push(draftFilter);
-		}
-		
-		// Create subscriptions
-		const subscriptions: NDKSubscription[] = [];
-		
-		// Create a subscription for each filter
-		for (const filter of filters) {
-			console.log(`Subscribing with filter:`, filter);
-			const subscription = this.ndk.subscribe(filter);
-			
-			subscription.on('event', (event: NDKEvent) => {
-				onEvent(event);
-			});
-			
-			subscription.on('eose', () => {
-				if (onEose) onEose();
-			});
-			
-			subscriptions.push(subscription);
-		}
+		// Set up EOSE handler
+		subscription.on('eose', () => {
+			console.log(`[SocialFeedService] Received EOSE for ${feedType} feed`);
+			if (onEose) onEose();
+		});
 		
 		// Return a Promise with the unsubscribe object
 		return Promise.resolve({
 			unsubscribe: () => {
-				subscriptions.forEach(sub => {
-					sub.stop();
-				});
+				console.log(`[SocialFeedService] Unsubscribing from ${feedType} feed`);
+				subscription.stop();
 			}
 		});
 	}
@@ -226,6 +345,20 @@ export class SocialFeedService {
    * @returns The referenced event or null
    */
   async getReferencedContent(eventId: string, kind: number): Promise<NDKEvent | null> {
+    // First check if we have it in the cache
+    if (this.socialFeedCache) {
+      try {
+        const cachedEvent = await this.socialFeedCache.getCachedEvent(eventId);
+        if (cachedEvent) {
+          return cachedEvent;
+        }
+      } catch (error) {
+        console.error('[SocialFeedService] Error retrieving cached event:', error);
+        // Continue to network fetch if cache fails
+      }
+    }
+    
+    // If not in cache or no cache available, try to fetch from network
     // Handle addressable content (a-tag references)
     if (eventId.includes(':')) {
       const parts = eventId.split(':');
@@ -236,19 +369,57 @@ export class SocialFeedService {
           authors: [parts[1]],
           "#d": [parts[2]],
         };
-        const events = await this.ndk.fetchEvents(filter);
-        return events.size > 0 ? Array.from(events)[0] : null;
+        
+        const events = await this.ndk.fetchEvents(filter, {
+          cacheUsage: NDKSubscriptionCacheUsage.CACHE_FIRST
+        });
+        
+        if (events.size > 0) {
+          const event = Array.from(events)[0];
+          
+          // Cache the event if we have a cache
+          if (this.socialFeedCache) {
+            try {
+              await this.socialFeedCache.cacheEvent(event, 'referenced');
+            } catch (error) {
+              console.error('[SocialFeedService] Error caching referenced event:', error);
+              // Continue even if caching fails - we can still return the event
+            }
+          }
+          
+          return event;
+        }
+        return null;
       }
     }
     
     // Standard event reference (direct ID)
     const filter: NDKFilter = {
-      ids: [eventId],
-      kinds: [kind],
+      ids: [eventId] as string[],
+      kinds: [kind] as number[],
     };
     
-    const events = await this.ndk.fetchEvents(filter);
-    return events.size > 0 ? Array.from(events)[0] : null;
+    const events = await this.ndk.fetchEvents(filter, {
+      cacheUsage: NDKSubscriptionCacheUsage.CACHE_FIRST
+    });
+    
+    if (events.size > 0) {
+      const event = Array.from(events)[0];
+      
+      // Cache the event if we have a cache
+      if (this.socialFeedCache) {
+        try {
+          await this.socialFeedCache.cacheEvent(event, 'referenced');
+        } catch (error) {
+          console.error('[SocialFeedService] Error caching referenced event:', error);
+          // Continue even if caching fails - we can still return the event
+        }
+      }
+      
+      return event;
+    }
+    
+    return null;
   }
   
   /**
@@ -304,7 +475,25 @@ export class SocialFeedService {
     event.created_at = eventData.created_at;
     
     await event.sign();
-    await event.publish();
+    
+    // Check if we're online before publishing
+    const isOnline = await ConnectivityService.getInstance().checkNetworkStatus();
+    
+    if (isOnline) {
+      await event.publish();
+    } else {
+      console.log('[SocialFeedService] Offline, event will be published when online');
+    }
+    
+    // Cache the event if we have a cache
+    if (this.socialFeedCache) {
+      try {
+        await this.socialFeedCache.cacheEvent(event, 'workout');
+      } catch (error) {
+        console.error('[SocialFeedService] Error caching workout event:', error);
+        // Continue even if caching fails - the event was still published
+      }
+    }
     
     // Create social share if requested
     if (options.shareAsSocialPost && options.socialText) {
@@ -334,17 +523,17 @@ export class SocialFeedService {
     await event.sign();
     await event.publish();
     return event;
-}
+  }
   
-/**
- * Get POWR team pubkeys - to be replaced with actual pubkeys
- * @returns Array of POWR team pubkeys
- */
-private getPOWRTeamPubkeys(): string[] {
-  // Replace with actual POWR team pubkeys
-  return [
-    // TODO: Add actual POWR team pubkeys
-    '55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21',
-  ];
-}
+  /**
+   * Get POWR team pubkeys - to be replaced with actual pubkeys
+   * @returns Array of POWR team pubkeys
+   */
+  private getPOWRTeamPubkeys(): string[] {
+    // Replace with actual POWR team pubkeys
+    return [
+      // TODO: Add actual POWR team pubkeys
+      '55127fc9e1c03c6b459a3bab72fdb99def1644c5f239bdd09f3e5fb401ed9b21',
+    ];
+  }
 }
