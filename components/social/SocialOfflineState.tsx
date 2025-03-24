@@ -60,18 +60,53 @@ export default function SocialOfflineState() {
 }
 
 /**
+ * A component to display an offline banner at the top of social screens
+ */
+export function OfflineBanner() {
+  const { isOnline, checkConnection } = useConnectivity();
+  
+  if (isOnline) return null;
+  
+  return (
+    <View className="bg-muted p-2 border-b border-gray-300">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center">
+          <WifiOffIcon size={16} color="#666" style={{ marginRight: 8 }} />
+          <Text style={{ color: '#666', fontSize: 14 }}>
+            You're offline. Viewing cached content.
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={checkConnection}
+          style={{
+            backgroundColor: '#007bff',
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 4,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 12 }}>
+            Check
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+/**
  * A higher-order component that wraps social screens to handle offline state
+ * Now shows an offline banner instead of replacing the entire component
  */
 export function withOfflineState<P extends object>(
   Component: React.ComponentType<P>
 ): React.FC<P> {
   return (props: P) => {
-    const { isOnline } = useConnectivity();
-    
-    if (!isOnline) {
-      return <SocialOfflineState />;
-    }
-    
-    return <Component {...props} />;
+    return (
+      <View style={{ flex: 1 }}>
+        <OfflineBanner />
+        <Component {...props} />
+      </View>
+    );
   };
 }

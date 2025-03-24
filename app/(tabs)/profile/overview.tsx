@@ -9,8 +9,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
 import EnhancedSocialPost from '@/components/social/EnhancedSocialPost';
 import EmptyFeed from '@/components/social/EmptyFeed';
-import { useUserActivityFeed } from '@/lib/hooks/useFeedHooks';
-import { AnyFeedEntry } from '@/types/feed';
+import { useSocialFeed } from '@/lib/hooks/useSocialFeed';
+import { 
+  AnyFeedEntry, 
+  WorkoutFeedEntry, 
+  ExerciseFeedEntry, 
+  TemplateFeedEntry, 
+  SocialFeedEntry, 
+  ArticleFeedEntry 
+} from '@/types/feed';
 import UserAvatar from '@/components/UserAvatar';
 import { useRouter } from 'expo-router';
 import { QrCode, Mail, Copy } from 'lucide-react-native';
@@ -35,12 +42,79 @@ export default function OverviewScreen() {
   const theme = useTheme() as CustomTheme;
   const { currentUser, isAuthenticated } = useNDKCurrentUser();
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
+  // Use useSocialFeed with the profile feed type
   const { 
-    entries, 
+    feedItems, 
     loading, 
-    resetFeed,
-    hasContent
-  } = useUserActivityFeed();
+    refresh,
+    isOffline
+  } = useSocialFeed({
+    feedType: 'profile',
+    authors: currentUser?.pubkey ? [currentUser.pubkey] : undefined,
+    limit: 30
+  });
+  
+  // Convert to the format expected by the component
+  const entries = React.useMemo(() => {
+    return feedItems.map(item => {
+      // Create a properly typed AnyFeedEntry based on the item type
+      const baseEntry = {
+        id: item.id,
+        eventId: item.id,
+        event: item.originalEvent,
+        timestamp: item.createdAt * 1000,
+      };
+      
+      // Add type-specific properties
+      switch (item.type) {
+        case 'workout':
+          return {
+            ...baseEntry,
+            type: 'workout',
+            content: item.parsedContent
+          } as WorkoutFeedEntry;
+        
+        case 'exercise':
+          return {
+            ...baseEntry,
+            type: 'exercise',
+            content: item.parsedContent
+          } as ExerciseFeedEntry;
+          
+        case 'template':
+          return {
+            ...baseEntry,
+            type: 'template',
+            content: item.parsedContent
+          } as TemplateFeedEntry;
+          
+        case 'social':
+          return {
+            ...baseEntry,
+            type: 'social',
+            content: item.parsedContent
+          } as SocialFeedEntry;
+          
+        case 'article':
+          return {
+            ...baseEntry,
+            type: 'article',
+            content: item.parsedContent
+          } as ArticleFeedEntry;
+          
+        default:
+          // Fallback to social type if unknown
+          return {
+            ...baseEntry,
+            type: 'social',
+            content: item.parsedContent
+          } as SocialFeedEntry;
+      }
+    });
+  }, [feedItems]);
+  
+  const resetFeed = refresh;
+  const hasContent = entries.length > 0;
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   

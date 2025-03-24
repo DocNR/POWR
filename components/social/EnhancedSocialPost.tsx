@@ -2,9 +2,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, TouchableOpacity, Image, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Heart, MessageCircle, Repeat, Share, User, Clock, Dumbbell, CheckCircle, FileText } from 'lucide-react-native';
+import { Heart, MessageCircle, Repeat, Share, Clock, Dumbbell, CheckCircle, FileText, User } from 'lucide-react-native';
+import UserAvatar from '@/components/UserAvatar';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useNDK } from '@/lib/hooks/useNDK';
 import { FeedItem } from '@/lib/hooks/useSocialFeed';
@@ -74,7 +74,6 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
   const { ndk } = useNDK();
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
-  const [imageError, setImageError] = useState(false);
   const { profile } = useProfile(item.originalEvent.pubkey);
   
   // Get likes count
@@ -121,11 +120,6 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
     }
   };
 
-  // Handle image error
-  const handleImageError = () => {
-    setImageError(true);
-  };
-
   // Render based on feed item type
   const renderContent = () => {
     switch (item.type) {
@@ -138,7 +132,24 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
       case 'social':
         return <SocialContent post={item.parsedContent as ParsedSocialPost} />;
       case 'article':
-        return <ArticleContent article={item.parsedContent as ParsedLongformContent} />;
+        // Only show ArticleContent for published articles (kind 30023)
+        // Never show draft articles (kind 30024)
+        if (item.originalEvent.kind === 30023) {
+          return <ArticleContent article={item.parsedContent as ParsedLongformContent} />;
+        } else {
+          // For any other kinds, render as a social post
+          // Create a proper ParsedSocialPost object with all required fields
+          return <SocialContent post={{
+            id: item.id,
+            content: (item.parsedContent as ParsedLongformContent).title || 
+                    (item.parsedContent as ParsedLongformContent).content || 
+                    'Post content',
+            author: item.originalEvent.pubkey || '',
+            tags: [],
+            createdAt: item.createdAt,
+            quotedContent: undefined
+          }} />;
+        }
       default:
         return null;
     }
@@ -153,18 +164,12 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
     <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
       <View className="py-3 px-4">
         <View className="flex-row">
-          <Avatar className="h-10 w-10 mr-3" alt={profile?.name || 'User'}>
-            {profile?.image && !imageError ? (
-              <AvatarImage 
-                source={{ uri: profile.image }} 
-                onError={handleImageError}
-              />
-            ) : (
-              <AvatarFallback>
-                <User size={18} />
-              </AvatarFallback>
-            )}
-          </Avatar>
+          <UserAvatar 
+            uri={profile?.image} 
+            size="md" 
+            fallback={profile?.name?.[0] || 'U'} 
+            className="mr-3"
+          />
           
           <View className="flex-1">
             <View className="flex-row items-center">

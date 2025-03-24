@@ -93,76 +93,76 @@ export function useSocialFeed(
     }
   }, [ndk, db]);
   
-  // Process event and add to feed
+  // Process event and add to feed with improved error handling
   const processEvent = useCallback((event: NDKEvent) => {
-    // Skip if we've seen this event before or event has no ID
-    if (!event.id || seenEvents.current.has(event.id)) return;
-    
-    console.log(`Processing event ${event.id}, kind ${event.kind} from ${event.pubkey}`);
-    
-    // Check if this event is quoted by another event we've already seen
-    // Skip unless it's from the POWR account (always show POWR content)
-    if (
-      quotedEvents.current.has(event.id) && 
-      event.pubkey !== POWR_PUBKEY_HEX
-    ) {
-      console.log(`Event ${event.id} filtered out: quoted=${true}, pubkey=${event.pubkey}`);
-      return;
-    }
-    
-    // Track any events this quotes to avoid showing them separately
-    if (event.kind === 1) {
-      // Check e-tags (direct quotes)
-      event.tags
-        .filter(tag => tag[0] === 'e')
-        .forEach(tag => {
-          if (tag[1]) quotedEvents.current.add(tag[1]);
-        });
-        
-      // Check a-tags (addressable events)
-      event.tags
-        .filter(tag => tag[0] === 'a')
-        .forEach(tag => {
-          const parts = tag[1]?.split(':');
-          if (parts && parts.length >= 3) {
-            const [kind, pubkey, identifier] = parts;
-            // We track the identifier so we can match it with the d-tag
-            // of addressable events (kinds 30023, 33401, 33402, etc.)
-            if (pubkey && identifier) {
-              quotedEvents.current.add(`${pubkey}:${identifier}`);
-            }
-          }
-        });
-        
-      // Also check for quoted content using NIP-27 nostr: URI mentions
-      if (event.content) {
-        const nostrUriMatches = event.content.match(/nostr:(note1|nevent1|naddr1)[a-z0-9]+/g);
-        if (nostrUriMatches) {
-          nostrUriMatches.forEach(uri => {
-            try {
-              const decoded = nip19.decode(uri.replace('nostr:', ''));
-              if (decoded.type === 'note' || decoded.type === 'nevent') {
-                quotedEvents.current.add(decoded.data as string);
-              } else if (decoded.type === 'naddr') {
-                // For addressable content, add to tracking using pubkey:identifier format
-                const data = decoded.data as any;
-                quotedEvents.current.add(`${data.pubkey}:${data.identifier}`);
+    try {
+      // Skip if we've seen this event before or event has no ID
+      if (!event.id || seenEvents.current.has(event.id)) return;
+      
+      console.log(`Processing event ${event.id}, kind ${event.kind} from ${event.pubkey}`);
+      
+      // Check if this event is quoted by another event we've already seen
+      // Skip unless it's from the POWR account (always show POWR content)
+      if (
+        quotedEvents.current.has(event.id) && 
+        event.pubkey !== POWR_PUBKEY_HEX
+      ) {
+        console.log(`Event ${event.id} filtered out: quoted=${true}, pubkey=${event.pubkey}`);
+        return;
+      }
+      
+      // Track any events this quotes to avoid showing them separately
+      if (event.kind === 1) {
+        // Check e-tags (direct quotes)
+        event.tags
+          .filter(tag => tag[0] === 'e')
+          .forEach(tag => {
+            if (tag[1]) quotedEvents.current.add(tag[1]);
+          });
+          
+        // Check a-tags (addressable events)
+        event.tags
+          .filter(tag => tag[0] === 'a')
+          .forEach(tag => {
+            const parts = tag[1]?.split(':');
+            if (parts && parts.length >= 3) {
+              const [kind, pubkey, identifier] = parts;
+              // We track the identifier so we can match it with the d-tag
+              // of addressable events (kinds 30023, 33401, 33402, etc.)
+              if (pubkey && identifier) {
+                quotedEvents.current.add(`${pubkey}:${identifier}`);
               }
-            } catch (e) {
-              // Ignore invalid nostr URIs
             }
           });
+          
+        // Also check for quoted content using NIP-27 nostr: URI mentions
+        if (event.content) {
+          const nostrUriMatches = event.content.match(/nostr:(note1|nevent1|naddr1)[a-z0-9]+/g);
+          if (nostrUriMatches) {
+            nostrUriMatches.forEach(uri => {
+              try {
+                const decoded = nip19.decode(uri.replace('nostr:', ''));
+                if (decoded.type === 'note' || decoded.type === 'nevent') {
+                  quotedEvents.current.add(decoded.data as string);
+                } else if (decoded.type === 'naddr') {
+                  // For addressable content, add to tracking using pubkey:identifier format
+                  const data = decoded.data as any;
+                  quotedEvents.current.add(`${data.pubkey}:${data.identifier}`);
+                }
+              } catch (e) {
+                // Ignore invalid nostr URIs
+              }
+            });
+          }
         }
       }
-    }
-    
-    // Mark as seen
-    seenEvents.current.add(event.id);
-    
-    // Parse event based on kind
-    let feedItem: FeedItem | null = null;
-    
-    try {
+      
+      // Mark as seen
+      seenEvents.current.add(event.id);
+      
+      // Parse event based on kind
+      let feedItem: FeedItem | null = null;
+      
       const timestamp = event.created_at || Math.floor(Date.now() / 1000);
       
       switch (event.kind) {
@@ -197,69 +197,73 @@ export function useSocialFeed(
           break;
           
         case POWR_EVENT_KINDS.SOCIAL_POST: // 1
-          // Parse social post
-          const parsedSocialPost = parseSocialPost(event);
-          
-          feedItem = {
-            id: event.id,
-            type: 'social',
-            originalEvent: event,
-            parsedContent: parsedSocialPost,
-            createdAt: timestamp
-          };
-          
-          // If it has quoted content, resolve it asynchronously
-          const quotedContent = parsedSocialPost.quotedContent;
-          if (quotedContent && socialServiceRef.current) {
-            socialServiceRef.current.getReferencedContent(quotedContent.id, quotedContent.kind)
-              .then(referencedEvent => {
-                if (!referencedEvent) return;
-                
-                // Parse the referenced event
-                let resolvedContent: any = null;
-                
-                switch (referencedEvent.kind) {
-                  case POWR_EVENT_KINDS.WORKOUT_RECORD:
-                    resolvedContent = parseWorkoutRecord(referencedEvent);
-                    break;
-                  case POWR_EVENT_KINDS.EXERCISE_TEMPLATE:
-                    resolvedContent = parseExerciseTemplate(referencedEvent);
-                    break;
-                  case POWR_EVENT_KINDS.WORKOUT_TEMPLATE:
-                    resolvedContent = parseWorkoutTemplate(referencedEvent);
-                    break;
-                  case 30023:
-                  case 30024:
-                    resolvedContent = parseLongformContent(referencedEvent);
-                    break;
-                }
-                
-                if (resolvedContent) {
-                  // Update the feed item with the referenced content
-                  setFeedItems(current => {
-                    return current.map(item => {
-                      if (item.id !== event.id) return item;
-                      
-                      // Add the resolved content to the social post
-                      const updatedContent = {
-                        ...(item.parsedContent as ParsedSocialPost),
-                        quotedContent: {
-                          ...quotedContent,
-                          resolved: resolvedContent
-                        }
-                      };
-                      
-                      return {
-                        ...item,
-                        parsedContent: updatedContent
-                      };
+          try {
+            // Parse social post
+            const parsedSocialPost = parseSocialPost(event);
+            
+            feedItem = {
+              id: event.id,
+              type: 'social',
+              originalEvent: event,
+              parsedContent: parsedSocialPost,
+              createdAt: timestamp
+            };
+            
+            // If it has quoted content, resolve it asynchronously
+            const quotedContent = parsedSocialPost.quotedContent;
+            if (quotedContent && socialServiceRef.current) {
+              socialServiceRef.current.getReferencedContent(quotedContent.id, quotedContent.kind)
+                .then(referencedEvent => {
+                  if (!referencedEvent) return;
+                  
+                  // Parse the referenced event
+                  let resolvedContent: any = null;
+                  
+                  switch (referencedEvent.kind) {
+                    case POWR_EVENT_KINDS.WORKOUT_RECORD:
+                      resolvedContent = parseWorkoutRecord(referencedEvent);
+                      break;
+                    case POWR_EVENT_KINDS.EXERCISE_TEMPLATE:
+                      resolvedContent = parseExerciseTemplate(referencedEvent);
+                      break;
+                    case POWR_EVENT_KINDS.WORKOUT_TEMPLATE:
+                      resolvedContent = parseWorkoutTemplate(referencedEvent);
+                      break;
+                    case 30023:
+                    case 30024:
+                      resolvedContent = parseLongformContent(referencedEvent);
+                      break;
+                  }
+                  
+                  if (resolvedContent) {
+                    // Update the feed item with the referenced content
+                    setFeedItems(current => {
+                      return current.map(item => {
+                        if (item.id !== event.id) return item;
+                        
+                        // Add the resolved content to the social post
+                        const updatedContent = {
+                          ...(item.parsedContent as ParsedSocialPost),
+                          quotedContent: {
+                            ...quotedContent,
+                            resolved: resolvedContent
+                          }
+                        };
+                        
+                        return {
+                          ...item,
+                          parsedContent: updatedContent
+                        };
+                      });
                     });
-                  });
-                }
-              })
-              .catch(error => {
-                console.error('Error fetching referenced content:', error);
-              });
+                  }
+                })
+                .catch(error => {
+                  console.error('Error fetching referenced content:', error);
+                });
+            }
+          } catch (error) {
+            console.error('Error processing social post:', error);
           }
           break;
           
@@ -311,7 +315,7 @@ export function useSocialFeed(
         }
       }
     } catch (error) {
-      console.error('Error processing event:', error, event);
+      console.error('Error processing event:', error);
     }
   }, [oldestTimestamp, options.feedType]);
 
@@ -371,21 +375,27 @@ export function useSocialFeed(
   }, [options.feedType, options.authors, options.kinds, options.limit, options.since, options.until]);
   
   // Load feed data
-  const loadFeed = useCallback(async () => {
+  const loadFeed = useCallback(async (forceRefresh = false) => {
     if (!ndk) return;
     
-    // Prevent rapid resubscriptions
-    if (subscriptionCooldown.current) {
-      console.log('[useSocialFeed] Subscription on cooldown, skipping');
+    // Prevent rapid resubscriptions unless forceRefresh is true
+    if (subscriptionCooldown.current && !forceRefresh) {
+      console.log('[useSocialFeed] Subscription on cooldown, skipping (use forceRefresh to override)');
       return;
     }
     
     // Track subscription attempts to prevent infinite loops
-    subscriptionAttempts.current += 1;
-    if (subscriptionAttempts.current > maxSubscriptionAttempts) {
-      console.error(`[useSocialFeed] Too many subscription attempts (${subscriptionAttempts.current}), giving up`);
-      setLoading(false);
-      return;
+    // Reset counter if this is a forced refresh
+    if (forceRefresh) {
+      subscriptionAttempts.current = 0;
+      console.log('[useSocialFeed] Force refresh requested, resetting attempt counter');
+    } else {
+      subscriptionAttempts.current += 1;
+      if (subscriptionAttempts.current > maxSubscriptionAttempts) {
+        console.error(`[useSocialFeed] Too many subscription attempts (${subscriptionAttempts.current}), giving up`);
+        setLoading(false);
+        return;
+      }
     }
     
     setLoading(true);
@@ -430,11 +440,11 @@ export function useSocialFeed(
       console.log(`[useSocialFeed] Loading ${feedOptions.feedType} feed with authors:`, feedOptions.authors);
       console.log(`[useSocialFeed] Time range: since=${new Date(feedOptions.since * 1000).toISOString()}, until=${feedOptions.until ? new Date(feedOptions.until * 1000).toISOString() : 'now'}`);
       
-      // For following feed, ensure we have authors
+      // For following feed, log if we have no authors but continue with subscription
+      // The socialFeedService will use the POWR_PUBKEY_HEX as fallback
       if (feedOptions.feedType === 'following' && (!feedOptions.authors || feedOptions.authors.length === 0)) {
-        console.log('[useSocialFeed] Following feed with no authors, skipping subscription');
-        setLoading(false);
-        return;
+        console.log('[useSocialFeed] Following feed with no authors, continuing with fallback');
+        // We'll continue with the subscription and rely on the fallback in socialFeedService
       }
       
       // Build and validate filters before subscribing
@@ -542,8 +552,8 @@ export function useSocialFeed(
   }, [ndk, options.feedType, options.limit, options.since, options.until, processEvent]);
   
   // Refresh feed (clear events and reload)
-  const refresh = useCallback(async () => {
-    console.log(`Refreshing ${options.feedType} feed`);
+  const refresh = useCallback(async (forceRefresh = true) => {
+    console.log(`Refreshing ${options.feedType} feed (force=${forceRefresh})`);
     setFeedItems([]);
     seenEvents.current.clear();
     quotedEvents.current.clear(); // Also reset quoted events
@@ -555,7 +565,8 @@ export function useSocialFeed(
     setIsOffline(!isOnline);
     
     if (isOnline) {
-      await loadFeed();
+      // Pass forceRefresh to loadFeed to bypass cooldown if needed
+      await loadFeed(forceRefresh);
     } else {
       await loadCachedFeed();
     }

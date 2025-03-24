@@ -104,6 +104,14 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       });
       
       await ndk.connect();
+      
+      // Set NDK in services
+      const { profileImageCache } = require('@/lib/db/services/ProfileImageCache');
+      profileImageCache.setNDK(ndk);
+      
+      // Note: SocialFeedCache initialization is now handled in the RelayInitializer component
+      // This avoids using React hooks outside of component context
+      
       set({ ndk, relayStatus });
       
       // Check for saved private key

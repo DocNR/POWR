@@ -4,6 +4,7 @@ import { TouchableOpacity, TouchableOpacityProps, GestureResponderEvent } from '
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
+import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
 
 interface UserAvatarProps extends TouchableOpacityProps {
   uri?: string;
@@ -24,15 +25,57 @@ const UserAvatar = ({
 }: UserAvatarProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageUri, setImageUri] = useState<string | undefined>(uri);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 2; // Maximum number of retry attempts
   
-  // Update imageUri when uri prop changes
+  // Load cached image when uri changes
   useEffect(() => {
-    setImageUri(uri);
+    let isMounted = true;
+    
+    // Reset retry count and error state when URI changes
+    setRetryCount(0);
     setImageError(false);
+    
+    const loadCachedImage = async () => {
+      if (!uri) {
+        setImageUri(undefined);
+        return;
+      }
+      
+      try {
+        // Try to extract pubkey from URI
+        const pubkey = profileImageCache.extractPubkeyFromUri(uri);
+        
+        if (pubkey) {
+          // If we have a pubkey, try to get cached image
+          const cachedUri = await profileImageCache.getProfileImageUri(pubkey, uri);
+          
+          if (isMounted) {
+            setImageUri(cachedUri);
+            setImageError(false);
+          }
+        } else {
+          // If no pubkey, just use the original URI
+          if (isMounted) {
+            setImageUri(uri);
+            setImageError(false);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cached image:', error);
+        if (isMounted) {
+          setImageUri(uri);
+          setImageError(false);
+        }
+      }
+    };
+    
+    loadCachedImage();
+    
+    return () => {
+      isMounted = false;
+    };
   }, [uri]);
-  
-  // Log the URI for debugging
-  // console.log("Avatar URI:", uri);
   
   const containerStyles = cn(
     {
@@ -55,7 +98,26 @@ const UserAvatar = ({
   
   const handleImageError = () => {
     console.error("Failed to load image from URI:", imageUri);
-    setImageError(true);
+    
+    if (retryCount < maxRetries) {
+      // Try again after a short delay
+      console.log(`Retrying image load (attempt ${retryCount + 1}/${maxRetries})`);
+      setTimeout(() => {
+        setRetryCount(prev => prev + 1);
+        // Force reload by setting a new URI with cache buster
+        if (imageUri) {
+          const cacheBuster = `?retry=${Date.now()}`;
+          const newUri = imageUri.includes('?') 
+            ? `${imageUri}&cb=${Date.now()}` 
+            : `${imageUri}${cacheBuster}`;
+          setImageUri(newUri);
+          setImageError(false);
+        }
+      }, 1000);
+    } else {
+      console.log(`Max retries (${maxRetries}) reached, showing fallback`);
+      setImageError(true);
+    }
   };
   
   const avatarContent = (

@@ -55,7 +55,7 @@ export default function SocialLayout() {
         <Tab.Screen
           name="global"
           component={GlobalScreen}
-          options={{ title: 'Global' }}
+          options={{ title: 'Community' }}
         />
       </Tab.Navigator>
     </TabScreen>

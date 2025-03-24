@@ -1,179 +1,258 @@
 # NDK Mobile Cache Integration Plan
 
-This document outlines our plan to leverage the NDK mobile SQLite cache system throughout the POWR app to improve offline functionality, reduce network usage, and enhance performance.
-
 ## Overview
 
-The NDK mobile library provides a robust SQLite-based caching system that includes:
+This document outlines the comprehensive strategy for leveraging the NDK mobile SQLite cache system throughout the POWR app to improve offline functionality, reduce network usage, and enhance performance.
 
-1. **Profile Caching**: Stores user profiles with metadata
-2. **Event Caching**: Stores Nostr events with efficient indexing
-3. **Unpublished Event Queue**: Manages events pending publication
-4. **Web of Trust Storage**: Maintains relationship scores
+## Goals
 
-We will integrate this caching system across multiple components of our app to provide a better offline experience.
+1. **Improve Offline Experience**: Allow users to access critical app features even when offline
+2. **Reduce Network Usage**: Minimize data consumption by caching frequently accessed data
+3. **Enhance Performance**: Speed up the app by reducing network requests
+4. **Maintain Data Freshness**: Implement strategies to keep cached data up-to-date
 
-## Implementation Priorities
+## Implementation Components
 
 ### 1. Profile Image Caching
 
-**Files to Modify:**
-- `components/UserAvatar.tsx`
-- Create new: `lib/db/services/ProfileImageCache.ts`
+**Status: Implemented**
 
-**Functions to Implement:**
-- `getProfileImageUri(pubkey, imageUrl)`: Get a cached image URI or download if needed
-- `clearOldCache(maxAgeDays)`: Remove old cached images
+The `ProfileImageCache` service downloads and caches profile images locally, providing offline access and reducing network usage.
+
+```typescript
+// Key features of ProfileImageCache
+- Local storage of profile images in the app's cache directory
+- Automatic fetching and caching of images when needed
+- Age-based cache invalidation (24 hours by default)
+- Integration with UserAvatar component for seamless usage
+```
 
 **Integration Points:**
-- Update `UserAvatar` to use the cache service
-- Add cache invalidation based on profile updates
+- `UserAvatar` component uses the cache for all profile images
+- `EnhancedSocialPost` component uses `UserAvatar` for profile images in the feed
+- NDK initialization sets the NDK instance in the ProfileImageCache service
 
 ### 2. Publication Queue Service
 
-**Files to Modify:**
-- `lib/db/services/PublicationQueueService.ts`
+**Status: Implemented**
 
-**Functions to Enhance:**
-- `queueEvent(event)`: Use NDK's unpublished events system
-- `processQueue()`: Process events from NDK cache
-- `getPendingEvents(limit)`: Get events from NDK cache
-- `getPendingCount()`: Get count from NDK cache
+The `PublicationQueueService` allows events to be created and queued when offline, then published when connectivity is restored.
 
-**Migration Strategy:**
-1. Add NDK cache support
-2. Dual-write period
-3. Migrate existing queue
-4. Remove custom implementation
+```typescript
+// Key features of PublicationQueueService
+- Persistent storage of unpublished events
+- Automatic retry mechanism when connectivity is restored
+- Priority-based publishing
+- Status tracking for queued events
+```
+
+**Integration Points:**
+- Social posting
+- Workout publishing
+- Template sharing
 
 ### 3. Social Feed Caching
 
-**Files to Modify:**
-- `lib/social/socialFeedService.ts`
-- `lib/hooks/useSocialFeed.ts`
+**Status: Implemented**
 
-**Functions to Enhance:**
-- `subscribeFeed(options)`: Check cache before subscription
-- `getComments(eventId)`: Use cache for comments
-- `resolveQuotedContent(event)`: Use cache for quoted content
+The `SocialFeedCache` service caches social feed events locally, allowing users to browse their feed even when offline.
 
-**Benefits:**
-- Immediate display of previously viewed content
-- Reduced network requests
-- Offline browsing of previously viewed feeds
+```typescript
+// Key features of SocialFeedCache
+- SQLite-based storage of feed events
+- Feed-specific caching (following, POWR, global)
+- Time-based pagination support
+- Automatic cleanup of old cached events
+```
+
+**Integration Points:**
+- `useSocialFeed` hook uses the cache when offline
+- `SocialFeedService` manages the cache and provides a unified API
+- Feed components display cached content with offline indicators
 
 ### 4. Workout History
 
-**Files to Modify:**
-- `lib/db/services/UnifiedWorkoutHistoryService.ts`
+**Status: Implemented**
 
-**Functions to Enhance:**
-- `getNostrWorkouts()`: Use NDK cache directly
-- `importNostrWorkoutToLocal(eventId)`: Leverage cache for imports
-- `subscribeToNostrWorkouts(pubkey, callback)`: Use cache for initial data
+The `UnifiedWorkoutHistoryService` provides access to workout history both locally and from Nostr, with offline support.
 
-**Benefits:**
-- Faster workout history loading
-- Offline access to workout history
-- Reduced network usage
+```typescript
+// Key features of workout history caching
+- Local storage of all workout records
+- Synchronization with Nostr when online
+- Conflict resolution for workouts created offline
+- Comprehensive workout data including exercises, sets, and metadata
+```
+
+**Integration Points:**
+- History tab displays cached workout history
+- Workout completion flow saves to local cache first
+- Background synchronization with Nostr
 
 ### 5. Exercise Library
 
-**Files to Modify:**
-- `lib/db/services/ExerciseService.ts`
-- `lib/hooks/useExercises.ts`
+**Status: Implemented**
 
-**Functions to Implement:**
-- `getExercisesFromNostr()`: Use cache for exercises
-- `getExerciseDetails(id)`: Get details from cache
+The `ExerciseService` maintains a local cache of exercises, allowing offline access to the exercise library.
 
-**Benefits:**
-- Offline access to exercise library
-- Faster exercise loading
+```typescript
+// Key features of exercise library caching
+- Complete local copy of exercise database
+- Periodic updates from Nostr when online
+- Custom exercise creation and storage
+- Categorization and search functionality
+```
+
+**Integration Points:**
+- Exercise selection during workout creation
+- Exercise details view
+- Exercise search and filtering
 
 ### 6. Workout Templates
 
-**Files to Modify:**
-- `lib/db/services/TemplateService.ts`
-- `lib/hooks/useTemplates.ts`
+**Status: Implemented**
 
-**Functions to Enhance:**
-- `getTemplateFromNostr(id)`: Use cache for templates
-- `getTemplatesFromNostr()`: Get templates from cache
+The `TemplateService` provides offline access to workout templates through local caching.
 
-**Benefits:**
-- Offline access to templates
-- Faster template loading
+```typescript
+// Key features of template caching
+- Local storage of user's templates
+- Synchronization with Nostr templates
+- Favorite templates prioritized for offline access
+- Template versioning and updates
+```
+
+**Integration Points:**
+- Template selection during workout creation
+- Template management in the library
+- Template sharing and discovery
 
 ### 7. Contact List & Following
 
-**Files to Modify:**
-- `lib/hooks/useContactList.ts`
-- `lib/hooks/useFeedState.ts`
+**Status: Implemented**
 
-**Functions to Enhance:**
-- `getContactList()`: Use cache for contact list
-- `getFollowingList()`: Use cache for following list
+The system caches the user's contact list and following relationships for offline access.
 
-**Benefits:**
-- Offline access to contacts
-- Faster contact list loading
+```typescript
+// Key features of contact list caching
+- Local storage of followed users
+- Periodic updates when online
+- Integration with NDK's contact list functionality
+- Support for NIP-02 contact lists
+```
+
+**Integration Points:**
+- Following feed generation
+- User profile display
+- Social interactions
 
 ### 8. General Media Cache
 
-**Files to Create:**
-- `lib/db/services/MediaCacheService.ts`
+**Status: Implemented**
 
-**Functions to Implement:**
-- `cacheMedia(url, mimeType)`: Download and cache media
-- `getMediaUri(url)`: Get cached media URI
-- `clearOldCache(maxAgeDays)`: Remove old cached media
+A general-purpose media cache for other types of media used in the app.
+
+```typescript
+// Key features of general media cache
+- Support for various media types (images, videos, etc.)
+- Size-limited cache with LRU eviction
+- Content-addressable storage
+- Automatic cleanup of unused media
+```
 
 **Integration Points:**
-- Profile banners
-- Exercise images
-- Other media content
+- Article images in the feed
+- Exercise demonstration images
+- App assets and resources
 
-## Implementation Approach
+## Technical Implementation
 
-For each component, we will:
+### NDK Integration
 
-1. **Analyze Current Implementation**: Understand how data is currently fetched and stored
-2. **Design Cache Integration**: Determine how to leverage NDK cache
-3. **Implement Changes**: Modify code to use cache
-4. **Test Offline Functionality**: Verify behavior when offline
-5. **Measure Performance**: Compare before and after metrics
+The NDK mobile adapter provides built-in SQLite caching capabilities that we leverage throughout the app:
 
-## Technical Considerations
+```typescript
+// Initialize NDK with SQLite cache adapter
+const cacheAdapter = new NDKCacheAdapterSqlite('powr', 1000);
+await cacheAdapter.initialize();
 
-### Cache Size Management
+const ndk = new NDK({
+  cacheAdapter,
+  explicitRelayUrls: DEFAULT_RELAYS,
+  enableOutboxModel: true,
+  autoConnectUserRelays: true,
+  clientName: 'powr',
+});
+```
 
-- Implement cache size limits
-- Add cache eviction policies
-- Prioritize frequently accessed data
+### Connectivity Management
 
-### Cache Invalidation
+The `ConnectivityService` monitors network status and triggers appropriate cache behaviors:
 
-- Track data freshness
-- Implement TTL (Time To Live) for cached data
-- Update cache when new data is received
+```typescript
+// Key features of ConnectivityService
+- Real-time network status monitoring
+- Callback registration for connectivity changes
+- Automatic retry of failed operations when connectivity is restored
+- Bandwidth-aware operation modes
+```
 
-### Error Handling
+### Cache Invalidation Strategies
 
-- Graceful fallbacks when cache misses
-- Recovery from cache corruption
-- Logging for debugging
+Different types of data have different invalidation strategies:
 
-## Success Metrics
+1. **Time-based**: Profile images, feed events
+2. **Version-based**: Exercise library, templates
+3. **Manual**: User-triggered refresh
+4. **Never**: Historical workout data
 
-- Reduced network requests
-- Faster app startup time
-- Improved offline experience
-- Reduced data usage
-- Better battery life
+## User Experience Considerations
 
-## Next Steps
+### Offline Indicators
 
-1. Begin with Profile Image Cache implementation
-2. Move to Publication Queue Service
-3. Continue with remaining components in priority order
+The app provides clear visual indicators when operating in offline mode:
+
+- Global offline indicator in the header
+- Feed-specific offline state components
+- Disabled actions that require connectivity
+- Queued action indicators
+
+### Transparent Sync
+
+Synchronization happens transparently in the background:
+
+- Automatic publishing of queued events when connectivity is restored
+- Progressive loading of fresh content when coming online
+- Prioritized sync for critical data
+
+### Data Freshness
+
+The app balances offline availability with data freshness:
+
+- Age indicators for cached content
+- Pull-to-refresh to force update when online
+- Background refresh of frequently accessed data
+
+## Testing Strategy
+
+Comprehensive testing ensures the cache system works reliably:
+
+1. **Unit Tests**: Individual cache services
+2. **Integration Tests**: Interaction between cache and UI components
+3. **Offline Simulation**: Testing app behavior in offline mode
+4. **Performance Testing**: Measuring cache impact on app performance
+5. **Edge Cases**: Testing cache behavior with limited storage, connectivity issues, etc.
+
+## Future Enhancements
+
+Potential future improvements to the caching system:
+
+1. **Selective Sync**: User-configurable sync preferences
+2. **Compression**: Reducing cache size through compression
+3. **Encryption**: Enhancing security of cached data
+4. **Analytics**: Usage patterns to optimize caching strategy
+5. **Cross-device Sync**: Synchronizing cache across user devices
+
+## Conclusion
+
+The NDK Mobile Cache Integration provides a robust foundation for offline functionality in the POWR app, significantly improving the user experience in limited connectivity scenarios while reducing network usage and enhancing performance.

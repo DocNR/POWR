@@ -113,35 +113,94 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         // Explicitly check for critical tables after schema creation
         await schema.ensureCriticalTablesExist(db);
         
-        // Run the v8 migration explicitly to ensure new columns are added
-        try {
-          await (schema as any).migrate_v8(db);
-          console.log('[DB] Migration v8 executed successfully');
-        } catch (migrationError) {
-          console.warn('[DB] Error running migration v8:', migrationError);
-          // Continue even if migration fails - tables might already be updated
-        }
+        // Run migrations with robust error handling
+        const runMigration = async (version: string, migrationFn: (db: SQLiteDatabase) => Promise<void>) => {
+          try {
+            await migrationFn(db);
+            console.log(`[DB] Migration ${version} executed successfully`);
+          } catch (migrationError) {
+            console.warn(`[DB] Error running migration ${version}:`, migrationError);
+            // Log more details about the error
+            if (migrationError instanceof Error) {
+              console.warn(`[DB] Migration error details: ${migrationError.message}`);
+              if (migrationError.stack) {
+                console.warn(`[DB] Stack trace: ${migrationError.stack}`);
+              }
+            }
+            // Continue even if migration fails - tables might already be updated
+          }
+        };
+        
+        // Run migrations
+        await runMigration('v8', (schema as any).migrate_v8);
+        await runMigration('v9', (schema as any).migrate_v9);
+        await runMigration('v10', (schema as any).migrate_v10);
 
-        // Run v9 migration for Nostr metadata enhancements
-        try {
-          await (schema as any).migrate_v9(db);
-          console.log('[DB] Migration v9 executed successfully');
-        } catch (migrationError) {
-          console.warn('[DB] Error running migration v9:', migrationError);
-          // Continue even if migration fails - tables might already be updated
-        }
-
-        // Initialize services
+        // Initialize services with error handling
         console.log('[DB] Initializing services...');
-        const exerciseService = new ExerciseService(db);
-        const workoutService = new WorkoutService(db);
-        const templateService = new TemplateService(db, exerciseService);
-        const publicationQueue = new PublicationQueueService(db);
-        const favoritesService = new FavoritesService(db);
-        const powrPackService = new POWRPackService(db);
+        let exerciseService: ExerciseService;
+        let workoutService: WorkoutService;
+        let templateService: TemplateService;
+        let publicationQueue: PublicationQueueService;
+        let favoritesService: FavoritesService;
+        let powrPackService: POWRPackService;
+        
+        try {
+          exerciseService = new ExerciseService(db);
+          console.log('[DB] ExerciseService initialized');
+        } catch (error) {
+          console.error('[DB] Failed to initialize ExerciseService:', error);
+          throw new Error('Failed to initialize ExerciseService');
+        }
+        
+        try {
+          workoutService = new WorkoutService(db);
+          console.log('[DB] WorkoutService initialized');
+        } catch (error) {
+          console.error('[DB] Failed to initialize WorkoutService:', error);
+          throw new Error('Failed to initialize WorkoutService');
+        }
+        
+        try {
+          templateService = new TemplateService(db, exerciseService);
+          console.log('[DB] TemplateService initialized');
+        } catch (error) {
+          console.error('[DB] Failed to initialize TemplateService:', error);
+          throw new Error('Failed to initialize TemplateService');
+        }
+        
+        try {
+          publicationQueue = new PublicationQueueService(db);
+          console.log('[DB] PublicationQueueService initialized');
+        } catch (error) {
+          console.error('[DB] Failed to initialize PublicationQueueService:', error);
+          throw new Error('Failed to initialize PublicationQueueService');
+        }
+        
+        try {
+          favoritesService = new FavoritesService(db);
+          console.log('[DB] FavoritesService initialized');
+        } catch (error) {
+          console.error('[DB] Failed to initialize FavoritesService:', error);
+          throw new Error('Failed to initialize FavoritesService');
+        }
+        
+        try {
+          powrPackService = new POWRPackService(db);
+          console.log('[DB] POWRPackService initialized');
+        } catch (error) {
+          console.error('[DB] Failed to initialize POWRPackService:', error);
+          throw new Error('Failed to initialize POWRPackService');
+        }
         
         // Initialize the favorites service
-        await favoritesService.initialize();
+        try {
+          await favoritesService.initialize();
+          console.log('[DB] FavoritesService fully initialized');
+        } catch (error) {
+          console.error('[DB] Error initializing FavoritesService:', error);
+          // Continue even if favorites initialization fails
+        }
         
         // Initialize NDK on services if available
         if (ndk) {

@@ -17,6 +17,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Planned exercise library and template caching
   - Designed contact list and following caching
   - Outlined general media cache service
+  - Created detailed testing strategy documentation
+  - Implemented ProfileImageCache service with NDK integration
+  - Enhanced UserAvatar component to use cached profile images
+  - Updated EnhancedSocialPost to use UserAvatar for profile images
+  - Fixed NDK initialization to properly set NDK in ProfileImageCache
+  - Removed draft articles (kind 30024) from all feeds
+
+## Fixed
+- Social feed subscription issues
+  - Consolidated multiple separate subscriptions into a single subscription
+  - Fixed infinite subscription loop in POWR feed
+  - Removed tag filtering for POWR account to ensure all content is displayed
+  - Improved timestamp handling to prevent continuous resubscription
+  - Enhanced logging for better debugging
+  - Removed old feed implementation in favor of unified useSocialFeed hook
+  - Added proper subscription cleanup to prevent memory leaks
+  - Implemented write buffer system to prevent transaction conflicts
+  - Added LRU cache for tracking known events to prevent duplicates
+  - Improved transaction management with withTransactionAsync
+  - Added debounced subscriptions to prevent rapid resubscriptions
+  - Enhanced error handling to prevent cascading failures
+  - Added proper initialization of SocialFeedCache in RelayInitializer
+- Enhanced Social Feed Filtering
+  - Updated feed filtering rules to focus on fitness-related content
+  - Implemented consistent tag-based filtering across all feeds
+  - Added comprehensive fitness tag list (#workout, #fitness, #powr, etc.)
+  - Removed article drafts (kind 30024) from all feeds
+  - Created detailed documentation for feed filtering rules
+  - Enhanced POWR feed to only show published content
+  - Updated Community feed (formerly Global) with better content focus
+  - Improved Following feed with consistent filtering rules
+- Social Feed Caching Implementation
+  - Created SocialFeedCache service for storing feed events
+  - Enhanced SocialFeedService to use cache for offline access
+  - Updated useSocialFeed hook to handle offline mode
+  - Added offline indicator in social feed UI
+  - Implemented automatic caching of viewed feed events
+  - Added cache for referenced content (quoted posts)
+  - Created documentation for social feed caching architecture
+- Profile Image Caching Implementation
+  - Created ProfileImageCache service for storing user avatars
+  - Enhanced UserAvatar component to use cached images
+  - Implemented automatic caching of viewed profile images
+  - Added fallback to cached images when offline
+  - Improved image loading performance with cache-first approach
+  - Added cache expiration management for profile images
 - Enhanced offline functionality
   - Added OfflineIndicator component for app-wide status display
   - Created SocialOfflineState component for graceful social feed degradation
@@ -26,8 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented graceful fallbacks for unavailable content
   - Added cached data display when offline
   - Created user-friendly offline messaging
+  - Added automatic switching between online and offline data sources
 
 ## Improved
+- Social feed performance and reliability
+  - Added SQLite-based caching for feed events
+  - Implemented feed type tracking (following, powr, global)
+  - Enhanced event processing with cache-first approach
+  - Added automatic cache expiration (7-day default)
+  - Improved referenced content resolution with caching
+  - Enhanced offline user experience with cached content
+  - Added connectivity-aware component rendering
+  - Implemented automatic mode switching based on connectivity
+
 - Splash screen reliability
   - Enhanced SimpleSplashScreen with better error handling
   - Improved platform detection for video vs. static splash

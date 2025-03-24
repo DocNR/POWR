@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { RelayService, DEFAULT_RELAYS } from '@/lib/db/services/RelayService';
 import { extendNDK } from '@/types/ndk-extensions';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
+import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
 
 // Connection timeout in milliseconds
 const CONNECTION_TIMEOUT = 5000;
@@ -47,8 +48,9 @@ export async function initializeNDK() {
   // Extend NDK with helper methods for better compatibility
   ndk = extendNDK(ndk);
   
-  // Set the NDK instance in the RelayService
+  // Set the NDK instance in services
   relayService.setNDK(ndk);
+  profileImageCache.setNDK(ndk);
   
   // Check network connectivity before attempting to connect
   const connectivityService = ConnectivityService.getInstance();

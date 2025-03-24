@@ -57,7 +57,7 @@ export class SocialFeedService {
   }
 
   /**
-   * Build filters for a feed subscription
+   * Build filters for a feed subscription with improved error handling
    * @param options Filter options
    * @returns NDK filter object or array of filters
    */
@@ -69,141 +69,187 @@ export class SocialFeedService {
     authors?: string[];
     kinds?: number[];
   }): NDKFilter | NDKFilter[] {
-    const { feedType, since, until, limit, authors, kinds } = options;
-    
-    // Default to events in the last 24 hours if no since provided
-    const defaultSince = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
-    
-    // Fitness-related tags for filtering
-    const tagFilter = [
-      'workout', 'fitness', 'powr', '31days', 
-      'crossfit', 'wod', 'gym', 'strength', 
-      'cardio', 'training', 'exercise'
-    ];
-    
-    // Determine which kinds to include
-    const workoutKinds: number[] = [];
-    const socialKinds: number[] = [];
-    
-    // Add workout-specific kinds (1301, 33401, 33402)
-    if (!kinds || kinds.some(k => [1301, 33401, 33402].includes(k))) {
-      [1301, 33401, 33402]
-        .filter(k => !kinds || kinds.includes(k))
-        .forEach(k => workoutKinds.push(k));
-    }
-    
-    // Add social post kind (1) and article kind (30023)
-    if (!kinds || kinds.includes(1)) {
-      socialKinds.push(1);
-    }
-    
-    if (!kinds || kinds.includes(30023)) {
-      socialKinds.push(30023);
-    }
-    
-    // Base filter properties
-    const baseFilter: Record<string, any> = {
-      since: since || defaultSince,
-      limit: limit || 30,
-    };
-    
-    if (until) {
-      baseFilter.until = until;
-    }
-    
-    // Special handling for different feed types
-    if (feedType === 'profile') {
-      // Profile feed: Show all of a user's posts
-      if (!Array.isArray(authors) || authors.length === 0) {
-        console.error('[SocialFeedService] Profile feed requires authors');
-        return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
-      }
+    try {
+      const { feedType, since, until, limit, authors, kinds } = options;
       
-      // For profile feed, we create two filters:
-      // 1. All workout-related kinds from the user
-      // 2. Social posts and articles from the user (with or without tags)
-      return [
-        // Workout-related kinds (no tag filtering)
-        {
-          ...baseFilter,
-          kinds: workoutKinds,
-          authors: authors,
-        },
-        // Social posts and articles (no tag filtering for profile)
-        {
-          ...baseFilter,
-          kinds: socialKinds,
-          authors: authors,
-        }
+      // Default to events in the last 24 hours if no since provided
+      const defaultSince = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+      
+      // Fitness-related tags for filtering
+      const tagFilter = [
+        'workout', 'fitness', 'powr', '31days', 
+        'crossfit', 'wod', 'gym', 'strength', 
+        'cardio', 'training', 'exercise'
       ];
-    } else if (feedType === 'powr') {
-      // POWR feed: Show all content from POWR account(s)
-      if (!Array.isArray(authors) || authors.length === 0) {
-        console.error('[SocialFeedService] POWR feed requires authors');
-        return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
+      
+      // Determine which kinds to include
+      const workoutKinds: number[] = [];
+      const socialKinds: number[] = [];
+      
+      // Add workout-specific kinds (1301, 33401, 33402)
+      if (!kinds || kinds.some(k => [1301, 33401, 33402].includes(k))) {
+        [1301, 33401, 33402]
+          .filter(k => !kinds || kinds.includes(k))
+          .forEach(k => workoutKinds.push(k));
       }
       
-      // For POWR feed, we don't apply tag filtering
-      return {
-        ...baseFilter,
-        kinds: [...workoutKinds, ...socialKinds],
-        authors: authors,
+      // Add social post kind (1) and article kind (30023)
+      if (!kinds || kinds.includes(1)) {
+        socialKinds.push(1);
+      }
+      
+      if (!kinds || kinds.includes(30023)) {
+        socialKinds.push(30023);
+      }
+      
+      // Base filter properties
+      const baseFilter: Record<string, any> = {
+        since: since || defaultSince,
+        limit: limit || 30,
       };
-    } else if (feedType === 'following') {
-      // Following feed: Show content from followed users
-      if (!Array.isArray(authors) || authors.length === 0) {
-        console.error('[SocialFeedService] Following feed requires authors');
-        return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
+      
+      if (until) {
+        baseFilter.until = until;
       }
       
-      // For following feed, we create two filters:
-      // 1. All workout-related kinds from followed users
-      // 2. Social posts and articles from followed users with fitness tags
-      
-      // Log the authors to help with debugging
-      console.log(`[SocialFeedService] Following feed with ${authors.length} authors:`, 
-        authors.length > 5 ? authors.slice(0, 5).join(', ') + '...' : authors.join(', '));
-      
-      // Always include POWR account in following feed
-      let followingAuthors = [...authors];
-      if (POWR_PUBKEY_HEX && !followingAuthors.includes(POWR_PUBKEY_HEX)) {
-        followingAuthors.push(POWR_PUBKEY_HEX);
-        console.log('[SocialFeedService] Added POWR account to following feed authors');
+      // Special handling for different feed types
+      if (feedType === 'profile') {
+        // Profile feed: Show all of a user's posts
+        if (!Array.isArray(authors) || authors.length === 0) {
+          console.error('[SocialFeedService] Profile feed requires authors');
+          return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
+        }
+        
+        // For profile feed, we create two filters:
+        // 1. All workout-related kinds from the user
+        // 2. Social posts and articles from the user (with or without tags)
+        return [
+          // Workout-related kinds (no tag filtering)
+          {
+            ...baseFilter,
+            kinds: workoutKinds,
+            authors: authors,
+          },
+          // Social posts and articles (no tag filtering for profile)
+          {
+            ...baseFilter,
+            kinds: socialKinds,
+            authors: authors,
+          }
+        ];
+      } else if (feedType === 'powr') {
+        // POWR feed: Show all content from POWR account(s)
+        if (!Array.isArray(authors) || authors.length === 0) {
+          console.error('[SocialFeedService] POWR feed requires authors');
+          
+          // For POWR feed, if no authors provided, use the POWR_PUBKEY_HEX as fallback
+          if (POWR_PUBKEY_HEX) {
+            console.log('[SocialFeedService] Using POWR account as fallback for POWR feed');
+            const fallbackAuthors = [POWR_PUBKEY_HEX];
+            return {
+              ...baseFilter,
+              kinds: [...workoutKinds, ...socialKinds],
+              authors: fallbackAuthors,
+            };
+          } else {
+            return { ...baseFilter, kinds: [] }; // Return empty filter if no authors and no fallback
+          }
+        }
+        
+        // For POWR feed, we don't apply tag filtering
+        return {
+          ...baseFilter,
+          kinds: [...workoutKinds, ...socialKinds],
+          authors: authors,
+        };
+      } else if (feedType === 'following') {
+        // Following feed: Show content from followed users
+        if (!Array.isArray(authors) || authors.length === 0) {
+          console.error('[SocialFeedService] Following feed requires authors');
+          
+          // For following feed, if no authors provided, use the POWR_PUBKEY_HEX as fallback
+          // This ensures at least some content is shown
+          if (POWR_PUBKEY_HEX) {
+            console.log('[SocialFeedService] Using POWR account as fallback for Following feed');
+            const fallbackAuthors = [POWR_PUBKEY_HEX];
+            
+            return [
+              // Workout-related kinds (no tag filtering)
+              {
+                ...baseFilter,
+                kinds: workoutKinds,
+                authors: fallbackAuthors,
+              },
+              // Social posts and articles (with tag filtering)
+              {
+                ...baseFilter,
+                kinds: socialKinds,
+                authors: fallbackAuthors,
+                '#t': tagFilter,
+              }
+            ];
+          } else {
+            return { ...baseFilter, kinds: [] }; // Return empty filter if no authors and no fallback
+          }
+        }
+        
+        // For following feed, we create two filters:
+        // 1. All workout-related kinds from followed users
+        // 2. Social posts and articles from followed users with fitness tags
+        
+        // Log the authors to help with debugging
+        console.log(`[SocialFeedService] Following feed with ${authors.length} authors:`, 
+          authors.length > 5 ? authors.slice(0, 5).join(', ') + '...' : authors.join(', '));
+        
+        // Always include POWR account in following feed
+        let followingAuthors = [...authors];
+        if (POWR_PUBKEY_HEX && !followingAuthors.includes(POWR_PUBKEY_HEX)) {
+          followingAuthors.push(POWR_PUBKEY_HEX);
+          console.log('[SocialFeedService] Added POWR account to following feed authors');
+        }
+        
+        return [
+          // Workout-related kinds (no tag filtering)
+          {
+            ...baseFilter,
+            kinds: workoutKinds,
+            authors: followingAuthors,
+          },
+          // Social posts and articles (with tag filtering)
+          {
+            ...baseFilter,
+            kinds: socialKinds,
+            authors: followingAuthors,
+            '#t': tagFilter,
+          }
+        ];
+      } else {
+        // Global feed: Show content from anyone
+        // For global feed, we create two filters:
+        // 1. All workout-related kinds from anyone
+        // 2. Social posts and articles from anyone with fitness tags
+        return [
+          // Workout-related kinds (no tag filtering)
+          {
+            ...baseFilter,
+            kinds: workoutKinds,
+          },
+          // Social posts and articles (with tag filtering)
+          {
+            ...baseFilter,
+            kinds: socialKinds,
+            '#t': tagFilter,
+          }
+        ];
       }
-      
-      return [
-        // Workout-related kinds (no tag filtering)
-        {
-          ...baseFilter,
-          kinds: workoutKinds,
-          authors: followingAuthors,
-        },
-        // Social posts and articles (with tag filtering)
-        {
-          ...baseFilter,
-          kinds: socialKinds,
-          authors: followingAuthors,
-          '#t': tagFilter,
-        }
-      ];
-    } else {
-      // Global feed: Show content from anyone
-      // For global feed, we create two filters:
-      // 1. All workout-related kinds from anyone
-      // 2. Social posts and articles from anyone with fitness tags
-      return [
-        // Workout-related kinds (no tag filtering)
-        {
-          ...baseFilter,
-          kinds: workoutKinds,
-        },
-        // Social posts and articles (with tag filtering)
-        {
-          ...baseFilter,
-          kinds: socialKinds,
-          '#t': tagFilter,
-        }
-      ];
+    } catch (error) {
+      console.error('[SocialFeedService] Error building filters:', error);
+      // Return a safe default filter that won't crash but also won't return much
+      return {
+        kinds: [1], // Just social posts
+        limit: 10,
+        since: Math.floor(Date.now() / 1000) - 24 * 60 * 60 // Last 24 hours
+      };
     }
   }
 
