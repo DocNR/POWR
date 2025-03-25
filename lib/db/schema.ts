@@ -2,7 +2,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 class Schema {
   private async getCurrentVersion(db: SQLiteDatabase): Promise<number> {
@@ -145,6 +145,54 @@ class Schema {
       throw error;
     }
   }
+  
+  async migrate_v12(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Running migration v12 - Adding Contact Cache table');
+      
+      // Create contact_cache table if it doesn't exist
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS contact_cache (
+          owner_pubkey TEXT NOT NULL,
+          contact_pubkey TEXT NOT NULL,
+          cached_at INTEGER NOT NULL,
+          PRIMARY KEY (owner_pubkey, contact_pubkey)
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_contact_cache_owner 
+        ON contact_cache (owner_pubkey);
+      `);
+      
+      console.log('[Schema] Migration v12 completed successfully');
+    } catch (error) {
+      console.error('[Schema] Error in migration v12:', error);
+      throw error;
+    }
+  }
+  
+  async addContactCacheTable(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Running migration v12 - Adding Contact Cache table');
+      
+      // Create contact_cache table if it doesn't exist
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS contact_cache (
+          owner_pubkey TEXT NOT NULL,
+          contact_pubkey TEXT NOT NULL,
+          cached_at INTEGER NOT NULL,
+          PRIMARY KEY (owner_pubkey, contact_pubkey)
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_contact_cache_owner 
+        ON contact_cache (owner_pubkey);
+      `);
+      
+      console.log('[Schema] Migration v12 completed successfully');
+    } catch (error) {
+      console.error('[Schema] Error in migration v12:', error);
+      throw error;
+    }
+  }
 
   async createTables(db: SQLiteDatabase): Promise<void> {
     try {
@@ -207,6 +255,11 @@ class Schema {
             await this.migrate_v11(db);
           }
           
+          if (currentVersion < 12) {
+            console.log(`[Schema] Running migration from version ${currentVersion} to 12`);
+            await this.migrate_v12(db);
+          }
+          
           // Update schema version at the end of the transaction
           await this.updateSchemaVersion(db);
         });
@@ -243,6 +296,11 @@ class Schema {
         if (currentVersion < 11) {
           console.log(`[Schema] Running migration from version ${currentVersion} to 11`);
           await this.migrate_v11(db);
+        }
+        
+        if (currentVersion < 12) {
+          console.log(`[Schema] Running migration from version ${currentVersion} to 12`);
+          await this.migrate_v12(db);
         }
         
         // Update schema version
