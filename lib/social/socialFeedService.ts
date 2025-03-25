@@ -165,12 +165,13 @@ export class SocialFeedService {
       } else if (feedType === 'following') {
         // Following feed: Show content from followed users
         if (!Array.isArray(authors) || authors.length === 0) {
-          console.error('[SocialFeedService] Following feed requires authors');
+          // Initial load often has no contacts yet - this is normal
+          console.log('[SocialFeedService] No contacts available for following feed yet, using fallback');
           
           // For following feed, if no authors provided, use the POWR_PUBKEY_HEX as fallback
           // This ensures at least some content is shown
           if (POWR_PUBKEY_HEX) {
-            console.log('[SocialFeedService] Using POWR account as fallback for Following feed');
+            console.log('[SocialFeedService] Using POWR account as fallback for initial Following feed load');
             const fallbackAuthors = [POWR_PUBKEY_HEX];
             
             return [

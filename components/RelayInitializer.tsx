@@ -7,6 +7,7 @@ import { useConnectivity } from '@/lib/db/services/ConnectivityService';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
 import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
 import { getSocialFeedCache } from '@/lib/db/services/SocialFeedCache';
+import { getContactCacheService } from '@/lib/db/services/ContactCacheService';
 import { useDatabase } from '@/components/DatabaseProvider';
 
 /**
@@ -26,8 +27,15 @@ export default function RelayInitializer() {
       console.log('[RelayInitializer] Setting NDK instance in ProfileImageCache');
       profileImageCache.setNDK(ndk);
       
-      // Initialize SocialFeedCache with NDK instance
+      // Initialize caches with NDK instance
       if (db) {
+        // Initialize ContactCacheService
+        try {
+          getContactCacheService(db);
+          console.log('[RelayInitializer] ContactCacheService initialized');
+        } catch (error) {
+          console.error('[RelayInitializer] Error initializing ContactCacheService:', error);
+        }
         // Maximum number of retry attempts
         const MAX_RETRIES = 3;
         
