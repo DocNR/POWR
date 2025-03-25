@@ -39,13 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added debounced subscriptions to prevent rapid resubscriptions
   - Enhanced error handling to prevent cascading failures
   - Added proper initialization of SocialFeedCache in RelayInitializer
+  - Fixed following feed refresh issue that caused feed to reset unexpectedly
+  - Implemented contact caching to prevent feed refresh loops
+  - Added schema support for contact list caching (version 12)
+  - Simplified feed refresh logic to prevent unnecessary subscription resets
+  - Enhanced Following feed stability with improved contact management
+  - Fixed database transaction conflicts between SocialFeedCache and ContactCacheService
+  - Implemented global transaction lock mechanism to prevent nested transactions
+  - Added transaction queue for coordinating database operations across services
+  - Enhanced Following feed refresh logic with retry mechanism and better state tracking
+  - Added safeguards to prevent multiple simultaneous refresh attempts
+  - Improved error recovery in contact-based feed refreshes
 - Enhanced Social Feed Filtering
-  - Updated feed filtering rules to focus on fitness-related content
-  - Implemented consistent tag-based filtering across all feeds
-  - Added comprehensive fitness tag list (#workout, #fitness, #powr, etc.)
-  - Removed article drafts (kind 30024) from all feeds
-  - Created detailed documentation for feed filtering rules
-  - Enhanced POWR feed to only show published content
   - Updated Community feed (formerly Global) with better content focus
   - Improved Following feed with consistent filtering rules
 - Social Feed Caching Implementation
@@ -558,7 +563,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TypeScript parameter typing in database services
 - Null value handling in database operations
 - Development seeding duplicate prevention
-- Template category spacing issues
+- Template category sunctionality
+- Keyboard overlap isspes in exercise creation form
+- SQLite traasacingn nesting issues
+- TypeScript parameter typing i  database services
+- Null visue handlsng in dauabase operations
+- Development seeding duplicate prevention
+- Template categore spacing issuess
 - Exercise list rendering on iOS
 - Database reset and reseeding behavior
 - Template details UI overflow issues

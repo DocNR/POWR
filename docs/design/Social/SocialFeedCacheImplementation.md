@@ -147,13 +147,261 @@ useEffect(() => {
 }, [ndk, db]);
 ```
 
+### Global Transaction Lock Mechanism
+
+To prevent transaction conflicts between different services (such as SocialFeedCache and ContactCacheService), we've implemented a global transaction lock mechanism in the SocialFeedCache class:
+
+```typescript
+// Global transaction lock to prevent transaction conflicts across services
+private static transactionLock: boolean = false;
+private static transactionQueue: (() => Promise<void>)[] = [];
+private static processingQueue: boolean = false;
+
+/**
+ * Acquire the global transaction lock
+ * @returns True if lock was acquired, false otherwise
+ */
+private static acquireTransactionLock(): boolean {
+  if (SocialFeedCache.transactionLock) {
+    return false;
+  }
+  SocialFeedCache.transactionLock = true;
+  return true;
+}
+
+/**
+ * Release the global transaction lock
+ */
+private static releaseTransactionLock(): void {
+  SocialFeedCache.transactionLock = false;
+  // Process the next transaction in queue if any
+  if (SocialFeedCache.transactionQueue.length > 0 && !SocialFeedCache.processingQueue) {
+    SocialFeedCache.processTransactionQueue();
+  }
+}
+
+/**
+ * Add a transaction to the queue
+ * @param transaction Function that performs the transaction
+ */
+private static enqueueTransaction(transaction: () => Promise<void>): void {
+  SocialFeedCache.transactionQueue.push(transaction);
+  // Start processing the queue if not already processing
+  if (!SocialFeedCache.processingQueue) {
+    SocialFeedCache.processTransactionQueue();
+  }
+}
+
+/**
+ * Process the transaction queue
+ */
+private static async processTransactionQueue(): Promise<void> {
+  if (SocialFeedCache.processingQueue || SocialFeedCache.transactionQueue.length === 0) {
+    return;
+  }
+  
+  SocialFeedCache.processingQueue = true;
+  
+  try {
+    while (SocialFeedCache.transactionQueue.length > 0) {
+      // Wait until we can acquire the lock
+      if (!SocialFeedCache.acquireTransactionLock()) {
+        // If we can't acquire the lock, wait and try again
+        await new Promise(resolve => setTimeout(resolve, 100));
+        continue;
+      }
+      
+      // Get the next transaction
+      const transaction = SocialFeedCache.transactionQueue.shift();
+      if (!transaction) {
+        SocialFeedCache.releaseTransactionLock();
+        continue;
+      }
+      
+      try {
+        // Execute the transaction
+        await transaction();
+      } catch (error) {
+        console.error('[SocialFeedCache] Error executing queued transaction:', error);
+      } finally {
+        // Release the lock
+        SocialFeedCache.releaseTransactionLock();
+      }
+    }
+  } finally {
+    SocialFeedCache.processingQueue = false;
+  }
+}
+
+/**
+ * Execute a transaction with the global lock
+ * @param transaction Function that performs the transaction
+ */
+public static async executeWithLock(transaction: () => Promise<void>): Promise<void> {
+  // Add the transaction to the queue
+  SocialFeedCache.enqueueTransaction(transaction);
+}
+```
+
+This mechanism ensures that only one transaction is active at any given time, preventing the "cannot start a transaction within a transaction" error that can occur when two services try to start transactions simultaneously.
+
+The `executeWithLock` method can be used by other services to coordinate their database transactions with SocialFeedCache:
+
+```typescript
+// Example usage in ContactCacheService
+async cacheContacts(ownerPubkey: string, contacts: string[]): Promise<void> {
+  if (!ownerPubkey || !contacts.length) return;
+  
+  try {
+    // Use the global transaction lock to prevent conflicts with other services
+    await SocialFeedCache.executeWithLock(async () => {
+      try {
+        // Use a transaction for better performance
+        await this.db.withTransactionAsync(async () => {
+          // Database operations...
+        });
+      } catch (error) {
+        console.error('[ContactCacheService] Error in transaction:', error);
+        throw error; // Rethrow to ensure the transaction is marked as failed
+      }
+    });
+  } catch (error) {
+    console.error('[ContactCacheService] Error caching contacts:', error);
+  }
+}
+```
+
+### Enhanced Write Buffer System
+
+The write buffer system has been enhanced with exponential backoff and improved error handling:
+
+```typescript
+private async flushWriteBuffer() {
+  if (this.writeBuffer.length === 0 || this.processingTransaction) return;
+  
+  // Check if database is available
+  if (!this.isDbAvailable()) {
+    console.log('[SocialFeedCache] Database not available, delaying flush');
+    this.scheduleNextFlush(true); // Schedule with backoff
+    return;
+  }
+  
+  // Take only a batch of operations to process at once
+  const bufferCopy = [...this.writeBuffer].slice(0, this.maxBatchSize);
+  this.writeBuffer = this.writeBuffer.slice(bufferCopy.length);
+  
+  this.processingTransaction = true;
+  
+  // Use the transaction lock to prevent conflicts
+  try {
+    // Check if we've exceeded the maximum retry count
+    if (this.retryCount > this.maxRetryCount) {
+      console.warn(`[SocialFeedCache] Exceeded maximum retry count (${this.maxRetryCount}), dropping ${bufferCopy.length} operations`);
+      // Reset retry count but don't retry these operations
+      this.retryCount = 0;
+      this.processingTransaction = false;
+      this.scheduleNextFlush();
+      return;
+    }
+    
+    // Increment retry count before attempting transaction
+    this.retryCount++;
+    
+    // Execute the transaction with the global lock
+    await SocialFeedCache.executeWithLock(async () => {
+      try {
+        // Execute the transaction
+        await this.db.withTransactionAsync(async () => {
+          for (const { query, params } of bufferCopy) {
+            try {
+              await this.db.runAsync(query, params);
+            } catch (innerError) {
+              // Log individual query errors but continue with other queries
+              console.error(`[SocialFeedCache] Error executing query: ${query}`, innerError);
+              // Don't rethrow to allow other queries to proceed
+            }
+          }
+        });
+        
+        // Success - reset retry count
+        this.retryCount = 0;
+        this.dbAvailable = true; // Mark database as available
+      } catch (error) {
+        console.error('[SocialFeedCache] Error in transaction:', error);
+        
+        // Check for database connection errors
+        if (error instanceof Error && 
+            (error.message.includes('closed resource') || 
+            error.message.includes('Database not available'))) {
+          // Mark database as unavailable
+          this.dbAvailable = false;
+          console.warn('[SocialFeedCache] Database connection issue detected, marking as unavailable');
+          
+          // Add all operations back to the buffer
+          this.writeBuffer = [...bufferCopy, ...this.writeBuffer];
+        } else {
+          // For other errors, add operations back to the buffer
+          // but only if they're not already there (avoid duplicates)
+          for (const op of bufferCopy) {
+            if (!this.writeBuffer.some(item => 
+              item.query === op.query && 
+              JSON.stringify(item.params) === JSON.stringify(op.params)
+            )) {
+              // Add back to the beginning of the buffer to retry sooner
+              this.writeBuffer.unshift(op);
+            }
+          }
+        }
+        
+        // Rethrow to ensure the transaction is marked as failed
+        throw error;
+      }
+    });
+  } catch (error) {
+    console.error('[SocialFeedCache] Error flushing write buffer:', error);
+  } finally {
+    this.processingTransaction = false;
+    this.scheduleNextFlush();
+  }
+}
+
+/**
+ * Schedule the next buffer flush with optional backoff
+ */
+private scheduleNextFlush(withBackoff: boolean = false) {
+  if (this.bufferFlushTimer) {
+    clearTimeout(this.bufferFlushTimer);
+    this.bufferFlushTimer = null;
+  }
+  
+  if (this.writeBuffer.length > 0) {
+    let delay = this.bufferFlushTimeout;
+    
+    if (withBackoff) {
+      // Use exponential backoff based on retry count
+      delay = Math.min(
+        this.bufferFlushTimeout * Math.pow(2, this.retryCount),
+        this.maxBackoffTime
+      );
+    }
+    
+    console.log(`[SocialFeedCache] Scheduling next flush in ${delay}ms (retry: ${this.retryCount})`);
+    this.bufferFlushTimer = setTimeout(() => this.flushWriteBuffer(), delay);
+  }
+}
+```
+
 ## Benefits
 
-1. **Reduced Transaction Conflicts**: The write buffer system prevents transaction conflicts by batching operations.
-2. **Improved Performance**: The LRU cache reduces redundant database operations.
-3. **Better Error Handling**: The system includes robust error handling to prevent cascading failures.
-4. **Offline Support**: The cache system provides offline access to social feed data.
-5. **Reduced Network Usage**: The system reduces network usage by caching events locally.
+1. **Eliminated Transaction Conflicts**: The global transaction lock mechanism prevents transaction conflicts between different services.
+2. **Improved Reliability**: The transaction queue ensures that all transactions are processed even if they can't be executed immediately.
+3. **Enhanced Error Recovery**: The exponential backoff and retry mechanism improves recovery from temporary database errors.
+4. **Better Offline Stability**: The system handles database unavailability gracefully, enabling seamless offline operation.
+5. **Reduced Database Contention**: Coordinated transactions reduce contention on the database.
+6. **Improved Performance**: The LRU cache reduces redundant database operations.
+7. **Better Error Handling**: The system includes robust error handling to prevent cascading failures.
+8. **Offline Support**: The cache system provides offline access to social feed data.
+9. **Reduced Network Usage**: The system reduces network usage by caching events locally.
 
 ## Debugging
 

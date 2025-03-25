@@ -27,9 +27,14 @@ export class SocialFeedCache {
   private maxBatchSize: number = 20; // Maximum operations per batch
   private dbAvailable: boolean = true; // Track database availability
   
+  // Global transaction lock to prevent transaction conflicts across services
+  private static transactionLock: boolean = false;
+  private static transactionQueue: (() => Promise<void>)[] = [];
+  private static processingQueue: boolean = false;
+  
   // LRU cache for tracking known events
   private knownEventIds: LRUCache<string, number>; // Event ID -> timestamp
-  
+
   constructor(database: SQLiteDatabase) {
     this.db = new DbService(database);
     this.eventCache = new EventCache(database);
@@ -77,6 +82,91 @@ export class SocialFeedCache {
   }
 
   /**
+   * Acquire the global transaction lock
+   * @returns True if lock was acquired, false otherwise
+   */
+  private static acquireTransactionLock(): boolean {
+    if (SocialFeedCache.transactionLock) {
+      return false;
+    }
+    SocialFeedCache.transactionLock = true;
+    return true;
+  }
+  
+  /**
+   * Release the global transaction lock
+   */
+  private static releaseTransactionLock(): void {
+    SocialFeedCache.transactionLock = false;
+    // Process the next transaction in queue if any
+    if (SocialFeedCache.transactionQueue.length > 0 && !SocialFeedCache.processingQueue) {
+      SocialFeedCache.processTransactionQueue();
+    }
+  }
+  
+  /**
+   * Add a transaction to the queue
+   * @param transaction Function that performs the transaction
+   */
+  private static enqueueTransaction(transaction: () => Promise<void>): void {
+    SocialFeedCache.transactionQueue.push(transaction);
+    // Start processing the queue if not already processing
+    if (!SocialFeedCache.processingQueue) {
+      SocialFeedCache.processTransactionQueue();
+    }
+  }
+  
+  /**
+   * Process the transaction queue
+   */
+  private static async processTransactionQueue(): Promise<void> {
+    if (SocialFeedCache.processingQueue || SocialFeedCache.transactionQueue.length === 0) {
+      return;
+    }
+    
+    SocialFeedCache.processingQueue = true;
+    
+    try {
+      while (SocialFeedCache.transactionQueue.length > 0) {
+        // Wait until we can acquire the lock
+        if (!SocialFeedCache.acquireTransactionLock()) {
+          // If we can't acquire the lock, wait and try again
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
+        
+        // Get the next transaction
+        const transaction = SocialFeedCache.transactionQueue.shift();
+        if (!transaction) {
+          SocialFeedCache.releaseTransactionLock();
+          continue;
+        }
+        
+        try {
+          // Execute the transaction
+          await transaction();
+        } catch (error) {
+          console.error('[SocialFeedCache] Error executing queued transaction:', error);
+        } finally {
+          // Release the lock
+          SocialFeedCache.releaseTransactionLock();
+        }
+      }
+    } finally {
+      SocialFeedCache.processingQueue = false;
+    }
+  }
+  
+  /**
+   * Execute a transaction with the global lock
+   * @param transaction Function that performs the transaction
+   */
+  public static async executeWithLock(transaction: () => Promise<void>): Promise<void> {
+    // Add the transaction to the queue
+    SocialFeedCache.enqueueTransaction(transaction);
+  }
+  
+  /**
    * Flush the write buffer, executing queued operations in a transaction
    */
   private async flushWriteBuffer() {
@@ -95,6 +185,7 @@ export class SocialFeedCache {
     
     this.processingTransaction = true;
     
+    // Use the transaction lock to prevent conflicts
     try {
       // Check if we've exceeded the maximum retry count
       if (this.retryCount > this.maxRetryCount) {
@@ -109,48 +200,58 @@ export class SocialFeedCache {
       // Increment retry count before attempting transaction
       this.retryCount++;
       
-      // Execute the transaction
-      await this.db.withTransactionAsync(async () => {
-        for (const { query, params } of bufferCopy) {
-          try {
-            await this.db.runAsync(query, params);
-          } catch (innerError) {
-            // Log individual query errors but continue with other queries
-            console.error(`[SocialFeedCache] Error executing query: ${query}`, innerError);
-            // Don't rethrow to allow other queries to proceed
+      // Execute the transaction with the global lock
+      await SocialFeedCache.executeWithLock(async () => {
+        try {
+          // Execute the transaction
+          await this.db.withTransactionAsync(async () => {
+            for (const { query, params } of bufferCopy) {
+              try {
+                await this.db.runAsync(query, params);
+              } catch (innerError) {
+                // Log individual query errors but continue with other queries
+                console.error(`[SocialFeedCache] Error executing query: ${query}`, innerError);
+                // Don't rethrow to allow other queries to proceed
+              }
+            }
+          });
+          
+          // Success - reset retry count
+          this.retryCount = 0;
+          this.dbAvailable = true; // Mark database as available
+        } catch (error) {
+          console.error('[SocialFeedCache] Error in transaction:', error);
+          
+          // Check for database connection errors
+          if (error instanceof Error && 
+              (error.message.includes('closed resource') || 
+               error.message.includes('Database not available'))) {
+            // Mark database as unavailable
+            this.dbAvailable = false;
+            console.warn('[SocialFeedCache] Database connection issue detected, marking as unavailable');
+            
+            // Add all operations back to the buffer
+            this.writeBuffer = [...bufferCopy, ...this.writeBuffer];
+          } else {
+            // For other errors, add operations back to the buffer
+            // but only if they're not already there (avoid duplicates)
+            for (const op of bufferCopy) {
+              if (!this.writeBuffer.some(item => 
+                item.query === op.query && 
+                JSON.stringify(item.params) === JSON.stringify(op.params)
+              )) {
+                // Add back to the beginning of the buffer to retry sooner
+                this.writeBuffer.unshift(op);
+              }
+            }
           }
+          
+          // Rethrow to ensure the transaction is marked as failed
+          throw error;
         }
       });
-      
-      // Success - reset retry count
-      this.retryCount = 0;
-      this.dbAvailable = true; // Mark database as available
     } catch (error) {
       console.error('[SocialFeedCache] Error flushing write buffer:', error);
-      
-      // Check for database connection errors
-      if (error instanceof Error && 
-          (error.message.includes('closed resource') || 
-           error.message.includes('Database not available'))) {
-        // Mark database as unavailable
-        this.dbAvailable = false;
-        console.warn('[SocialFeedCache] Database connection issue detected, marking as unavailable');
-        
-        // Add all operations back to the buffer
-        this.writeBuffer = [...bufferCopy, ...this.writeBuffer];
-      } else {
-        // For other errors, add operations back to the buffer
-        // but only if they're not already there (avoid duplicates)
-        for (const op of bufferCopy) {
-          if (!this.writeBuffer.some(item => 
-            item.query === op.query && 
-            JSON.stringify(item.params) === JSON.stringify(op.params)
-          )) {
-            // Add back to the beginning of the buffer to retry sooner
-            this.writeBuffer.unshift(op);
-          }
-        }
-      }
     } finally {
       this.processingTransaction = false;
       this.scheduleNextFlush();

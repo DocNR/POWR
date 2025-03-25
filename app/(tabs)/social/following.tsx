@@ -26,12 +26,15 @@ function FollowingScreen() {
     }
   }, [contacts.length]);
   
-  // Track if feed has loaded successfully with content
+  // Feed loading state tracking
   const [hasLoadedWithContent, setHasLoadedWithContent] = useState(false);
-  // Track if we've loaded content with the full contact list
   const [hasLoadedWithContacts, setHasLoadedWithContacts] = useState(false);
-  // Track the number of contacts we've loaded content with
   const [loadedContactsCount, setLoadedContactsCount] = useState(0);
+  const [isRefreshingWithContacts, setIsRefreshingWithContacts] = useState(false);
+  
+  // Contact refresh retry tracking
+  const [contactRefreshAttempts, setContactRefreshAttempts] = useState(0);
+  const maxContactRefreshAttempts = 3; // Limit to prevent infinite refresh attempts
   
   // Use the enhanced useSocialFeed hook with the contact list
   // Always pass an array, even if empty, to ensure consistent behavior
@@ -81,86 +84,51 @@ function FollowingScreen() {
     }
   }, [contacts.length, loadedContactsCount]);
   
-  // Auto-refresh when contacts are loaded with improved retry logic
+  // Auto-refresh when contacts list changes
   React.useEffect(() => {
-    // Trigger refresh when contacts change from empty to non-empty
-    // OR when we have content but haven't loaded with the full contact list yet
-    if (contacts.length > 0 && !isLoadingContacts && 
-        (!hasLoadedWithContent || !hasLoadedWithContacts)) {
-      console.log('[FollowingScreen] Contacts loaded, triggering auto-refresh');
-      
-      // Track retry attempts
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      // Function to attempt refresh with exponential backoff
-      const attemptRefresh = () => {
-        // Increase delay with each retry (1s, 2s, 4s)
-        const delay = 1000 * Math.pow(2, retryCount);
-        
-        console.log(`[FollowingScreen] Scheduling refresh attempt ${retryCount + 1}/${maxRetries + 1} in ${delay}ms`);
-        
-        return setTimeout(async () => {
-          // Skip if we've loaded content with the full contact list in the meantime
-          if (hasLoadedWithContent && hasLoadedWithContacts) {
-            console.log('[FollowingScreen] Content already loaded with full contact list, skipping refresh');
-            return;
-          }
-          
-          try {
-            console.log(`[FollowingScreen] Executing refresh attempt ${retryCount + 1}/${maxRetries + 1}`);
-            // Use force refresh to bypass cooldown
-            await refresh(true);
-            
-            // Check if we got any items after a short delay
-            setTimeout(() => {
-              if (feedItems.length === 0 && retryCount < maxRetries && 
-                  (!hasLoadedWithContent || !hasLoadedWithContacts)) {
-                console.log(`[FollowingScreen] No items after refresh attempt ${retryCount + 1}, retrying...`);
-                retryCount++;
-                const nextTimer = attemptRefresh();
-                
-                // Store the timer ID in the ref so we can clear it if needed
-                retryTimerRef.current = nextTimer;
-              } else if (feedItems.length > 0) {
-                console.log(`[FollowingScreen] Refresh successful, got ${feedItems.length} items`);
-                setHasLoadedWithContent(true);
-                // Mark as loaded with contacts if we have the full contact list
-                if (contacts.length > 0) {
-                  console.log(`[FollowingScreen] Marking as loaded with ${contacts.length} contacts`);
-                  setLoadedContactsCount(contacts.length);
-                  setHasLoadedWithContacts(true);
-                }
-              } else {
-                console.log(`[FollowingScreen] All refresh attempts completed, got ${feedItems.length} items`);
-              }
-            }, 500);
-          } catch (error) {
-            console.error(`[FollowingScreen] Error during refresh attempt ${retryCount + 1}:`, error);
-            
-            // Retry on error if we haven't exceeded max retries
-            if (retryCount < maxRetries && (!hasLoadedWithContent || !hasLoadedWithContacts)) {
-              retryCount++;
-              const nextTimer = attemptRefresh();
-              retryTimerRef.current = nextTimer;
-            }
-          }
-        }, delay);
-      };
-      
-      // Start the first attempt with initial delay
-      const timerId = attemptRefresh();
-      retryTimerRef.current = timerId;
-      
-      // Clean up any pending timers on unmount
-      return () => {
-        if (retryTimerRef.current) {
-          clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = null;
-        }
-      };
+    // Prevent multiple simultaneous refresh attempts
+    if (isRefreshingWithContacts) {
+      return;
     }
-  }, [contacts.length, isLoadingContacts, refresh, feedItems.length, hasLoadedWithContent, hasLoadedWithContacts]);
+    
+    // Only refresh if we have contacts, aren't currently loading contacts,
+    // and either haven't loaded with contacts yet or have no feed items
+    const shouldRefresh = contacts.length > 0 && 
+                         !isLoadingContacts && 
+                         (!hasLoadedWithContacts || feedItems.length === 0) && 
+                         contactRefreshAttempts < maxContactRefreshAttempts;
+    
+    if (shouldRefresh) {
+      console.log(`[FollowingScreen] Refreshing feed with ${contacts.length} contacts (attempt ${contactRefreshAttempts + 1}/${maxContactRefreshAttempts})`);
+      
+      setIsRefreshingWithContacts(true);
+      setContactRefreshAttempts(prev => prev + 1);
+      
+      refresh(true)
+        .then(() => {
+          setHasLoadedWithContent(true);
+          setHasLoadedWithContacts(true);
+          setIsRefreshingWithContacts(false);
+        })
+        .catch(error => {
+          console.error('[FollowingScreen] Error refreshing feed:', error);
+          setIsRefreshingWithContacts(false);
+          
+          // Prevent infinite retries by marking as loaded after max attempts
+          if (contactRefreshAttempts >= maxContactRefreshAttempts - 1) {
+            setHasLoadedWithContacts(true);
+          }
+        });
+    }
+  }, [
+    contacts.length, 
+    isLoadingContacts, 
+    hasLoadedWithContacts, 
+    feedItems.length, 
+    refresh, 
+    contactRefreshAttempts, 
+    isRefreshingWithContacts
+  ]);
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showNewButton, setShowNewButton] = useState(false);
@@ -191,44 +159,31 @@ function FollowingScreen() {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
   
-  // Handle refresh - updated to use forceRefresh parameter
+  // Manual refresh handler with improved error handling
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
+    
     try {
-      console.log('[FollowingScreen] Starting manual refresh (force=true)');
+      // Reset retry counter on manual refresh
+      setContactRefreshAttempts(0);
       
-      // Check if we have contacts before refreshing
-      if (contacts.length === 0) {
-        console.log('[FollowingScreen] No contacts available for refresh, using fallback');
-        // Still try to refresh with force=true to bypass cooldown
-      }
-      
-      // Use force=true to bypass cooldown
+      // Force refresh to bypass cooldown
       await refresh(true);
-      // Add a slight delay to ensure the UI updates
-      await new Promise(resolve => setTimeout(resolve, 300));
-      console.log('[FollowingScreen] Manual refresh completed successfully');
       
-      // If we get content, mark as loaded with content
+      // Small delay to ensure UI updates
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Update loading states if content is available
       if (feedItems.length > 0) {
         setHasLoadedWithContent(true);
         
-        // Mark as loaded with contacts if we have the full contact list
         if (contacts.length > 0) {
-          console.log(`[FollowingScreen] Marking as loaded with ${contacts.length} contacts after manual refresh`);
           setLoadedContactsCount(contacts.length);
           setHasLoadedWithContacts(true);
         }
       }
     } catch (error) {
       console.error('[FollowingScreen] Error refreshing feed:', error);
-      // Log more detailed error information
-      if (error instanceof Error) {
-        console.error(`[FollowingScreen] Error details: ${error.message}`);
-        if (error.stack) {
-          console.error(`[FollowingScreen] Stack trace: ${error.stack}`);
-        }
-      }
     } finally {
       setIsRefreshing(false);
     }

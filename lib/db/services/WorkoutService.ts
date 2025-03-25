@@ -3,6 +3,7 @@ import { SQLiteDatabase } from 'expo-sqlite';
 import { Workout, WorkoutExercise, WorkoutSet, WorkoutSummary } from '@/types/workout';
 import { generateId } from '@/utils/ids';
 import { DbService } from '../db-service';
+import { SocialFeedCache } from './SocialFeedCache';
 
 export class WorkoutService {
   private db: DbService;
@@ -16,66 +17,74 @@ export class WorkoutService {
    */
   async saveWorkout(workout: Workout): Promise<void> {
     try {
-      await this.db.withTransactionAsync(async () => {
-        // Check if workout exists (for update vs insert)
-        const existingWorkout = await this.db.getFirstAsync<{ id: string }>(
-          'SELECT id FROM workouts WHERE id = ?',
-          [workout.id]
-        );
-        
-        const timestamp = Date.now();
-        
-        if (existingWorkout) {
-          // Update existing workout
-          await this.db.runAsync(
-            `UPDATE workouts SET 
-             title = ?, type = ?, start_time = ?, end_time = ?, 
-             is_completed = ?, updated_at = ?, template_id = ?,
-             share_status = ?, notes = ?
-             WHERE id = ?`,
-            [
-              workout.title,
-              workout.type,
-              workout.startTime,
-              workout.endTime || null,
-              workout.isCompleted ? 1 : 0,
-              timestamp,
-              workout.templateId || null,
-              workout.shareStatus || 'local',
-              workout.notes || null,
-              workout.id
-            ]
-          );
-          
-          // Delete existing exercises and sets to recreate them
-          await this.deleteWorkoutExercises(workout.id);
-        } else {
-          // Insert new workout
-          await this.db.runAsync(
-            `INSERT INTO workouts (
-              id, title, type, start_time, end_time, is_completed,
-              created_at, updated_at, template_id, source, share_status, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              workout.id,
-              workout.title,
-              workout.type,
-              workout.startTime,
-              workout.endTime || null,
-              workout.isCompleted ? 1 : 0,
-              timestamp,
-              timestamp,
-              workout.templateId || null,
-              workout.availability?.source[0] || 'local',
-              workout.shareStatus || 'local',
-              workout.notes || null
-            ]
-          );
-        }
-        
-        // Save exercises and sets
-        if (workout.exercises?.length) {
-          await this.saveWorkoutExercises(workout.id, workout.exercises);
+      // Use the global transaction lock to prevent conflicts with other services
+      await SocialFeedCache.executeWithLock(async () => {
+        try {
+          await this.db.withTransactionAsync(async () => {
+            // Check if workout exists (for update vs insert)
+            const existingWorkout = await this.db.getFirstAsync<{ id: string }>(
+              'SELECT id FROM workouts WHERE id = ?',
+              [workout.id]
+            );
+            
+            const timestamp = Date.now();
+            
+            if (existingWorkout) {
+              // Update existing workout
+              await this.db.runAsync(
+                `UPDATE workouts SET 
+                 title = ?, type = ?, start_time = ?, end_time = ?, 
+                 is_completed = ?, updated_at = ?, template_id = ?,
+                 share_status = ?, notes = ?
+                 WHERE id = ?`,
+                [
+                  workout.title,
+                  workout.type,
+                  workout.startTime,
+                  workout.endTime || null,
+                  workout.isCompleted ? 1 : 0,
+                  timestamp,
+                  workout.templateId || null,
+                  workout.shareStatus || 'local',
+                  workout.notes || null,
+                  workout.id
+                ]
+              );
+              
+              // Delete existing exercises and sets to recreate them
+              await this.deleteWorkoutExercises(workout.id);
+            } else {
+              // Insert new workout
+              await this.db.runAsync(
+                `INSERT INTO workouts (
+                  id, title, type, start_time, end_time, is_completed,
+                  created_at, updated_at, template_id, source, share_status, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  workout.id,
+                  workout.title,
+                  workout.type,
+                  workout.startTime,
+                  workout.endTime || null,
+                  workout.isCompleted ? 1 : 0,
+                  timestamp,
+                  timestamp,
+                  workout.templateId || null,
+                  workout.availability?.source[0] || 'local',
+                  workout.shareStatus || 'local',
+                  workout.notes || null
+                ]
+              );
+            }
+            
+            // Save exercises and sets
+            if (workout.exercises?.length) {
+              await this.saveWorkoutExercises(workout.id, workout.exercises);
+            }
+          });
+        } catch (error) {
+          console.error('Error in workout transaction:', error);
+          throw error; // Rethrow to ensure the transaction is marked as failed
         }
       });
       
@@ -252,15 +261,23 @@ export class WorkoutService {
    */
   async deleteWorkout(id: string): Promise<void> {
     try {
-      await this.db.withTransactionAsync(async () => {
-        // Delete exercises and sets first due to foreign key constraints
-        await this.deleteWorkoutExercises(id);
-        
-        // Delete the workout
-        await this.db.runAsync(
-          'DELETE FROM workouts WHERE id = ?',
-          [id]
-        );
+      // Use the global transaction lock to prevent conflicts with other services
+      await SocialFeedCache.executeWithLock(async () => {
+        try {
+          await this.db.withTransactionAsync(async () => {
+            // Delete exercises and sets first due to foreign key constraints
+            await this.deleteWorkoutExercises(id);
+            
+            // Delete the workout
+            await this.db.runAsync(
+              'DELETE FROM workouts WHERE id = ?',
+              [id]
+            );
+          });
+        } catch (error) {
+          console.error('Error in delete workout transaction:', error);
+          throw error; // Rethrow to ensure the transaction is marked as failed
+        }
       });
     } catch (error) {
       console.error('Error deleting workout:', error);
