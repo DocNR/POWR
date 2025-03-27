@@ -1,3 +1,5 @@
+**This document needs to be updated as we switched the order of the personal social feed (first) and the overview. We should also update this with the progress we made and some of the setbacks such as the react hooks consistency issues, user authentication state managment subscription management issues and component interdependencies**
+
 # Profile Tab Enhancement Design Document
 
 ## Overview
@@ -75,9 +77,9 @@ The Settings section will include:
 - Profile information management
 - Nostr account connection and management
 - Data synchronization preferences
-- Privacy settings for social sharing
+- Privacy settings for social sharing **we need to be careful with this as posting on public nostr relays is not inherently private. solutions for the future would be to allow the user to post to a personal private relay, or encrypt data in the future**
 - App preferences and customization
-- Export and backup options
+- Export and backup options 
 
 ## Implementation Plan
 
