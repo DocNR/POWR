@@ -5,6 +5,26 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 26, 2025
+
+## Fixed
+- Authentication state management issues
+  - Fixed runtime error when signing out from social screens
+  - Enhanced useSocialFeed hook with better subscription management
+  - Improved NDK logout process with proper subscription cleanup
+  - Added deep comparison for subscription parameters to prevent unnecessary resubscriptions
+  - Implemented exponential backoff for subscription attempts
+  - Enhanced error handling in subscription lifecycle
+  - Fixed React hooks order issues in social components
+  - Added proper cleanup of subscriptions during authentication state changes
+  - Increased logout delay to ensure proper cleanup of resources
+  - Added type-safe access to NDK internal properties
+  - Fixed "Rendered fewer hooks than expected" error during logout
+  - Ensured consistent hook call order in social feed components
+  - Improved subscription cleanup timing in NDK store
+  - Enhanced state management during authentication transitions
+  - Added better subscription tracking and cleanup in logout process
+
 # Changelog - March 25, 2025
 
 ## Added
