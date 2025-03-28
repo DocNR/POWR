@@ -5,6 +5,24 @@ All notable changes to the POWR project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog - March 28, 2025
+
+## Added
+- Real-time follower and following counts in Profile screen
+  - Integrated with nostr.band API for comprehensive network statistics
+  - Created NostrBandService for efficient API interaction
+  - Implemented useProfileStats hook with auto-refresh capabilities
+  - Added proper loading states and error handling
+  - Created documentation in the new documentation structure
+
+## Improved
+- Enhanced Profile UI
+  - Reorganized profile screen layout for better information hierarchy
+  - Improved npub display with better sharing options
+  - Added inline copy and QR buttons for better usability
+  - Enhanced visual consistency across profile elements
+  - Replaced hardcoded follower counts with real-time data
+
 # Changelog - March 26, 2025
 
 ## Fixed

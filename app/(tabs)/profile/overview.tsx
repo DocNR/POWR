@@ -1,6 +1,6 @@
 // app/(tabs)/profile/overview.tsx
 import React, { useState, useCallback } from 'react';
-import { View, FlatList, RefreshControl, Pressable, TouchableOpacity, ImageBackground } from 'react-native';
+import { View, FlatList, RefreshControl, Pressable, TouchableOpacity, ImageBackground, Clipboard } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
@@ -10,6 +10,7 @@ import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
 import EnhancedSocialPost from '@/components/social/EnhancedSocialPost';
 import EmptyFeed from '@/components/social/EmptyFeed';
 import { useSocialFeed } from '@/lib/hooks/useSocialFeed';
+import { useProfileStats } from '@/lib/hooks/useProfileStats';
 import { 
   AnyFeedEntry, 
   WorkoutFeedEntry, 
@@ -24,6 +25,7 @@ import { QrCode, Mail, Copy } from 'lucide-react-native';
 import { useTheme } from '@react-navigation/native';
 import type { CustomTheme } from '@/lib/theme';
 import { Alert } from 'react-native';
+import { nip19 } from 'nostr-tools';
 
 // Define the conversion function for feed items
 function convertToLegacyFeedItem(entry: AnyFeedEntry) {
@@ -139,6 +141,50 @@ export default function OverviewScreen() {
                    
   const pubkey = currentUser?.pubkey;
   
+  // Profile follower stats component
+  const ProfileFollowerStats = React.memo(({ pubkey }: { pubkey?: string }) => {
+    const { followersCount, followingCount, isLoading, error } = useProfileStats({ 
+      pubkey, 
+      refreshInterval: 60000 * 15 // refresh every 15 minutes
+    });
+    
+    return (
+      <View className="flex-row mb-2">
+        <TouchableOpacity className="mr-4">
+          <Text>
+            <Text className="font-bold">{isLoading ? '...' : followingCount.toLocaleString()}</Text>
+            <Text className="text-muted-foreground"> following</Text>
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity>
+          <Text>
+            <Text className="font-bold">{isLoading ? '...' : followersCount.toLocaleString()}</Text>
+            <Text className="text-muted-foreground"> followers</Text>
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  });
+  
+  // Generate npub format for display
+  const npubFormat = React.useMemo(() => {
+    if (!pubkey) return '';
+    try {
+      const npub = nip19.npubEncode(pubkey);
+      return npub;
+    } catch (error) {
+      console.error('Error encoding npub:', error);
+      return '';
+    }
+  }, [pubkey]);
+  
+  // Get shortened npub display version
+  const shortenedNpub = React.useMemo(() => {
+    if (!npubFormat) return '';
+    return `${npubFormat.substring(0, 8)}...${npubFormat.substring(npubFormat.length - 5)}`;
+  }, [npubFormat]);
+  
   // Handle refresh
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -159,14 +205,18 @@ export default function OverviewScreen() {
     console.log(`Selected ${entry.type}:`, entry);
   }, []);
   
-  // Copy pubkey to clipboard
+  // Copy npub to clipboard
   const copyPubkey = useCallback(() => {
     if (pubkey) {
-      // Simple alert instead of clipboard functionality
-      Alert.alert('Pubkey', pubkey, [
-        { text: 'OK' }
-      ]);
-      console.log('Pubkey shown to user');
+      try {
+        const npub = nip19.npubEncode(pubkey);
+        Clipboard.setString(npub);
+        Alert.alert('Copied', 'Public key copied to clipboard in npub format');
+        console.log('npub copied to clipboard:', npub);
+      } catch (error) {
+        console.error('Error copying npub:', error);
+        Alert.alert('Error', 'Failed to copy public key');
+      }
     }
   }, [pubkey]);
   
@@ -238,22 +288,8 @@ export default function OverviewScreen() {
             style={{ width: 90, height: 90 }}
           />
           
-          {/* Action buttons - positioned to the right */}
-          <View className="flex-row ml-auto mb-2">
-            <TouchableOpacity 
-              className="w-10 h-10 items-center justify-center rounded-md bg-muted mr-2"
-              onPress={showQRCode}
-            >
-              <QrCode size={18} color={theme.colors.text} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              className="w-10 h-10 items-center justify-center rounded-md bg-muted mr-2"
-              onPress={copyPubkey}
-            >
-              <Copy size={18} color={theme.colors.text} />
-            </TouchableOpacity>
-            
+          {/* Edit Profile button - positioned to the right */}
+          <View className="ml-auto mb-2">
             <TouchableOpacity 
               className="px-4 h-10 items-center justify-center rounded-md bg-muted"
               onPress={() => router.push('/profile/settings')}
@@ -266,24 +302,35 @@ export default function OverviewScreen() {
         {/* Profile info */}
         <View>
           <Text className="text-xl font-bold">{displayName}</Text>
-          <Text className="text-muted-foreground mb-2">{username}</Text>
+          <Text className="text-muted-foreground">{username}</Text>
+          
+          {/* Display npub below username with sharing options */}
+          {npubFormat && (
+            <View className="flex-row items-center mt-1 mb-2">
+              <Text className="text-xs text-muted-foreground font-mono">
+                {shortenedNpub}
+              </Text>
+              <TouchableOpacity 
+                className="ml-2 p-1"
+                onPress={copyPubkey}
+                accessibilityLabel="Copy public key"
+                accessibilityHint="Copies your Nostr public key to clipboard"
+              >
+                <Copy size={12} color={theme.colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                className="ml-2 p-1"
+                onPress={showQRCode}
+                accessibilityLabel="Show QR Code"
+                accessibilityHint="Shows a QR code with your Nostr public key"
+              >
+                <QrCode size={12} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+          )}
           
           {/* Follower stats */}
-          <View className="flex-row mb-2">
-            <TouchableOpacity className="mr-4">
-              <Text>
-                <Text className="font-bold">2,003</Text>
-                <Text className="text-muted-foreground"> following</Text>
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity>
-              <Text>
-                <Text className="font-bold">4,764</Text>
-                <Text className="text-muted-foreground"> followers</Text>
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <ProfileFollowerStats pubkey={pubkey} />
           
           {/* About text */}
           {aboutText && (
@@ -295,7 +342,7 @@ export default function OverviewScreen() {
         <View className="h-px bg-border w-full mt-2" />
       </View>
     </View>
-  ), [displayName, username, profileImageUrl, aboutText, pubkey, theme.colors.text, router, showQRCode, copyPubkey]);
+  ), [displayName, username, profileImageUrl, aboutText, pubkey, npubFormat, shortenedNpub, theme.colors.text, router, showQRCode, copyPubkey]);
   
   if (loading && entries.length === 0) {
     return (
