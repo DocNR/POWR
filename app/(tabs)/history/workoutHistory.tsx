@@ -139,6 +139,16 @@ export default function HistoryScreen() {
   const [includeNostr, setIncludeNostr] = useState(true);
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
   
+  // Create memoized filters to prevent recreation on every render
+  const filters = React.useMemo(() => {
+    if (includeNostr) {
+      return undefined;
+    } else {
+      // Explicitly type the array to match WorkoutFilters interface
+      return { source: ['local' as const] };
+    }
+  }, [includeNostr]);
+  
   // Use the unified workout history hook
   const { 
     workouts: allWorkouts, 
@@ -148,29 +158,30 @@ export default function HistoryScreen() {
     error
   } = useWorkoutHistory({
     includeNostr,
-    filters: includeNostr ? undefined : { source: ['local'] },
+    filters,
     realtime: true
   });
   
-  // Set workouts from the hook
+  // Set workouts from the hook with more careful state updates
   useEffect(() => {
     if (loading) {
       setIsLoading(true);
+      return; // Exit early to avoid multiple state updates in one effect
+    }
+    
+    setIsLoading(false);
+    setRefreshing(false);
+    
+    // Check if we need to use mock data (empty workouts)
+    if (allWorkouts.length === 0 && !error) {
+      console.log('No workouts found, using mock data');
+      setWorkouts(mockWorkouts);
+      setUseMockData(true);
     } else {
       setWorkouts(allWorkouts);
-      setIsLoading(false);
-      setRefreshing(false);
-      
-      // Check if we need to use mock data (empty workouts)
-      if (allWorkouts.length === 0 && !error) {
-        console.log('No workouts found, using mock data');
-        setWorkouts(mockWorkouts);
-        setUseMockData(true);
-      } else {
-        setUseMockData(false);
-      }
+      setUseMockData(false);
     }
-  }, [allWorkouts, loading, error]);
+  }, [allWorkouts, loading, error, mockWorkouts]);
   
   // Pull to refresh handler
   const onRefresh = React.useCallback(() => {
@@ -231,23 +242,54 @@ export default function HistoryScreen() {
             )}
             
             {isAuthenticated && (
-              <View className="flex-row justify-end mb-4">
-                <Pressable
-                  onPress={() => setIncludeNostr(!includeNostr)}
-                  style={{
-                    backgroundColor: includeNostr ? primaryBgColor : mutedBgColor,
-                    paddingHorizontal: 12,
-                    paddingVertical: 4,
-                    borderRadius: 9999,
-                  }}
-                >
-                  <Text style={{ 
-                    color: includeNostr ? primaryTextColor : mutedTextColor,
-                    fontSize: 14,
-                  }}>
-                    {includeNostr ? 'Showing All Workouts' : 'Local Workouts Only'}
+              <View className="mb-4">
+                <View className="flex-row justify-between items-center">
+                  <Text className="text-foreground text-sm font-medium">
+                    Workout Source
                   </Text>
-                </Pressable>
+                  
+                  <View className="flex-row border border-border rounded-full overflow-hidden">
+                    <Pressable
+                      onPress={() => setIncludeNostr(true)}
+                      style={{
+                        backgroundColor: includeNostr ? primaryBgColor : 'transparent',
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ 
+                        color: includeNostr ? primaryTextColor : mutedTextColor,
+                        fontSize: 14,
+                        fontWeight: includeNostr ? '600' : '400',
+                      }}>
+                        All Workouts
+                      </Text>
+                    </Pressable>
+                    
+                    <Pressable
+                      onPress={() => setIncludeNostr(false)}
+                      style={{
+                        backgroundColor: !includeNostr ? primaryBgColor : 'transparent',
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ 
+                        color: !includeNostr ? primaryTextColor : mutedTextColor,
+                        fontSize: 14,
+                        fontWeight: !includeNostr ? '600' : '400',
+                      }}>
+                        Local Only
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+                
+                <Text className="text-muted-foreground text-xs mt-1">
+                  {includeNostr 
+                    ? 'Showing all workouts from Nostr and your local device' 
+                    : 'Only showing workouts saved on this device'}
+                </Text>
               </View>
             )}
             

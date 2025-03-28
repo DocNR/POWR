@@ -71,25 +71,28 @@ export function useWorkoutHistory(options: UseWorkoutHistoryOptions = {}) {
   
   // Set up real-time subscription if enabled
   useEffect(() => {
-    if (!realtime || !isAuthenticated || !currentUser?.pubkey || !includeNostr) {
+    if (!realtime || !isAuthenticated || !currentUser?.pubkey) {
       return;
     }
     
-    // Subscribe to real-time updates
+    // Only create the subscription when we need it (not dependent on includeNostr to prevent re-subs)
     const subId = workoutHistoryService.subscribeToNostrWorkouts(
       currentUser.pubkey,
       (newWorkout) => {
-        setWorkouts(prev => {
-          // Check if workout already exists
-          const exists = prev.some(w => w.id === newWorkout.id);
-          if (exists) {
-            // Update existing workout
-            return prev.map(w => w.id === newWorkout.id ? newWorkout : w);
-          } else {
-            // Add new workout
-            return [newWorkout, ...prev];
-          }
-        });
+        // Only update state if we're including Nostr workouts
+        if (includeNostr) {
+          setWorkouts(prev => {
+            // Check if workout already exists
+            const exists = prev.some(w => w.id === newWorkout.id);
+            if (exists) {
+              // Update existing workout
+              return prev.map(w => w.id === newWorkout.id ? newWorkout : w);
+            } else {
+              // Add new workout
+              return [newWorkout, ...prev];
+            }
+          });
+        }
       }
     );
     
@@ -97,7 +100,9 @@ export function useWorkoutHistory(options: UseWorkoutHistoryOptions = {}) {
     return () => {
       workoutHistoryService.unsubscribeFromNostrWorkouts(subId);
     };
-  }, [workoutHistoryService, currentUser?.pubkey, isAuthenticated, realtime, includeNostr]);
+    // Remove includeNostr from dependencies to prevent re-subs when it changes
+    // We handle the includeNostr state inside the callback instead
+  }, [workoutHistoryService, currentUser?.pubkey, isAuthenticated, realtime]);
   
   // Refresh function for pull-to-refresh
   const refresh = useCallback(() => {
