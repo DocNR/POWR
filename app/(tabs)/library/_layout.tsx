@@ -8,6 +8,7 @@ import Header from '@/components/Header';
 import { useTheme } from '@react-navigation/native';
 import type { CustomTheme } from '@/lib/theme';
 import { TabScreen } from '@/components/layout/TabScreen';
+import { IS_PRODUCTION } from '@/lib/theme/constants';
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -52,11 +53,14 @@ export default function LibraryLayout() {
           component={TemplatesScreen}
           options={{ title: 'Templates' }}
         />
-        <Tab.Screen
-          name="programs"
-          component={ProgramsScreen}
-          options={{ title: 'Programs' }}
-        />
+        {/* Only show Programs tab in development builds */}
+        {!IS_PRODUCTION && (
+          <Tab.Screen
+            name="programs"
+            component={ProgramsScreen}
+            options={{ title: 'Programs' }}
+          />
+        )}
       </Tab.Navigator>
     </TabScreen>
   );

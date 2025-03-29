@@ -16,6 +16,11 @@ web-build/
 *.key
 *.mobileprovision
 
+# Prebuild folders - addressing workflow conflict
+# For CNG/Prebuild with EAS Build
+/android
+/ios
+
 # Metro
 .metro-health-check*
 

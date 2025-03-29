@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+### Added
+- TestFlight preparation: Added production flag in theme constants
+- TestFlight preparation: Hid development-only Programs tab in production builds
+- TestFlight preparation: Removed debug UI and console logs from social feed in production builds
+
 All notable changes to the POWR project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -14,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented useProfileStats hook with auto-refresh capabilities
   - Added proper loading states and error handling
   - Created documentation in the new documentation structure
+- iOS TestFlight build configuration
+  - Created comprehensive TestFlight submission documentation
+  - Added production and preview build profiles to eas.json
+  - Added TestFlight submission configuration
+  - Created deployment documentation in docs/deployment/ios_testflight_guide.md
 
 ## Improved
 - Enhanced Profile UI
@@ -22,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added inline copy and QR buttons for better usability
   - Enhanced visual consistency across profile elements
   - Replaced hardcoded follower counts with real-time data
+- Updated project configuration for TestFlight
+  - Updated outdated packages (expo, expo-dev-client, expo-file-system, expo-router, expo-sqlite, jest-expo)
+  - Removed unmaintained packages (expo-random)
+  - Removed unnecessary packages (@types/react-native)
+  - Fixed updates URL in app.json to use the correct project ID
+  - Documented workflow conflict between managed and bare configurations
+
+## Fixed
+- Prebuild/managed workflow conflict documentation
+  - Added detailed explanation of the configuration issue
+  - Documented future decision points for project architecture
+  - Provided options for resolving the configuration conflict
 
 # Changelog - March 26, 2025
 

@@ -10,6 +10,7 @@ import { useContactList } from '@/lib/hooks/useContactList';
 import { ChevronUp, Bug } from 'lucide-react-native';
 import { withOfflineState } from '@/components/social/SocialOfflineState';
 import { useSocialFeed } from '@/lib/hooks/useSocialFeed';
+import { IS_PRODUCTION } from '@/lib/theme/constants';
 
 function FollowingScreen() {
   const { isAuthenticated, currentUser } = useNDKCurrentUser();
@@ -18,11 +19,13 @@ function FollowingScreen() {
   // Get the user's contact list
   const { contacts, isLoading: isLoadingContacts } = useContactList(currentUser?.pubkey);
   
-  // Add debug logging for contact list
+  // Add debug logging for contact list (only in development)
   React.useEffect(() => {
-    console.log(`[FollowingScreen] Contact list has ${contacts.length} contacts`);
-    if (contacts.length > 0) {
-      console.log(`[FollowingScreen] First few contacts: ${contacts.slice(0, 3).join(', ')}`);
+    if (!IS_PRODUCTION) {
+      console.log(`[FollowingScreen] Contact list has ${contacts.length} contacts`);
+      if (contacts.length > 0) {
+        console.log(`[FollowingScreen] First few contacts: ${contacts.slice(0, 3).join(', ')}`);
+      }
     }
   }, [contacts.length]);
   
@@ -77,7 +80,9 @@ function FollowingScreen() {
   // Update loadedContactsCount when contacts change
   React.useEffect(() => {
     if (contacts.length > 0 && contacts.length !== loadedContactsCount) {
-      console.log(`[FollowingScreen] Contact list changed from ${loadedContactsCount} to ${contacts.length} contacts`);
+      if (!IS_PRODUCTION) {
+        console.log(`[FollowingScreen] Contact list changed from ${loadedContactsCount} to ${contacts.length} contacts`);
+      }
       setLoadedContactsCount(contacts.length);
       // Reset hasLoadedWithContacts flag when contacts change
       setHasLoadedWithContacts(false);
@@ -99,7 +104,9 @@ function FollowingScreen() {
                          contactRefreshAttempts < maxContactRefreshAttempts;
     
     if (shouldRefresh) {
-      console.log(`[FollowingScreen] Refreshing feed with ${contacts.length} contacts (attempt ${contactRefreshAttempts + 1}/${maxContactRefreshAttempts})`);
+      if (!IS_PRODUCTION) {
+        console.log(`[FollowingScreen] Refreshing feed with ${contacts.length} contacts (attempt ${contactRefreshAttempts + 1}/${maxContactRefreshAttempts})`);
+      }
       
       setIsRefreshingWithContacts(true);
       setContactRefreshAttempts(prev => prev + 1);
@@ -111,7 +118,9 @@ function FollowingScreen() {
           setIsRefreshingWithContacts(false);
         })
         .catch(error => {
-          console.error('[FollowingScreen] Error refreshing feed:', error);
+          if (!IS_PRODUCTION) {
+            console.error('[FollowingScreen] Error refreshing feed:', error);
+          }
           setIsRefreshingWithContacts(false);
           
           // Prevent infinite retries by marking as loaded after max attempts
@@ -183,7 +192,9 @@ function FollowingScreen() {
         }
       }
     } catch (error) {
-      console.error('[FollowingScreen] Error refreshing feed:', error);
+      if (!IS_PRODUCTION) {
+        console.error('[FollowingScreen] Error refreshing feed:', error);
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -193,25 +204,33 @@ function FollowingScreen() {
   const checkRelayConnections = useCallback(() => {
     if (!ndk) return;
     
-    console.log("=== RELAY CONNECTION STATUS ===");
-    if (ndk.pool && ndk.pool.relays) {
-      console.log(`Connected to ${ndk.pool.relays.size} relays:`);
-      ndk.pool.relays.forEach((relay) => {
-        console.log(`- ${relay.url}: ${relay.status}`);
-      });
-    } else {
-      console.log("No relay pool or connections available");
+    // Only log in development mode
+    if (!IS_PRODUCTION) {
+      console.log("=== RELAY CONNECTION STATUS ===");
+      if (ndk.pool && ndk.pool.relays) {
+        console.log(`Connected to ${ndk.pool.relays.size} relays:`);
+        ndk.pool.relays.forEach((relay) => {
+          console.log(`- ${relay.url}: ${relay.status}`);
+        });
+      } else {
+        console.log("No relay pool or connections available");
+      }
+      console.log("===============================");
     }
-    console.log("===============================");
   }, [ndk]);
   
   // Handle post selection - simplified for testing
   const handlePostPress = useCallback((entry: any) => {
     // Just show an alert with the entry info for testing
-    alert(`Selected ${entry.type} with ID: ${entry.id || entry.eventId}`);
+    if (!IS_PRODUCTION) {
+      alert(`Selected ${entry.type} with ID: ${entry.id || entry.eventId}`);
+      
+      // Alternatively, log to console for debugging
+      console.log(`Selected ${entry.type}:`, entry);
+    }
     
-    // Alternatively, log to console for debugging
-    console.log(`Selected ${entry.type}:`, entry);
+    // In production, this would navigate to the post detail screen
+    // TODO: Implement proper post detail navigation for production
   }, []);
   
   // Memoize render item function
@@ -267,15 +286,17 @@ function FollowingScreen() {
             : "No content from followed users found. Try following more users or check your relay connections."}
         </Text>
         
-        {/* Debug toggle */}
-        <TouchableOpacity 
-          className="mt-4 bg-gray-200 py-2 px-4 rounded"
-          onPress={() => setShowDebug(!showDebug)}
-        >
-          <Text>{showDebug ? "Hide" : "Show"} Debug Info</Text>
-        </TouchableOpacity>
+        {/* Debug toggle - only shown in development */}
+        {!IS_PRODUCTION && (
+          <TouchableOpacity 
+            className="mt-4 bg-gray-200 py-2 px-4 rounded"
+            onPress={() => setShowDebug(!showDebug)}
+          >
+            <Text>{showDebug ? "Hide" : "Show"} Debug Info</Text>
+          </TouchableOpacity>
+        )}
         
-        {showDebug && (
+        {!IS_PRODUCTION && showDebug && (
           <View className="mt-4 p-4 bg-gray-100 rounded w-full">
             <Text className="text-xs">User pubkey: {currentUser?.pubkey?.substring(0, 12)}...</Text>
             <Text className="text-xs">Authenticated: {isAuthenticated ? "Yes" : "No"}</Text>
@@ -305,16 +326,18 @@ function FollowingScreen() {
   
   return (
     <View className="flex-1">
-      {/* Debug toggle button */}
-      <TouchableOpacity 
-        className="absolute top-2 right-2 z-10 bg-gray-200 p-2 rounded-full"
-        onPress={() => setShowDebug(!showDebug)}
-      >
-        <Bug size={16} color="#666" />
-      </TouchableOpacity>
+      {/* Debug toggle button - only shown in development */}
+      {!IS_PRODUCTION && (
+        <TouchableOpacity 
+          className="absolute top-2 right-2 z-10 bg-gray-200 p-2 rounded-full"
+          onPress={() => setShowDebug(!showDebug)}
+        >
+          <Bug size={16} color="#666" />
+        </TouchableOpacity>
+      )}
       
-      {/* Debug panel */}
-      {showDebug && <DebugControls />}
+      {/* Debug panel - only shown in development */}
+      {!IS_PRODUCTION && showDebug && <DebugControls />}
       
       {showNewButton && (
         <TouchableOpacity 

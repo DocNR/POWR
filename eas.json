@@ -1,21 +1,42 @@
 {
-    "cli": {
-      "version": ">= 3.7.2"
+  "cli": {
+    "version": ">= 3.7.2"
+  },
+  "build": {
+    "development-simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
     },
-    "build": {
-      "development-simulator": {
-        "developmentClient": true,
-        "distribution": "internal",
-        "ios": {
-          "simulator": true
-        }
-      },
-      "development": {
-        "developmentClient": true,
-        "distribution": "internal",
-        "android": {
-          "buildType": "apk"
-        }
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m1-medium"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m1-medium"
       }
     }
-  }  
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "YOUR_APPLE_ID_EMAIL",
+        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+      }
+    }
+  }
+}
