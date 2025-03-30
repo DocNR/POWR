@@ -1,12 +1,14 @@
 // components/sheets/NostrLoginSheet.tsx
-import React, { useState } from 'react';
-import { View, ActivityIndicator, Modal, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, ActivityIndicator, Modal, TouchableOpacity, Platform } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { X, Info } from 'lucide-react-native';
+import { X, Info, ExternalLink } from 'lucide-react-native';
 import { useNDKAuth } from '@/lib/hooks/useNDK';
 import { useColorScheme } from '@/lib/theme/useColorScheme';
+import ExternalSignerUtils from '@/utils/ExternalSignerUtils';
+import NDKAmberSigner from '@/lib/signers/NDKAmberSigner';
 
 interface NostrLoginSheetProps {
   open: boolean;
@@ -16,8 +18,28 @@ interface NostrLoginSheetProps {
 export default function NostrLoginSheet({ open, onClose }: NostrLoginSheetProps) {
   const [privateKey, setPrivateKey] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { login, generateKeys, isLoading } = useNDKAuth();
+  const { login, loginWithExternalSigner, generateKeys, isLoading } = useNDKAuth();
   const { isDarkColorScheme } = useColorScheme();
+
+  // State for external signer availability
+  const [isExternalSignerAvailable, setIsExternalSignerAvailable] = useState<boolean>(false);
+  
+  // Check if external signer is available
+  useEffect(() => {
+    async function checkExternalSigner() {
+      if (Platform.OS === 'android') {
+        try {
+          const available = await ExternalSignerUtils.isExternalSignerInstalled();
+          setIsExternalSignerAvailable(available);
+        } catch (err) {
+          console.error('Error checking for external signer:', err);
+          setIsExternalSignerAvailable(false);
+        }
+      }
+    }
+    
+    checkExternalSigner();
+  }, []);
 
   // Handle key generation
   const handleGenerateKeys = async () => {
@@ -31,7 +53,7 @@ export default function NostrLoginSheet({ open, onClose }: NostrLoginSheetProps)
     }
   };
 
-  // Handle login
+  // Handle login with private key
   const handleLogin = async () => {
     if (!privateKey.trim()) {
       setError('Please enter your private key or generate a new one');
@@ -53,6 +75,39 @@ export default function NostrLoginSheet({ open, onClose }: NostrLoginSheetProps)
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     }
   };
+  
+  // Handle login with Amber (external signer)
+  const handleAmberLogin = async () => {
+    setError(null);
+    
+    try {
+      console.log('Attempting to login with Amber...');
+      
+      try {
+        // Request public key from Amber
+        // This will throw an error because the native module isn't implemented
+        // but the TypeScript interface is ready for when it is
+        const { pubkey, packageName } = await NDKAmberSigner.requestPublicKey();
+        
+        // Login with the external signer
+        const success = await loginWithExternalSigner(pubkey, packageName);
+        
+        if (success) {
+          onClose();
+        } else {
+          setError('Failed to login with Amber');
+        }
+      } catch (requestError) {
+        // Since the native implementation is not available yet,
+        // we show a more user-friendly error message
+        console.error('Amber requestPublicKey error:', requestError);
+        setError("Amber signing requires a native module implementation. The interface is ready but the native code needs to be completed.");
+      }
+    } catch (err) {
+      console.error('Amber login error:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error with Amber');
+    }
+  };
 
   return (
     <Modal
@@ -71,6 +126,28 @@ export default function NostrLoginSheet({ open, onClose }: NostrLoginSheetProps)
           </View>
           
           <View className="space-y-4">
+            {/* External signer option (Android only) */}
+            {Platform.OS === 'android' && (
+              <Button
+                onPress={handleAmberLogin}
+                disabled={isLoading}
+                className="mb-3 py-3"
+                variant="outline"
+                style={{ borderColor: 'hsl(261, 90%, 66%)' }}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="hsl(261, 90%, 66%)" />
+                ) : (
+                  <View className="flex-row items-center">
+                    <ExternalLink size={18} className="mr-2" color="hsl(261, 90%, 66%)" />
+                    <Text className="font-medium" style={{ color: 'hsl(261, 90%, 66%)' }}>Sign with Amber</Text>
+                  </View>
+                )}
+              </Button>
+            )}
+            
+            <Text className="text-sm text-muted-foreground mb-3">- or -</Text>
+            
             <Text className="text-base">Enter your Nostr private key (nsec)</Text>
             <Input
               placeholder="nsec1..."

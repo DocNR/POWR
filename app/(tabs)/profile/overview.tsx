@@ -44,7 +44,8 @@ export default function OverviewScreen() {
   const theme = useTheme() as CustomTheme;
   const { currentUser, isAuthenticated } = useNDKCurrentUser();
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
-  // Use useSocialFeed with the profile feed type
+  // Always use useSocialFeed regardless of authentication state to avoid hook inconsistency
+  // This prevents the "Rendered fewer hooks than expected" error when auth state changes
   const { 
     feedItems, 
     loading, 
@@ -52,7 +53,9 @@ export default function OverviewScreen() {
     isOffline
   } = useSocialFeed({
     feedType: 'profile',
-    authors: currentUser?.pubkey ? [currentUser.pubkey] : undefined,
+    // Always provide an array for authors, empty if not authenticated
+    // This way the hook is always called with the same pattern
+    authors: currentUser?.pubkey ? [currentUser.pubkey] : [],
     limit: 30
   });
   
@@ -141,25 +144,28 @@ export default function OverviewScreen() {
                    
   const pubkey = currentUser?.pubkey;
   
-  // Profile follower stats component
-  const ProfileFollowerStats = React.memo(({ pubkey }: { pubkey?: string }) => {
-    const { followersCount, followingCount, isLoading, error } = useProfileStats({ 
-      pubkey, 
-      refreshInterval: 60000 * 15 // refresh every 15 minutes
-    });
-    
+  // Profile follower stats component - always call useProfileStats hook 
+  // even if isAuthenticated is false (passing empty pubkey)
+  // This ensures consistent hook ordering regardless of authentication state
+  const { followersCount, followingCount, isLoading: statsLoading } = useProfileStats({ 
+    pubkey: pubkey || '', 
+    refreshInterval: 60000 * 15 // refresh every 15 minutes
+  });
+  
+  // Use a separate component to avoid conditionally rendered hooks
+  const ProfileFollowerStats = React.memo(() => {
     return (
       <View className="flex-row mb-2">
         <TouchableOpacity className="mr-4">
           <Text>
-            <Text className="font-bold">{isLoading ? '...' : followingCount.toLocaleString()}</Text>
+            <Text className="font-bold">{statsLoading ? '...' : followingCount.toLocaleString()}</Text>
             <Text className="text-muted-foreground"> following</Text>
           </Text>
         </TouchableOpacity>
         
         <TouchableOpacity>
           <Text>
-            <Text className="font-bold">{isLoading ? '...' : followersCount.toLocaleString()}</Text>
+            <Text className="font-bold">{statsLoading ? '...' : followersCount.toLocaleString()}</Text>
             <Text className="text-muted-foreground"> followers</Text>
           </Text>
         </TouchableOpacity>
@@ -235,31 +241,33 @@ export default function OverviewScreen() {
     />
   ), [handlePostPress]);
   
-  // Show different UI when not authenticated
-  if (!isAuthenticated) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-center text-muted-foreground mb-8">
-          Login with your Nostr private key to view your profile and posts.
-        </Text>
-        <Button 
-          onPress={() => setIsLoginSheetOpen(true)}
-          className="px-6"
-        >
-          <Text className="text-white">Login with Nostr</Text>
-        </Button>
-        
-        {/* NostrLoginSheet */}
-        <NostrLoginSheet 
-          open={isLoginSheetOpen} 
-          onClose={() => setIsLoginSheetOpen(false)} 
-        />
-      </View>
-    );
-  }
+  // IMPORTANT: All callback hooks must be defined before any conditional returns
+  // to ensure consistent hook ordering across renders
   
-  // Profile header component
-  const ProfileHeader = useCallback(() => (
+  // Define all the callbacks at the same level, regardless of authentication state
+  const handleEditProfilePress = useCallback(() => {
+    if (router && isAuthenticated) {
+      router.push('/profile/settings');
+    }
+  }, [router, isAuthenticated]);
+  
+  const handleCopyButtonPress = useCallback(() => {
+    if (pubkey) {
+      copyPubkey();
+    }
+  }, [pubkey, copyPubkey]);
+  
+  const handleQrButtonPress = useCallback(() => {
+    showQRCode();
+  }, [showQRCode]);
+  
+  // Profile header component - making sure we have the same hooks 
+  // regardless of authentication state to avoid hook ordering issues
+  const ProfileHeader = useCallback(() => {
+    // Using callbacks defined at the parent level
+    // This prevents inconsistent hook counts during render
+    
+    return (
     <View>
       {/* Banner Image */}
       <View className="w-full h-40 relative">
@@ -292,7 +300,7 @@ export default function OverviewScreen() {
           <View className="ml-auto mb-2">
             <TouchableOpacity 
               className="px-4 h-10 items-center justify-center rounded-md bg-muted"
-              onPress={() => router.push('/profile/settings')}
+              onPress={handleEditProfilePress}
             >
               <Text className="font-medium">Edit Profile</Text>
             </TouchableOpacity>
@@ -312,7 +320,7 @@ export default function OverviewScreen() {
               </Text>
               <TouchableOpacity 
                 className="ml-2 p-1"
-                onPress={copyPubkey}
+                onPress={handleCopyButtonPress}
                 accessibilityLabel="Copy public key"
                 accessibilityHint="Copies your Nostr public key to clipboard"
               >
@@ -320,7 +328,7 @@ export default function OverviewScreen() {
               </TouchableOpacity>
               <TouchableOpacity 
                 className="ml-2 p-1"
-                onPress={showQRCode}
+                onPress={handleQrButtonPress}
                 accessibilityLabel="Show QR Code"
                 accessibilityHint="Shows a QR code with your Nostr public key"
               >
@@ -329,8 +337,8 @@ export default function OverviewScreen() {
             </View>
           )}
           
-          {/* Follower stats */}
-          <ProfileFollowerStats pubkey={pubkey} />
+          {/* Follower stats - no longer passing pubkey as prop since we're calling useProfileStats in parent */}
+          <ProfileFollowerStats />
           
           {/* About text */}
           {aboutText && (
@@ -342,17 +350,45 @@ export default function OverviewScreen() {
         <View className="h-px bg-border w-full mt-2" />
       </View>
     </View>
-  ), [displayName, username, profileImageUrl, aboutText, pubkey, npubFormat, shortenedNpub, theme.colors.text, router, showQRCode, copyPubkey]);
+    );
+  }, [displayName, username, profileImageUrl, aboutText, pubkey, npubFormat, shortenedNpub, theme.colors.text, router, showQRCode, copyPubkey, isAuthenticated]);
   
-  if (loading && entries.length === 0) {
+  // Profile components must be defined before conditional returns
+  // to ensure that React hook ordering remains consistent
+  
+  // Render functions for different app states
+  const renderLoginScreen = useCallback(() => {
+    return (
+      <View className="flex-1 items-center justify-center p-6">
+        <Text className="text-center text-muted-foreground mb-8">
+          Login with your Nostr private key to view your profile and posts.
+        </Text>
+        <Button 
+          onPress={() => setIsLoginSheetOpen(true)}
+          className="px-6"
+        >
+          <Text className="text-white">Login with Nostr</Text>
+        </Button>
+        
+        {/* NostrLoginSheet */}
+        <NostrLoginSheet 
+          open={isLoginSheetOpen} 
+          onClose={() => setIsLoginSheetOpen(false)} 
+        />
+      </View>
+    );
+  }, [isLoginSheetOpen]);
+  
+  const renderLoadingScreen = useCallback(() => {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator />
       </View>
     );
-  }
+  }, []);
   
-  return (
+  const renderMainContent = useCallback(() => {
+    return (
     <View className="flex-1">
       <FlatList
         data={entries}
@@ -376,5 +412,18 @@ export default function OverviewScreen() {
         }}
       />
     </View>
-  );
+    );
+  }, [entries, renderItem, isRefreshing, handleRefresh, ProfileHeader, insets.bottom]);
+  
+  // Final conditional return after all hooks have been called
+  // This ensures consistent hook ordering across renders
+  if (!isAuthenticated) {
+    return renderLoginScreen();
+  }
+  
+  if (loading && entries.length === 0) {
+    return renderLoadingScreen();
+  }
+  
+  return renderMainContent();
 }

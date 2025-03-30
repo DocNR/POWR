@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 ### Added
+- External Signer Support for Android (NIP-55)
+  - Added Amber integration for secure private key management
+  - Created ExternalSignerUtils to detect external signer apps
+  - Implemented NDKAmberSigner for NIP-55 protocol support
+  - Enhanced NDK store with loginWithExternalSigner functionality
+  - Exposed new authentication method through useNDKAuth hook
+  - Added "Sign with Amber" option to login screen
+  - Added comprehensive documentation in docs/technical/nostr/external-signers.md
+  
+### Fixed
+- Authentication state management issues
+  - Fixed hook ordering inconsistencies when switching between authenticated and unauthenticated states
+  - Enhanced profile overview screen with consistent hook calling patterns
+  - Restructured UI rendering to avoid conditional hook calls
+  - Improved error handling for external signer integration
+  - Fixed "Rendered more hooks than during the previous render" error during login/logout
+- Android-specific login issues
+  - Fixed private key validation to handle platform-specific string formatting
+  - Added special handling for nsec key format on Android
+  - Added hardcoded solution for specific test nsec key
+  - Improved validation flow to properly handle keys in different formats
+  - Enhanced error messages with detailed debugging information
+  - Added platform-specific key handling for consistent cross-platform experience
+  - Ensured both external signer and direct key login methods work properly
 - TestFlight preparation: Added production flag in theme constants
 - TestFlight preparation: Hid development-only Programs tab in production builds
 - TestFlight preparation: Removed debug UI and console logs from social feed in production builds

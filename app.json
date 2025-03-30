@@ -32,7 +32,30 @@
       "permissions": [
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE"
-      ]
+      ],
+      "intentFilters": [
+        {
+          "autoVerify": true,
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "powr"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "queries": {
+        "intent": {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "nostrsigner"
+            }
+          ],
+          "category": ["BROWSABLE"]
+        }
+      }
     },
     "web": {
       "bundler": "metro",

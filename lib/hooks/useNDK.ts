@@ -38,8 +38,16 @@ export function useNDKCurrentUser() {
 
 // Hook for authentication actions
 export function useNDKAuth() {
-  const { login, logout, generateKeys, isAuthenticated, isLoading } = useNDKStore(state => ({
+  const { 
+    login, 
+    loginWithExternalSigner, 
+    logout, 
+    generateKeys, 
+    isAuthenticated, 
+    isLoading 
+  } = useNDKStore(state => ({
     login: state.login,
+    loginWithExternalSigner: state.loginWithExternalSigner,
     logout: state.logout,
     generateKeys: state.generateKeys,
     isAuthenticated: state.isAuthenticated,
@@ -48,6 +56,7 @@ export function useNDKAuth() {
   
   return {
     login,
+    loginWithExternalSigner,
     logout,
     generateKeys,
     isAuthenticated,
