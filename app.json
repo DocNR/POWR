@@ -44,18 +44,7 @@
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
-      ],
-      "queries": {
-        "intent": {
-          "action": "VIEW",
-          "data": [
-            {
-              "scheme": "nostrsigner"
-            }
-          ],
-          "category": ["BROWSABLE"]
-        }
-      }
+      ]
     },
     "web": {
       "bundler": "metro",

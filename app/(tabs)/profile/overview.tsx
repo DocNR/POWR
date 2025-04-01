@@ -363,11 +363,12 @@ export default function OverviewScreen() {
         <Text className="text-center text-muted-foreground mb-8">
           Login with your Nostr private key to view your profile and posts.
         </Text>
-        <Button 
+        <Button
           onPress={() => setIsLoginSheetOpen(true)}
-          className="px-6"
+          className="px-6 py-3"
+          style={{ backgroundColor: 'hsl(261 90% 66%)' }}
         >
-          <Text className="text-white">Login with Nostr</Text>
+          <Text className="text-white font-medium">Login with Nostr</Text>
         </Button>
         
         {/* NostrLoginSheet */}
