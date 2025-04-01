@@ -1,4 +1,8 @@
 # Changelog
+All notable changes to the POWR project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
@@ -10,8 +14,15 @@
   - Exposed new authentication method through useNDKAuth hook
   - Added "Sign with Amber" option to login screen
   - Added comprehensive documentation in docs/technical/nostr/external-signers.md
-  
+  - Added technical documentation in docs/technical/nostr/amber-integration-fixes.md
+
 ### Fixed
+- Android: Fixed Amber external signer integration issues
+  - Added extensive logging to better diagnose communication issues
+  - Improved error handling in `AmberSignerModule.kt`
+  - Fixed intent construction to better follow NIP-55 protocol
+  - Enhanced response handling with checks for URI parameters and intent extras
+  - Added POWR-specific event kinds (1301, 33401, 33402) to permission requests
 - Authentication state management issues
   - Fixed hook ordering inconsistencies when switching between authenticated and unauthenticated states
   - Enhanced profile overview screen with consistent hook calling patterns
@@ -30,10 +41,6 @@
 - TestFlight preparation: Hid development-only Programs tab in production builds
 - TestFlight preparation: Removed debug UI and console logs from social feed in production builds
 
-All notable changes to the POWR project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 # Changelog - March 28, 2025
 

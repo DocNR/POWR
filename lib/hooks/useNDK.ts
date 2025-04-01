@@ -1,4 +1,3 @@
-// lib/hooks/useNDK.ts
 import { useEffect } from 'react';
 import { useNDKStore } from '@/lib/stores/ndk';
 import type { NDKUser, NDKEvent, NDKFilter } from '@nostr-dev-kit/ndk-mobile';
@@ -11,13 +10,13 @@ export function useNDK() {
     error: state.error,
     init: state.init
   }));
-  
+
   useEffect(() => {
     if (!ndk && !isLoading) {
       init();
     }
   }, [ndk, isLoading, init]);
-  
+
   return { ndk, isLoading, error };
 }
 
@@ -28,23 +27,23 @@ export function useNDKCurrentUser() {
     isAuthenticated: state.isAuthenticated,
     isLoading: state.isLoading
   }));
-  
-  return { 
-    currentUser, 
+
+  return {
+    currentUser,
     isAuthenticated,
-    isLoading 
+    isLoading
   };
 }
 
 // Hook for authentication actions
 export function useNDKAuth() {
-  const { 
-    login, 
-    loginWithExternalSigner, 
-    logout, 
-    generateKeys, 
-    isAuthenticated, 
-    isLoading 
+  const {
+    login,
+    loginWithExternalSigner,
+    logout,
+    generateKeys,
+    isAuthenticated,
+    isLoading
   } = useNDKStore(state => ({
     login: state.login,
     loginWithExternalSigner: state.loginWithExternalSigner,
@@ -53,7 +52,7 @@ export function useNDKAuth() {
     isAuthenticated: state.isAuthenticated,
     isLoading: state.isLoading
   }));
-  
+
   return {
     login,
     loginWithExternalSigner,
@@ -70,7 +69,7 @@ export function useNDKEvents() {
     publishEvent: state.publishEvent,
     fetchEventsByFilter: state.fetchEventsByFilter
   }));
-  
+
   return {
     publishEvent,
     fetchEventsByFilter

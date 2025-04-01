@@ -1,28 +1,28 @@
-// lib/signers/NDKAmberSigner.ts
 import NDK, { type NDKSigner, type NDKUser, type NDKEncryptionScheme } from '@nostr-dev-kit/ndk-mobile';
-import { Platform, Linking } from 'react-native';
+import { Platform } from 'react-native';
 import type { NostrEvent } from 'nostr-tools';
-import ExternalSignerUtils from '@/utils/ExternalSignerUtils';
+import ExternalSignerUtils, { NIP55Permission } from '@/utils/ExternalSignerUtils';
+import { nip19 } from 'nostr-tools';
 
 /**
  * NDK Signer implementation for Amber (NIP-55 compatible external signer)
- * 
+ *
  * This signer delegates signing operations to the Amber app on Android
  * through the use of Intent-based communication as defined in NIP-55.
- * 
- * Note: This is Android-specific and will need native module support.
+ *
+ * Note: This is Android-specific and requires the AmberSignerModule native module.
  */
 export class NDKAmberSigner implements NDKSigner {
   /**
    * The public key of the user in hex format
    */
   private pubkey: string;
-  
+
   /**
    * The package name of the Amber app
    */
-  private packageName: string | null = 'com.greenart7c3.nostrsigner';
-  
+  private packageName: string;
+
   /**
    * Whether this signer can sign events
    */
@@ -30,11 +30,11 @@ export class NDKAmberSigner implements NDKSigner {
 
   /**
    * Constructor
-   * 
+   *
    * @param pubkey The user's public key (hex)
    * @param packageName Optional Amber package name (default: com.greenart7c3.nostrsigner)
    */
-  constructor(pubkey: string, packageName: string | null = 'com.greenart7c3.nostrsigner') {
+  constructor(pubkey: string, packageName: string = 'com.greenart7c3.nostrsigner') {
     this.pubkey = pubkey;
     this.packageName = packageName;
     this.canSign = Platform.OS === 'android';
@@ -43,7 +43,7 @@ export class NDKAmberSigner implements NDKSigner {
   /**
    * Implement blockUntilReady required by NDKSigner interface
    * Amber signer is always ready once initialized
-   * 
+   *
    * @returns The user this signer represents
    */
   async blockUntilReady(): Promise<NDKUser> {
@@ -53,7 +53,7 @@ export class NDKAmberSigner implements NDKSigner {
 
   /**
    * Get user's NDK user object
-   * 
+   *
    * @returns An NDKUser representing this user
    */
   async user(): Promise<NDKUser> {
@@ -65,7 +65,7 @@ export class NDKAmberSigner implements NDKSigner {
 
   /**
    * Get user's public key
-   * 
+   *
    * @returns The user's public key in hex format
    */
   async getPublicKey(): Promise<string> {
@@ -74,10 +74,9 @@ export class NDKAmberSigner implements NDKSigner {
 
   /**
    * Sign an event using Amber
-   * 
-   * This will need to be implemented with native Android modules to handle
-   * Intent-based communication with Amber.
-   * 
+   *
+   * Uses the native module to send an intent to Amber for signing.
+   *
    * @param event The event to sign
    * @returns The signature for the event
    * @throws Error if not on Android or signing fails
@@ -87,24 +86,28 @@ export class NDKAmberSigner implements NDKSigner {
       throw new Error('NDKAmberSigner is only available on Android');
     }
 
-    // This is a placeholder for the actual native implementation
-    // In a full implementation, this would use the React Native bridge to call
-    // native Android code that would handle the Intent-based communication with Amber
-    
-    console.log('Amber signing event:', event);
-    
-    // Placeholder implementation - in a real implementation, we would:
-    // 1. Convert the event to JSON
-    // 2. Create an Intent to send to Amber
-    // 3. Wait for the result from Amber
-    // 4. Extract the signature from the result
-    
-    throw new Error('NDKAmberSigner.sign() not implemented');
+    try {
+      // Get the npub representation of the hex pubkey
+      const npub = nip19.npubEncode(this.pubkey);
+
+      // Use ExternalSignerUtils to sign the event
+      const response = await ExternalSignerUtils.signEvent(event, npub);
+
+      if (!response.signature) {
+        throw new Error('No signature returned from Amber');
+      }
+
+      return response.signature;
+    } catch (e: unknown) {
+      console.error('Error signing with Amber:', e);
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      throw new Error(`Failed to sign event with Amber: ${errorMessage}`);
+    }
   }
 
   /**
    * Check if this signer is capable of creating encrypted direct messages
-   * 
+   *
    * @returns Always returns false as NIP-04/NIP-44 encryption needs to be implemented separately
    */
   get supportsEncryption(): boolean {
@@ -129,24 +132,48 @@ export class NDKAmberSigner implements NDKSigner {
 
   /**
    * Static method to request public key from Amber
-   * This needs to be implemented with native modules.
-   * 
-   * @returns Promise with public key and package name
+   * Uses the ExternalSignerUtils to communicate with Amber.
+   *
+   * @param permissions Optional array of permissions to request
+   * @returns Promise with public key (hex) and package name
    */
-  static async requestPublicKey(): Promise<{pubkey: string, packageName: string}> {
+  static async requestPublicKey(
+    permissions: NIP55Permission[] = []
+  ): Promise<{pubkey: string, packageName: string}> {
     if (Platform.OS !== 'android') {
       throw new Error('NDKAmberSigner is only available on Android');
     }
 
-    // This is a placeholder for the actual native implementation
-    // In a full implementation, this would launch an Intent to get the user's public key from Amber
-    
-    // Since this requires native code implementation, we'll throw an error
-    // indicating that this functionality needs to be implemented with native modules
-    throw new Error('NDKAmberSigner.requestPublicKey() requires native implementation');
+    try {
+      // Request public key from Amber
+      console.log('[NDKAmberSigner] Requesting public key from Amber');
+      const result = await ExternalSignerUtils.requestPublicKey(permissions);
+      console.log('[NDKAmberSigner] Received result from ExternalSignerUtils:', result);
 
-    // When implemented, this would return:
-    // return { pubkey: 'hex_pubkey_from_amber', packageName: 'com.greenart7c3.nostrsigner' };
+      // Convert npub to hex if needed
+      let pubkeyHex = result.pubkey;
+      if (pubkeyHex.startsWith('npub')) {
+        try {
+          // Decode the npub to get the hex pubkey
+          const decoded = nip19.decode(pubkeyHex);
+          if (decoded.type === 'npub') {
+            pubkeyHex = decoded.data as string;
+          }
+        } catch (e) {
+          console.error('Error decoding npub:', e);
+          throw new Error('Invalid npub returned from Amber');
+        }
+      }
+
+      return {
+        pubkey: pubkeyHex,
+        packageName: result.packageName
+      };
+    } catch (e: unknown) {
+      console.error('Error requesting public key from Amber:', e);
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      throw new Error(`Failed to get public key from Amber: ${errorMessage}`);
+    }
   }
 }
 

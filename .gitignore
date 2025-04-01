@@ -18,7 +18,8 @@ web-build/
 
 # Prebuild folders - addressing workflow conflict
 # For CNG/Prebuild with EAS Build
-/android
+# Temporarily allowing Android files for EAS build
+# /android
 /ios
 
 # Metro
@@ -44,3 +45,5 @@ yarn-error.*
 
 expo-env.d.ts
 # @end expo-cli
+# Exclude build APK files
+*.apk

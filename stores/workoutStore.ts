@@ -253,40 +253,88 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
               
             // Use NDK to publish
             try {
-              // Create a new event
-              const event = new NDKEvent(ndk as any);
-              
-              // Set the properties
-              event.kind = eventData.kind;
-              event.content = eventData.content;
-              event.tags = eventData.tags || [];
-              event.created_at = eventData.created_at;
-              
-              // Sign and publish
-              await event.sign();
-              await event.publish();
-              
-              console.log('Successfully published workout event');
-              
-              // Handle social share if selected
-              if (options.shareOnSocial && options.socialMessage) {
-                const socialEventData = NostrWorkoutService.createSocialShareEvent(
-                  event.id,
-                  options.socialMessage
-                );
+              try {
+                console.log('Starting workout event publish...');
                 
-                // Create an NDK event for the social share
-                const socialEvent = new NDKEvent(ndk as any);
-                socialEvent.kind = socialEventData.kind;
-                socialEvent.content = socialEventData.content;
-                socialEvent.tags = socialEventData.tags || [];
-                socialEvent.created_at = socialEventData.created_at;
+                // Create a new event
+                const event = new NDKEvent(ndk as any);
                 
-                // Sign and publish
-                await socialEvent.sign();
-                await socialEvent.publish();
+                // Set the properties
+                event.kind = eventData.kind;
+                event.content = eventData.content;
+                event.tags = eventData.tags || [];
+                event.created_at = eventData.created_at;
                 
-                console.log('Successfully published social share');
+                // Add timeout for signing to prevent hanging
+                const signPromise = event.sign();
+                const signTimeout = new Promise<void>((_, reject) => {
+                  setTimeout(() => reject(new Error('Signing timeout after 15 seconds')), 15000);
+                });
+                
+                try {
+                  // Race the sign operation against a timeout
+                  await Promise.race([signPromise, signTimeout]);
+                  console.log('Event signed successfully');
+                  
+                  // Add timeout for publishing as well
+                  const publishPromise = event.publish();
+                  const publishTimeout = new Promise<void>((_, reject) => {
+                    setTimeout(() => reject(new Error('Publishing timeout after 15 seconds')), 15000);
+                  });
+                  
+                  await Promise.race([publishPromise, publishTimeout]);
+                  console.log('Successfully published workout event');
+                  
+                  // Handle social share if selected
+                  if (options.shareOnSocial && options.socialMessage) {
+                    try {
+                      const socialEventData = NostrWorkoutService.createSocialShareEvent(
+                        event.id,
+                        options.socialMessage
+                      );
+                      
+                      // Create an NDK event for the social share
+                      const socialEvent = new NDKEvent(ndk as any);
+                      socialEvent.kind = socialEventData.kind;
+                      socialEvent.content = socialEventData.content;
+                      socialEvent.tags = socialEventData.tags || [];
+                      socialEvent.created_at = socialEventData.created_at;
+                      
+                      // Sign with timeout
+                      const socialSignPromise = socialEvent.sign();
+                      const socialSignTimeout = new Promise<void>((_, reject) => {
+                        setTimeout(() => reject(new Error('Social signing timeout after 15 seconds')), 15000);
+                      });
+                      
+                      await Promise.race([socialSignPromise, socialSignTimeout]);
+                      
+                      // Publish with timeout
+                      const socialPublishPromise = socialEvent.publish();
+                      const socialPublishTimeout = new Promise<void>((_, reject) => {
+                        setTimeout(() => reject(new Error('Social publishing timeout after 15 seconds')), 15000);
+                      });
+                      
+                      await Promise.race([socialPublishPromise, socialPublishTimeout]);
+                      console.log('Successfully published social share');
+                    } catch (socialError) {
+                      console.error('Error publishing social share:', socialError);
+                      // Continue with workout completion even if social sharing fails
+                    }
+                  }
+                } catch (error) {
+                  const signError = error as Error;
+                  console.error('Error signing or publishing event:', signError);
+                  
+                  // Specific handling for timeout errors to give user better feedback
+                  if (signError.message?.includes('timeout')) {
+                    console.warn('The signing operation timed out. This may be due to an issue with the external signer.');
+                  }
+                  
+                  // Continue with workout completion even though publishing failed
+                }
+              } catch (eventCreationError) {
+                console.error('Error creating event:', eventCreationError);
+                // Continue with workout completion, but log the error
               }
             } catch (publishError) {
               console.error('Error publishing to Nostr:', publishError);
