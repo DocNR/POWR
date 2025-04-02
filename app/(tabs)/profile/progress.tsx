@@ -1,5 +1,6 @@
 // app/(tabs)/profile/progress.tsx
 import React, { useState, useEffect } from 'react';
+import NostrProfileLogin from '@/components/social/NostrProfileLogin';
 import { View, ScrollView, Switch, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -167,13 +168,7 @@ export default function ProgressScreen() {
   };
   
   if (!isAuthenticated) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-center text-muted-foreground">
-          Log in to view your progress
-        </Text>
-      </View>
-    );
+    return <NostrProfileLogin message="Login with your Nostr private key to view your progress." />;
   }
   
   if (loading) {

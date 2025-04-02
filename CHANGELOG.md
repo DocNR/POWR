@@ -15,8 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added "Sign with Amber" option to login screen
   - Added comprehensive documentation in docs/technical/nostr/external-signers.md
   - Added technical documentation in docs/technical/nostr/amber-integration-fixes.md
+- Standardized login experience across profile screens
+  - Created reusable NostrProfileLogin component for consistent UI
+  - Added customizable messaging for context-specific instructions
+  - Standardized button styling and text formatting
+  - Improved visual hierarchy with consistent spacing
 
 ### Fixed
+- Profile tab login experience
+  - Fixed error when accessing profile feed without authentication
+  - Created standardized login component across all profile screens
+  - Added conditional hook calling to prevent "rendered fewer hooks than expected" error
+  - Improved state management during authentication transitions
+  - Enhanced profile data loading with better error handling
 - Android: Fixed Amber external signer integration issues
   - Added extensive logging to better diagnose communication issues
   - Improved error handling in `AmberSignerModule.kt`

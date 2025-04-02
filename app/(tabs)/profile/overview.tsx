@@ -1,5 +1,5 @@
 // app/(tabs)/profile/overview.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, FlatList, RefreshControl, Pressable, TouchableOpacity, ImageBackground, Clipboard } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
 import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
+import NostrProfileLogin from '@/components/social/NostrProfileLogin';
 import EnhancedSocialPost from '@/components/social/EnhancedSocialPost';
 import EmptyFeed from '@/components/social/EmptyFeed';
 import { useSocialFeed } from '@/lib/hooks/useSocialFeed';
@@ -44,20 +45,31 @@ export default function OverviewScreen() {
   const theme = useTheme() as CustomTheme;
   const { currentUser, isAuthenticated } = useNDKCurrentUser();
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
-  // Always use useSocialFeed regardless of authentication state to avoid hook inconsistency
-  // This prevents the "Rendered fewer hooks than expected" error when auth state changes
-  const { 
-    feedItems, 
-    loading, 
-    refresh,
-    isOffline
-  } = useSocialFeed({
+  // Initialize feed related state
+  const [feedItems, setFeedItems] = useState<any[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  
+  // Only call useSocialFeed when authenticated to prevent the error
+  const socialFeed = isAuthenticated ? useSocialFeed({
     feedType: 'profile',
-    // Always provide an array for authors, empty if not authenticated
-    // This way the hook is always called with the same pattern
     authors: currentUser?.pubkey ? [currentUser.pubkey] : [],
     limit: 30
-  });
+  }) : null;
+  
+  // Extract values from socialFeed when authenticated
+  const loading = isAuthenticated ? socialFeed?.loading || false : feedLoading;
+  const refresh = isAuthenticated 
+    ? (socialFeed?.refresh ? socialFeed.refresh : () => Promise.resolve()) 
+    : () => Promise.resolve();
+  
+  // Update feedItems when socialFeed.feedItems changes
+  useEffect(() => {
+    if (isAuthenticated && socialFeed) {
+      setFeedItems(socialFeed.feedItems);
+      setIsOffline(socialFeed.isOffline);
+    }
+  }, [isAuthenticated, socialFeed?.feedItems, socialFeed?.isOffline]);
   
   // Convert to the format expected by the component
   const entries = React.useMemo(() => {
@@ -359,26 +371,9 @@ export default function OverviewScreen() {
   // Render functions for different app states
   const renderLoginScreen = useCallback(() => {
     return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-center text-muted-foreground mb-8">
-          Login with your Nostr private key to view your profile and posts.
-        </Text>
-        <Button
-          onPress={() => setIsLoginSheetOpen(true)}
-          className="px-6 py-3"
-          style={{ backgroundColor: 'hsl(261 90% 66%)' }}
-        >
-          <Text className="text-white font-medium">Login with Nostr</Text>
-        </Button>
-        
-        {/* NostrLoginSheet */}
-        <NostrLoginSheet 
-          open={isLoginSheetOpen} 
-          onClose={() => setIsLoginSheetOpen(false)} 
-        />
-      </View>
+      <NostrProfileLogin message="Login with your Nostr private key to view your profile and posts." />
     );
-  }, [isLoginSheetOpen]);
+  }, []);
   
   const renderLoadingScreen = useCallback(() => {
     return (

@@ -8,6 +8,7 @@ import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
 import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
+import NostrProfileLogin from '@/components/social/NostrProfileLogin';
 import { useRouter } from 'expo-router';
 import { useAnalytics } from '@/lib/hooks/useAnalytics';
 import { PersonalRecord } from '@/lib/services/AnalyticsService';
@@ -54,25 +55,7 @@ export default function ActivityScreen() {
   
   // Show different UI when not authenticated
   if (!isAuthenticated) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-center text-muted-foreground mb-8">
-          Login with your Nostr private key to view your activity and stats.
-        </Text>
-        <Button 
-          onPress={() => setIsLoginSheetOpen(true)}
-          className="px-6"
-        >
-          <Text className="text-white">Login with Nostr</Text>
-        </Button>
-        
-        {/* NostrLoginSheet */}
-        <NostrLoginSheet 
-          open={isLoginSheetOpen} 
-          onClose={() => setIsLoginSheetOpen(false)} 
-        />
-      </View>
-    );
+    return <NostrProfileLogin message="Login with your Nostr private key to view your activity and stats." />;
   }
   
   if (loading || workoutsLoading || templatesLoading) {
