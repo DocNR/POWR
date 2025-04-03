@@ -4,7 +4,7 @@ import { View, TouchableOpacity, Image, ScrollView } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Badge } from '@/components/ui/badge';
 import { Heart, MessageCircle, Repeat, Share, Clock, Dumbbell, CheckCircle, FileText, User } from 'lucide-react-native';
-import UserAvatar from '@/components/UserAvatar';
+import { RobohashAvatar } from '@/components/ui/avatar';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useNDK } from '@/lib/hooks/useNDK';
 import { FeedItem } from '@/lib/hooks/useSocialFeed';
@@ -74,11 +74,17 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
   const { ndk } = useNDK();
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
-  const { profile } = useProfile(item.originalEvent.pubkey);
+  
+  // Safe access to item properties with fallbacks
+  const pubkey = item?.originalEvent?.pubkey || '';
+  const itemId = item?.id || '';
+  
+  // Use the safe pubkey value for profile lookup
+  const { profile } = useProfile(pubkey);
   
   // Get likes count
   useEffect(() => {
-    if (!ndk) return;
+    if (!ndk || !itemId) return;
     
     let mounted = true;
     
@@ -86,7 +92,7 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
       try {
         const filter = {
           kinds: [7], // Reactions
-          '#e': [item.id]
+          '#e': [itemId]
         };
         
         const events = await ndk.fetchEvents(filter);
@@ -103,7 +109,7 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
     return () => {
       mounted = false;
     };
-  }, [ndk, item.id]);
+  }, [ndk, itemId]);
   
   // Handle like button press
   const handleLike = async () => {
@@ -164,10 +170,10 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
     <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
       <View className="py-3 px-4">
         <View className="flex-row">
-          <UserAvatar 
+          <RobohashAvatar 
             uri={profile?.image} 
             size="md" 
-            fallback={profile?.name?.[0] || 'U'} 
+            seed={item.originalEvent.pubkey || (profile?.name?.[0] || 'U')}
             className="mr-3"
           />
           

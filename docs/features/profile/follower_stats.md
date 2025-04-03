@@ -1,93 +1,152 @@
-# Profile Follower Statistics
+# Follower Statistics
 
-**Last Updated:** 2025-03-28  
-**Status:** Active  
-**Related To:** Profile Screen, Nostr Integration
+**Last Updated:** 2025-04-02  
+**Status:** Implemented  
+**Related To:** [Profile Tab](./tabs/overview_tab.md), [NostrBand Integration](../../technical/nostr/nostr_band_integration.md)
 
-## Purpose
+## Introduction
 
-This document explains the implementation and usage of real-time follower and following statistics in the POWR app's profile screen. This feature enhances the social experience by providing users with up-to-date visibility into their network connections.
+The follower statistics feature provides real-time information about a user's Nostr followers and following counts. This document outlines the technical implementation of follower statistics, which is primarily displayed in the Profile tab.
 
-## Feature Overview
+## Implementation Overview
 
-The Profile Follower Statistics feature displays accurate counts of a user's followers and following accounts by integrating with the nostr.band API. This provides users with real-time social metrics directly in their profile view.
+Follower statistics are implemented through integration with the NostrBand API, which provides network-wide statistics for Nostr users, including follower counts. This integration is handled through the NostrBandService and exposed via the useProfileStats hook.
 
-Key capabilities:
-- Display of accurate follower and following counts
-- Automatic refresh of data at configurable intervals
-- Graceful loading states during data fetching
-- Error handling for network or API issues
-- Proper formatting of large numbers
+### Key Components
 
-## User Experience
+- **NostrBandService**: Core service that interfaces with the NostrBand API
+- **useProfileStats Hook**: React hook that provides access to follower statistics
+- **ProfileFollowerStats Component**: UI component for displaying follower statistics
 
-### Profile Screen Integration
+## NostrBand Service Implementation
 
-Follower statistics appear in the profile header section, directly below the user's npub display. The statistics are presented in a horizontal layout with the following format:
+The NostrBandService (implemented in `lib/services/NostrBandService.ts`) provides methods for fetching follower statistics:
 
-```
-[Following Count] following     [Followers Count] followers
-```
-
-For example:
-```
-2,351 following     4,764 followers
-```
-
-The counts are formatted with thousands separators for better readability.
-
-### Loading States
-
-When statistics are being loaded for the first time or refreshed, the UI displays a loading indicator instead of numbers:
-
-```
-... following     ... followers
-```
-
-This provides visual feedback to users that data is being fetched while maintaining layout stability.
-
-### Refresh Behavior
-
-Statistics automatically refresh at configurable intervals (default: every 15 minutes) to ensure data remains relatively current without excessive API calls. The refresh is performed in the background without disrupting the user experience.
-
-### Error Handling
-
-If an error occurs during data fetching, the UI gracefully falls back to a default state rather than showing error messages to the user. This ensures a clean user experience even when network issues or API limitations are encountered.
-
-## Technical Implementation
-
-### Components
-
-The feature is implemented using the following components:
-
-1. **ProfileFollowerStats Component**: A React component that displays follower and following counts
-2. **useProfileStats Hook**: Provides the data and loading states to the component
-3. **NostrBandService**: Service that interfaces with the nostr.band API
-
-### Implementation Details
-
-The follower stats component is embedded within the Profile screen and leverages the nostr.band API through our custom hook:
-
-```tsx
-// Profile follower stats component
-const ProfileFollowerStats = React.memo(({ pubkey }: { pubkey?: string }) => {
-  const { followersCount, followingCount, isLoading, error } = useProfileStats({ 
-    pubkey, 
-    refreshInterval: 60000 * 15 // refresh every 15 minutes
-  });
+```typescript
+// NostrBand service for fetching follower statistics
+export class NostrBandService {
+  private baseUrl = 'https://api.nostr.band/v0';
   
+  // Fetch follower statistics for a given public key
+  public async getProfileStats(pubkey: string): Promise<ProfileStats> {
+    if (!pubkey) {
+      return { followersCount: 0, followingCount: 0 };
+    }
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/profile/${pubkey}/stats`);
+      
+      if (!response.ok) {
+        throw new Error(`NostrBand API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      return {
+        followersCount: data.followers_count || 0,
+        followingCount: data.following_count || 0
+      };
+    } catch (error) {
+      console.error('Error fetching profile stats:', error);
+      // Return default values on error
+      return { followersCount: 0, followingCount: 0 };
+    }
+  }
+}
+
+// Singleton instance
+export const nostrBandService = new NostrBandService();
+```
+
+### ProfileStats Interface
+
+The ProfileStats interface defines the structure of follower statistics:
+
+```typescript
+export interface ProfileStats {
+  followersCount: number;
+  followingCount: number;
+}
+```
+
+## useProfileStats Hook
+
+The useProfileStats hook (implemented in `lib/hooks/useProfileStats.ts`) provides a React interface for accessing follower statistics:
+
+```typescript
+// Hook for accessing profile statistics
+export function useProfileStats({ 
+  pubkey, 
+  refreshInterval = 0
+}: {
+  pubkey: string;
+  refreshInterval?: number;
+}): {
+  followersCount: number;
+  followingCount: number;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+} {
+  const [stats, setStats] = useState<ProfileStats>({ followersCount: 0, followingCount: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Fetch profile stats
+  const fetchStats = useCallback(async () => {
+    if (!pubkey) {
+      setStats({ followersCount: 0, followingCount: 0 });
+      setIsLoading(false);
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      const profileStats = await nostrBandService.getProfileStats(pubkey);
+      setStats(profileStats);
+    } catch (error) {
+      console.error('Error in useProfileStats:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pubkey]);
+  
+  // Initial fetch and refresh interval
+  useEffect(() => {
+    fetchStats();
+    
+    if (refreshInterval > 0) {
+      const interval = setInterval(fetchStats, refreshInterval);
+      return () => clearInterval(interval);
+    }
+  }, [fetchStats, refreshInterval]);
+  
+  // Return stats and loading state
+  return {
+    ...stats,
+    isLoading,
+    refresh: fetchStats
+  };
+}
+```
+
+## Profile Integration
+
+The follower statistics are displayed in the Profile tab using the ProfileFollowerStats component:
+
+```jsx
+// Profile follower stats component
+const ProfileFollowerStats = React.memo(() => {
   return (
     <View className="flex-row mb-2">
       <TouchableOpacity className="mr-4">
         <Text>
-          <Text className="font-bold">{isLoading ? '...' : followingCount.toLocaleString()}</Text>
+          <Text className="font-bold">{statsLoading ? '...' : followingCount.toLocaleString()}</Text>
           <Text className="text-muted-foreground"> following</Text>
         </Text>
       </TouchableOpacity>
       
       <TouchableOpacity>
         <Text>
-          <Text className="font-bold">{isLoading ? '...' : followersCount.toLocaleString()}</Text>
+          <Text className="font-bold">{statsLoading ? '...' : followersCount.toLocaleString()}</Text>
           <Text className="text-muted-foreground"> followers</Text>
         </Text>
       </TouchableOpacity>
@@ -96,75 +155,111 @@ const ProfileFollowerStats = React.memo(({ pubkey }: { pubkey?: string }) => {
 });
 ```
 
-### Usage
+This component is called in the Profile tab header:
 
-The component is used in the profile screen as follows:
+```jsx
+// In the Profile header
+const { followersCount, followingCount, isLoading: statsLoading } = useProfileStats({ 
+  pubkey: pubkey || '', 
+  refreshInterval: 60000 * 15 // refresh every 15 minutes
+});
 
-```tsx
-// Inside profile screen component
-<ProfileFollowerStats pubkey={currentUser?.pubkey} />
+// Later in the JSX
+<ProfileFollowerStats />
 ```
 
-## Configuration Options
+## Hook Ordering Consistency
 
-The follower statistics feature can be configured with the following options:
+To maintain React hook ordering consistency regardless of authentication state, the useProfileStats hook is always called, even when the user is not authenticated:
 
-### Refresh Interval
-
-The time (in milliseconds) between automatic refreshes of the statistics:
-
-```tsx
-// Default: 15 minutes
-refreshInterval: 60000 * 15 
+```jsx
+// Always call useProfileStats hook, even if isAuthenticated is false
+// This ensures consistent hook ordering regardless of authentication state
+const { followersCount, followingCount, isLoading: statsLoading } = useProfileStats({ 
+  pubkey: pubkey || '', 
+  refreshInterval: 60000 * 15
+});
 ```
 
-This can be adjusted based on:
-- User engagement patterns
-- API rate limiting concerns
-- Network performance considerations
+When not authenticated or when the pubkey is empty, the hook returns default values (zero counts).
 
-## Design Considerations
+## Caching Strategy
 
-### UI Placement and Styling
+Follower statistics are cached to reduce API calls and improve performance:
 
-The follower statistics are positioned prominently in the profile header but below the user's identity information (name, username, npub) to create a clear visual hierarchy:
+```typescript
+// In NostrBandService
+private cache = new Map<string, { stats: ProfileStats; timestamp: number }>();
+private cacheTTL = 15 * 60 * 1000; // 15 minutes
 
-1. User identity (name, username)
-2. User identification (npub)
-3. Network statistics (following/followers)
-4. User bio/about text
+public async getProfileStats(pubkey: string): Promise<ProfileStats> {
+  // Check cache first
+  const cached = this.cache.get(pubkey);
+  if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+    return cached.stats;
+  }
+  
+  // Fetch from API if not cached or expired
+  try {
+    const stats = await this.fetchProfileStats(pubkey);
+    
+    // Update cache
+    this.cache.set(pubkey, {
+      stats,
+      timestamp: Date.now()
+    });
+    
+    return stats;
+  } catch (error) {
+    // Error handling...
+  }
+}
+```
 
-This placement follows common social media patterns where follower counts are important but secondary to identity.
+## Offline Support
 
-### Interactions
+The follower statistics feature gracefully handles offline states:
 
-While currently implemented as TouchableOpacity components, the follower and following counts are prepared for future enhancements that would allow:
-- Tapping on "following" to show a list of accounts the user follows
-- Tapping on "followers" to show a list of followers
+```typescript
+public async getProfileStats(pubkey: string): Promise<ProfileStats> {
+  // Check connectivity
+  if (!this.connectivityService.isOnline()) {
+    // Return cached data if available
+    const cached = this.cache.get(pubkey);
+    if (cached) {
+      return cached.stats;
+    }
+    
+    // Return default values if no cached data
+    return { followersCount: 0, followingCount: 0 };
+  }
+  
+  // Proceed with normal API call if online
+  // ...
+}
+```
 
-These future enhancements will be implemented in subsequent updates.
+## Performance Considerations
 
-## Accessibility
+To ensure good performance, several optimizations are implemented:
 
-The follower statistics component is designed with accessibility in mind:
-
-- Text sizing uses relative units to respect system font size settings
-- Color contrast meets WCAG accessibility guidelines
-- Component supports screen readers with appropriate text labels
+1. **Memoization**: The ProfileFollowerStats component is memoized to prevent unnecessary re-renders
+2. **Refresh Interval**: Stats are only refreshed at specific intervals (default: 15 minutes)
+3. **Caching**: Follower statistics are cached to reduce API calls
+4. **Lazy Loading**: Stats are loaded after the profile is rendered to prioritize UI responsiveness
 
 ## Future Enhancements
 
-Planned enhancements for the follower statistics feature include:
+Future enhancements to follower statistics include:
 
-1. Navigate to follower/following lists when tapping on counts
-2. Visual indicator for recent changes in follower counts
-3. Offline support with cached follower statistics
-4. Enhanced error states with retry options
-5. Additional statistics such as post count and engagement metrics
+1. **Follower List**: Display a list of followers/following with profile information
+2. **Interaction Analytics**: Show interaction statistics with followers
+3. **Growth Tracking**: Track follower growth over time
+4. **Network Visualization**: Visualize the user's Nostr network
+5. **Notification Integration**: Notify users of new followers
 
-## References
+## Related Documentation
 
-- [NostrBandService](../../../lib/services/NostrBandService.ts) - The service implementation
-- [useProfileStats](../../../lib/hooks/useProfileStats.ts) - The React hook implementation
-- [Profile Overview Screen](../../../app/(tabs)/profile/overview.tsx) - The profile screen implementation
-- [nostr.band API Integration](../../technical/nostr/nostr_band_integration.md) - Technical documentation on the API integration
+- [Profile Tab](./tabs/overview_tab.md) - UI implementation of profile display
+- [NostrBand Integration](../../technical/nostr/nostr_band_integration.md) - Technical details of the NostrBand API integration
+- [Authentication Patterns](./authentication_patterns.md) - How authentication affects hook ordering

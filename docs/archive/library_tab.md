@@ -1,3 +1,5 @@
+> **ARCHIVED DOCUMENT**: This document is outdated and kept for historical reference only. Please refer to [Library Tab Overview](../features/library/library_overview.md) for up-to-date information.
+
 # POWR Library Tab PRD
 Updated: 2025-02-19
 

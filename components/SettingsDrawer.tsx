@@ -10,6 +10,7 @@ import {
   Smartphone, Database, Zap, RefreshCw, AlertTriangle, Globe, PackageOpen, Trash2
 } from 'lucide-react-native';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -304,23 +305,13 @@ export default function SettingsDrawer() {
               onPress={handleProfileClick}
               activeOpacity={0.7}
             >
-              <Avatar 
-                alt={currentUser?.profile?.name || "User profile"}
+              <UserAvatar
+                size="lg" 
+                uri={currentUser?.profile?.image}
+                pubkey={currentUser?.pubkey}
+                name={currentUser?.profile?.name || 'Nostr User'}
                 className="h-16 w-16"
-              >
-                {isAuthenticated && currentUser?.profile?.image ? (
-                  <AvatarImage source={{ uri: currentUser.profile.image }} />
-                ) : null}
-                <AvatarFallback>
-                  {isAuthenticated && currentUser?.profile?.name ? (
-                    <Text className="text-foreground">
-                      {currentUser.profile.name.charAt(0).toUpperCase()}
-                    </Text>
-                  ) : (
-                    <User size={28} />
-                  )}
-                </AvatarFallback>
-              </Avatar>
+              />
               <View style={styles.profileInfo}>
                 <Text className="text-lg font-semibold">
                   {isAuthenticated ? currentUser?.profile?.name || 'Nostr User' : 'Not Logged In'}

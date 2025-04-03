@@ -85,8 +85,8 @@ export default function Header({
         <UserAvatar 
           size="sm" 
           uri={profileImageUrl}
+          pubkey={currentUser?.pubkey}
           onPress={openDrawer}
-          fallback={fallbackLetter}
         />
 
         {/* Middle - Title or Logo */}

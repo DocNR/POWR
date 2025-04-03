@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Enhanced Avatar System with Robohash Integration
+  - Consolidated avatar implementation into ui/avatar.tsx component
+  - Added RobohashAvatar and RobohashFallback components
+  - Created utility functions in utils/avatar.ts for consistent avatar generation
+  - Implemented consistent avatar display using same seed (npub) across the app
+  - Ensured avatar consistency between profile, header, and settings drawer
+  - Enhanced user experience with friendly robot avatars for users without profile images
+  - Updated application components to use the new avatar system
+- Robohash integration for profile pictures
+  - Added automatic robot avatar fallbacks when profile images don't load
+  - Implemented consistent avatar generation based on user IDs
+  - Added support for ephemeral keys and non-authenticated users
+  - Created test screen to demonstrate various avatar scenarios
+  - Enhanced UserAvatar component with Robohash integration
+### Added
+- Documentation structure overhaul for Profile feature
+  - Created comprehensive Profile Tab Overview documentation
+  - Added detailed documentation for each profile tab (Overview, Activity, Progress, Settings)
+  - Created authentication patterns documentation with hook ordering best practices
+  - Developed progress tracking implementation documentation
+  - Added follower statistics documentation with NostrBand integration details
+  - Created proper tab-level documentation for user profile information
+  - Built structure diagrams for the profile section architecture
+  - Updated documentation migration mapping
+  - Created proper cross-references between all profile documents
 - External Signer Support for Android (NIP-55)
   - Added Amber integration for secure private key management
   - Created ExternalSignerUtils to detect external signer apps
@@ -20,6 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added customizable messaging for context-specific instructions
   - Standardized button styling and text formatting
   - Improved visual hierarchy with consistent spacing
+- Documentation structure overhaul for Library feature
+  - Created new consolidated template organization documentation
+  - Enhanced library feature documentation with status indicators and implementation details
+  - Migrated design documents to new documentation structure
+  - Archived original documents with proper reference links
+  - Updated documentation migration mapping
+  - Fixed broken intra-documentation links
+- Documentation structure overhaul for History feature
+  - Created comprehensive History tab overview documentation
+  - Added detailed History List View documentation with code examples
+  - Developed Calendar View documentation with implementation details
+  - Created detailed Migration Guide for History API
+  - Added proper archival references for legacy documents
+  - Updated documentation migration mapping
+  - Enhanced cross-referencing between History documents
 
 ### Fixed
 - Profile tab login experience

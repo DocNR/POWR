@@ -1,138 +1,106 @@
-# Profile Features
+# Profile Section Documentation
 
-**Last Updated:** 2025-03-25  
-**Status:** Active  
-**Related To:** User Identity, Progress, Settings
-
-## Purpose
-
-This document provides an overview of the profile tab features in the POWR app. It describes the various sections of the profile tab, their purposes, and how they integrate with other app features.
+**Last Updated:** 2025-04-02  
+**Status:** Implemented  
+**Related To:** [Nostr Integration](../../technical/nostr/index.md), [Analytics](../../technical/analytics/index.md)
 
 ## Overview
 
-The profile tab serves as the user's personal space within the app, providing:
+The Profile section provides users with a comprehensive interface for managing their personal information, viewing activity, tracking progress, and configuring application settings. This documentation covers all aspects of the Profile tab implementation, from high-level architecture to specific implementation details.
 
-1. User identity and account management
-2. Progress tracking and analytics
-3. Application settings and preferences
-4. Social activity overview
-5. Account management features
+## Documentation Structure
 
-The profile implementation is focused on these key principles:
+### Core Documentation
 
-- User control over personal information
-- Clear organization of progress data
-- Simple access to app settings
-- Integration with Nostr for identity
+- [Profile Tab Overview](./profile_overview.md) - High-level overview of the Profile tab structure and architecture
+- [Authentication Patterns](./authentication_patterns.md) - Technical details on authentication implementation and React hook ordering
 
-## Component Architecture
+### Tab Implementation Details
 
-### High-Level Components
+- [Profile (Overview) Tab](./tabs/overview_tab.md) - User profile display and social feed
+- [Activity Tab](./tabs/activity_tab.md) - User activity summary and recent workouts
+- [Progress Tab](./tabs/progress_tab.md) - Workout analytics and progress tracking
+- [Settings Tab](./tabs/settings_tab.md) - Application and account settings
 
+### Technical Features
+
+- [Progress Tracking](./progress_tracking.md) - Implementation details for workout progress tracking
+- [Follower Statistics](./follower_stats.md) - NostrBand integration for follower statistics
+
+## Key Technical Concepts
+
+The Profile section implements several key technical concepts that are worth highlighting:
+
+### Authentication Pattern
+
+The Profile tab implements a consistent authentication pattern that ensures React hook ordering is maintained while supporting conditional rendering based on authentication state. See [Authentication Patterns](./authentication_patterns.md) for details.
+
+### Components and Data Flow
+
+```mermaid
+graph TD
+    A[Profile Tab Navigator] --> B[Overview Tab]
+    A --> C[Activity Tab]
+    A --> D[Progress Tab]
+    A --> E[Settings Tab]
+    
+    B --> F[Profile Header]
+    B --> G[Social Feed]
+    B --> H[Follower Stats]
+    
+    C --> I[Workout Stats]
+    C --> J[Personal Records]
+    C --> K[Recent Workouts]
+    
+    D --> L[Analytics Charts]
+    D --> M[Period Filter]
+    D --> N[Nostr Toggle]
+    
+    E --> O[Account Settings]
+    E --> P[App Settings]
+    E --> Q[Logout]
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   UI Layer      │     │  Service Layer  │     │   Data Layer    │
-│                 │     │                 │     │                 │
-│ Profile Screens │     │ Profile Service │     │ User Data       │
-│ Settings Views  │◄───►│ Analytics       │◄───►│ Settings Storage│
-│ Progress Views  │     │ Auth Management │     │ Analytics Data  │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+
+### Hook Management
+
+The Profile section carefully manages React hooks to ensure they are called consistently regardless of conditional rendering:
+
+```javascript
+// Always define hooks at the top level, regardless of authentication state
+const { isAuthenticated } = useNDKCurrentUser();
+const someHook = useSomeHook();
+
+// Only after all hooks are defined, use conditional rendering
+if (!isAuthenticated) {
+  return <LoginComponent />;
+}
+
+// Continue with authenticated UI
 ```
 
-### Profile Screens
+### Nostr Integration
 
-- `ProfileOverview`: Main profile screen with user information
-- `ProfileProgress`: Progress tracking visualizations and data
-- `ProfileActivity`: Recent social and workout activity
-- `ProfileTerms`: Terms of service and legal documents
-- `ProfileSettings`: App settings and preferences
+The Profile section deeply integrates with Nostr for user profiles, follower statistics, and social feed:
 
-### MVP Implementation Focus
+```javascript
+// Example of Nostr integration in the profile
+const { currentUser, isAuthenticated } = useNDKCurrentUser();
+const { followersCount, followingCount } = useProfileStats({ 
+  pubkey: currentUser?.pubkey || ''
+});
+```
 
-For the MVP release, the profile tab focuses on:
+## Implementation Challenges
 
-1. **User Identity**
-   - Basic profile information display
-   - Profile editing capabilities
-   - Nostr pubkey association
+Several key implementation challenges were addressed in the Profile section:
 
-2. **Progress Tracking**
-   - Exercise progress charts and metrics
-   - Performance tracking over time
-   - Personal records and milestones
-
-3. **Core Settings**
-   - App preferences
-   - Theme switching
-   - Account management
-
-4. **Activity Overview**
-   - Limited view of recent workouts
-   - Social activity summary
-   - Simplified activity feed
-
-## User Identity
-
-The profile tab handles user identity through:
-
-1. **Profile Information**
-   - Display name
-   - Profile picture (with Nostr and local options)
-   - User metadata
-   - Exercise history summary
-
-2. **Authentication Management**
-   - Nostr key handling
-   - Login/logout functionality
-   - Key creation and import
-
-## Progress Features
-
-Progress tracking is a key feature of the profile tab:
-
-1. **Progress Charts**
-   - Exercise-specific progress tracking
-   - Weight/volume progression charts
-   - Performance metrics
-   - Personal records
-
-2. **Workout Summary Data**
-   - Total workouts completed
-   - Exercise frequency
-   - Workout time analytics
-   - Consistency metrics
-
-## Settings and Preferences
-
-The profile tab provides access to app settings:
-
-1. **App Preferences**
-   - Theme selection (light/dark)
-   - Notification preferences
-   - Default units (kg/lbs)
-
-2. **Account Management**
-   - Export/import data
-   - Clear cache
-   - Data management
-
-## Activity Overview
-
-The profile tab includes a simplified activity overview:
-
-1. **Recent Workouts**
-   - Last few completed workouts
-   - Quick stats
-   - Links to full history
-
-2. **Social Activity**
-   - Recent social interactions
-   - Posts and shares
-   - Simplified activity feed
+1. **React Hook Consistency**: Ensuring React hooks are called in the same order regardless of authentication state
+2. **Feed Data Transformation**: Transforming feed data from different sources into a consistent format
+3. **Analytics Visualization**: Creating user-friendly visualizations of workout analytics
+4. **Offline Support**: Graceful handling of offline state throughout the Profile section
 
 ## Related Documentation
 
-- [Progress Tracking](./progress_tracking.md) - Detailed description of progress tracking features
-- [MVP and Targeted Rebuild](../../project/mvp_and_rebuild.md) - Overall MVP strategy
-- [Workout History](../history/index.md) - How workout history integrates with profile
-- [Authentication](../../architecture/authentication.md) - Authentication architecture
+- [Nostr Integration](../../technical/nostr/index.md) - General Nostr integration documentation
+- [Analytics Implementation](../../technical/analytics/index.md) - Implementation details for analytics
+- [Theme System](../../technical/styling/theme_system.md) - App theming system

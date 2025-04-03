@@ -1,3 +1,5 @@
+> **ARCHIVED DOCUMENT**: This document is outdated and kept for historical reference only. Please refer to [POWR App Coding Style Guide](../guides/coding_style.md) for up-to-date information.
+
 ## **Overview**
 
 This guide is written in the spirit of [Google Style Guides](https://github.com/google/styleguide), especially the most well written ones like for [Obj-C](https://github.com/google/styleguide/blob/gh-pages/objcguide.md).

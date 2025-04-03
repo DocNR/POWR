@@ -44,11 +44,14 @@ export default function OverviewScreen() {
   const router = useRouter();
   const theme = useTheme() as CustomTheme;
   const { currentUser, isAuthenticated } = useNDKCurrentUser();
+  
+  // Initialize all state hooks at the top to maintain consistent ordering
   const [isLoginSheetOpen, setIsLoginSheetOpen] = useState(false);
-  // Initialize feed related state
   const [feedItems, setFeedItems] = useState<any[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [entries, setEntries] = useState<AnyFeedEntry[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Only call useSocialFeed when authenticated to prevent the error
   const socialFeed = isAuthenticated ? useSocialFeed({
@@ -68,18 +71,31 @@ export default function OverviewScreen() {
     if (isAuthenticated && socialFeed) {
       setFeedItems(socialFeed.feedItems);
       setIsOffline(socialFeed.isOffline);
+    } else {
+      // Clear feed items when logged out
+      setFeedItems([]);
     }
   }, [isAuthenticated, socialFeed?.feedItems, socialFeed?.isOffline]);
   
-  // Convert to the format expected by the component
-  const entries = React.useMemo(() => {
-    return feedItems.map(item => {
+  // Process feedItems into entries when feedItems changes
+  // This needs to be a separate effect to avoid breaking hook order during logout
+  useEffect(() => {
+    if (!feedItems || !Array.isArray(feedItems)) {
+      setEntries([]);
+      return;
+    }
+    
+    // Map items and filter out any nulls
+    const mappedItems = feedItems.map(item => {
+      if (!item) return null;
+      
       // Create a properly typed AnyFeedEntry based on the item type
+      // with null safety for all item properties
       const baseEntry = {
-        id: item.id,
-        eventId: item.id,
-        event: item.originalEvent,
-        timestamp: item.createdAt * 1000,
+        id: item.id || `temp-${Date.now()}-${Math.random()}`,
+        eventId: item.id || `temp-${Date.now()}-${Math.random()}`,
+        event: item.originalEvent || {},
+        timestamp: ((item.createdAt || Math.floor(Date.now() / 1000)) * 1000),
       };
       
       // Add type-specific properties
@@ -88,35 +104,35 @@ export default function OverviewScreen() {
           return {
             ...baseEntry,
             type: 'workout',
-            content: item.parsedContent
+            content: item.parsedContent || {}
           } as WorkoutFeedEntry;
         
         case 'exercise':
           return {
             ...baseEntry,
             type: 'exercise',
-            content: item.parsedContent
+            content: item.parsedContent || {}
           } as ExerciseFeedEntry;
           
         case 'template':
           return {
             ...baseEntry,
             type: 'template',
-            content: item.parsedContent
+            content: item.parsedContent || {}
           } as TemplateFeedEntry;
           
         case 'social':
           return {
             ...baseEntry,
             type: 'social',
-            content: item.parsedContent
+            content: item.parsedContent || {}
           } as SocialFeedEntry;
           
         case 'article':
           return {
             ...baseEntry,
             type: 'article',
-            content: item.parsedContent
+            content: item.parsedContent || {}
           } as ArticleFeedEntry;
           
         default:
@@ -124,16 +140,18 @@ export default function OverviewScreen() {
           return {
             ...baseEntry,
             type: 'social',
-            content: item.parsedContent
+            content: item.parsedContent || {}
           } as SocialFeedEntry;
       }
     });
+    
+    // Filter out nulls to satisfy TypeScript
+    const filteredEntries = mappedItems.filter((item): item is AnyFeedEntry => item !== null);
+    setEntries(filteredEntries);
   }, [feedItems]);
   
   const resetFeed = refresh;
   const hasContent = entries.length > 0;
-  
-  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Profile data
   const profileImageUrl = currentUser?.profile?.image || 
@@ -302,9 +320,9 @@ export default function OverviewScreen() {
           <UserAvatar
             size="xl"
             uri={profileImageUrl}
-            fallback={displayName.charAt(0)}
+            pubkey={pubkey}
+            name={displayName}
             className="mr-4 border-4 border-background"
-            isInteractive={false}
             style={{ width: 90, height: 90 }}
           />
           

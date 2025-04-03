@@ -1,156 +1,81 @@
 // components/UserAvatar.tsx
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity, TouchableOpacityProps, GestureResponderEvent } from 'react-native';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { View, StyleSheet } from 'react-native';
+import { RobohashAvatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
+import { getRobohashUrl, getAvatarSeed } from '@/utils/avatar';
 
-interface UserAvatarProps extends TouchableOpacityProps {
+interface UserAvatarProps {
   uri?: string;
+  pubkey?: string;
+  name?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
-  fallback?: string;
-  isInteractive?: boolean;
+  showName?: boolean;
   className?: string;
+  style?: any;
+  onPress?: () => void;
 }
 
-const UserAvatar = ({ 
-  uri, 
-  size = 'md', 
-  fallback = 'U',
-  isInteractive = true,
+/**
+ * Enhanced UserAvatar component with improved robustness for Nostr identities
+ * - Handles null/undefined pubkey and image gracefully
+ * - Uses consistent fallback seeds during login/logout state changes
+ * - Provides consistent avatar appearance across the app
+ */
+export default function UserAvatar({
+  uri,
+  pubkey,
+  name,
+  size = 'md',
+  showName = false,
   className,
+  style,
   onPress,
-  ...props
-}: UserAvatarProps) => {
-  const [imageError, setImageError] = useState(false);
-  const [imageUri, setImageUri] = useState<string | undefined>(uri);
-  const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 2; // Maximum number of retry attempts
+}: UserAvatarProps) {
+  const [cachedImage, setCachedImage] = useState<string | null>(null);
   
-  // Load cached image when uri changes
+  // Attempt to load cached profile image if available
   useEffect(() => {
-    let isMounted = true;
-    
-    // Reset retry count and error state when URI changes
-    setRetryCount(0);
-    setImageError(false);
-    
-    const loadCachedImage = async () => {
-      if (!uri) {
-        setImageUri(undefined);
-        return;
-      }
-      
-      try {
-        // Try to extract pubkey from URI
-        const pubkey = profileImageCache.extractPubkeyFromUri(uri);
-        
-        if (pubkey) {
-          // If we have a pubkey, try to get cached image
-          const cachedUri = await profileImageCache.getProfileImageUri(pubkey, uri);
-          
-          if (isMounted) {
-            setImageUri(cachedUri);
-            setImageError(false);
+    if (!uri && pubkey) {
+      // Try to get cached image if URI is not provided
+      profileImageCache.getProfileImageUri(pubkey)
+        .then((cachedUri: string | undefined) => {
+          if (cachedUri) {
+            setCachedImage(cachedUri);
           }
-        } else {
-          // If no pubkey, just use the original URI
-          if (isMounted) {
-            setImageUri(uri);
-            setImageError(false);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading cached image:', error);
-        if (isMounted) {
-          setImageUri(uri);
-          setImageError(false);
-        }
-      }
-    };
-    
-    loadCachedImage();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [uri]);
-  
-  const containerStyles = cn(
-    {
-      'w-8 h-8': size === 'sm',
-      'w-10 h-10': size === 'md',
-      'w-12 h-12': size === 'lg',
-      'w-24 h-24': size === 'xl',
-    },
-    className
-  );
-  
-  const handlePress = (event: GestureResponderEvent) => {
-    if (onPress) {
-      onPress(event);
-    } else if (isInteractive) {
-      // Default behavior if no onPress provided
-      console.log('Avatar pressed');
+        })
+        .catch((error: Error) => {
+          console.error('Error getting cached profile image:', error);
+        });
     }
-  };
+  }, [uri, pubkey]);
   
-  const handleImageError = () => {
-    console.error("Failed to load image from URI:", imageUri);
-    
-    if (retryCount < maxRetries) {
-      // Try again after a short delay
-      console.log(`Retrying image load (attempt ${retryCount + 1}/${maxRetries})`);
-      setTimeout(() => {
-        setRetryCount(prev => prev + 1);
-        // Force reload by setting a new URI with cache buster
-        if (imageUri) {
-          const cacheBuster = `?retry=${Date.now()}`;
-          const newUri = imageUri.includes('?') 
-            ? `${imageUri}&cb=${Date.now()}` 
-            : `${imageUri}${cacheBuster}`;
-          setImageUri(newUri);
-          setImageError(false);
-        }
-      }, 1000);
-    } else {
-      console.log(`Max retries (${maxRetries}) reached, showing fallback`);
-      setImageError(true);
-    }
-  };
+  // Get a consistent seed for Robohash using our utility function
+  const seed = React.useMemo(() => {
+    return getAvatarSeed(pubkey, name || 'anonymous-user');
+  }, [pubkey, name]);
   
-  const avatarContent = (
-    <Avatar 
-      className={containerStyles}
-      alt="User profile image"
-    >
-      {imageUri && !imageError ? (
-        <AvatarImage 
-          source={{ uri: imageUri }} 
-          onError={handleImageError}
-        />
-      ) : (
-        <AvatarFallback>
-          <Text className="text-foreground">{fallback}</Text>
-        </AvatarFallback>
-      )}
-    </Avatar>
-  );
-  
-  if (!isInteractive) return avatarContent;
+  // Use cached image if available, otherwise use provided URI
+  const imageUrl = uri || cachedImage || undefined;
   
   return (
-    <TouchableOpacity 
-      onPress={handlePress}
-      activeOpacity={0.8}
-      accessibilityRole="button"
-      accessibilityLabel="User profile"
-      {...props}
-    >
-      {avatarContent}
-    </TouchableOpacity>
+    <View className={cn("items-center", className)}>
+      <RobohashAvatar 
+        uri={imageUrl}
+        seed={seed}
+        size={size}
+        onPress={onPress}
+        isInteractive={Boolean(onPress)}
+        style={style}
+      />
+      
+      {showName && name && (
+        <Text className="text-sm mt-1 text-center">
+          {name}
+        </Text>
+      )}
+    </View>
   );
-};
-
-export default UserAvatar;
+}

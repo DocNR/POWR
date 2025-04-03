@@ -1,3 +1,5 @@
+> **ARCHIVED DOCUMENT**: This document is outdated and kept for historical reference only. Please refer to [POWR App Styling Guide](../technical/styling/styling_guide.md) for up-to-date information.
+
 # POWR App Styling Guide
 
 This document outlines how to consistently style components in the POWR fitness app.

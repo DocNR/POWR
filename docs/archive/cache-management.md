@@ -1,3 +1,5 @@
+> **ARCHIVED DOCUMENT**: This document is outdated and kept for historical reference only. Please refer to [Cache Management in POWR App](../technical/caching/cache_management.md) for up-to-date information.
+
 # NDK Mobile Cache Integration Plan
 
 ## Overview
