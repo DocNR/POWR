@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Centralized Authentication System with Advanced Security
+  - Implemented new AuthService for unified authentication management
+  - Added support for multiple authentication methods (private key, external signer, ephemeral)
+  - Created secure logout protocol to prevent unexpected state during sign-out
+  - Implemented SigningQueue for better transaction handling and atomicity
+  - Added AuthStateManager for centralized state management
+  - Created AuthProvider component for React integration
+  - Implemented feature flag system for gradual rollout
+  - Added test page for verification of authentication features
+  - Enhanced security with proper error propagation and state handling
+  - Created clear documentation for the new authentication architecture
+  - Built with TypeScript for type safety and developer experience
+  - Added backward compatibility with legacy authentication
+g
 - Enhanced Avatar System with Robohash Integration
   - Consolidated avatar implementation into ui/avatar.tsx component
   - Added RobohashAvatar and RobohashFallback components

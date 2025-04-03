@@ -17,9 +17,10 @@ import { SettingsDrawerProvider } from '@/lib/contexts/SettingsDrawerContext';
 import SettingsDrawer from '@/components/SettingsDrawer';
 import RelayInitializer from '@/components/RelayInitializer';
 import OfflineIndicator from '@/components/OfflineIndicator';
-import { useNDKStore } from '@/lib/stores/ndk';
+import { useNDKStore, FLAGS } from '@/lib/stores/ndk';
 import { useWorkoutStore } from '@/stores/workoutStore';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
+import { AuthProvider } from '@/lib/auth/AuthProvider';
 // Import splash screens with improved fallback mechanism
 let SplashComponent: React.ComponentType<{onFinish: () => void}>;
 let useVideoSplash = false;
@@ -226,11 +227,29 @@ export default function RootLayout() {
           <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
             {/* Ensure SettingsDrawerProvider wraps everything */}
             <SettingsDrawerProvider>
-              {/* Add RelayInitializer here - it loads relay data once NDK is available */}
-              <RelayInitializer />
-              
-              {/* Add OfflineIndicator to show network status */}
-              <OfflineIndicator />
+              {/* Add AuthProvider when using new auth system */}
+              {(() => {
+                const ndk = useNDKStore.getState().ndk;
+                if (ndk && FLAGS.useNewAuthSystem) {
+                  return (
+                    <AuthProvider ndk={ndk}>
+                      {/* Add RelayInitializer here - it loads relay data once NDK is available */}
+                      <RelayInitializer />
+                      
+                      {/* Add OfflineIndicator to show network status */}
+                      <OfflineIndicator />
+                    </AuthProvider>
+                  );
+                } else {
+                  return (
+                    <>
+                      {/* Legacy approach without AuthProvider */}
+                      <RelayInitializer />
+                      <OfflineIndicator />
+                    </>
+                  );
+                }
+              })()}
               
               <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
               <Stack screenOptions={{ headerShown: false }}>

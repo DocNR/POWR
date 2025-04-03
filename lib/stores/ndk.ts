@@ -11,6 +11,12 @@ import NDK, {
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import * as SecureStore from 'expo-secure-store';
 import { RelayService } from '@/lib/db/services/RelayService';
+import { AuthService } from '@/lib/auth/AuthService';
+
+// Feature flag for new auth system
+export const FLAGS = {
+  useNewAuthSystem: false, // Temporarily disabled until fully implemented
+};
 
 // Constants for SecureStore
 const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
@@ -116,17 +122,31 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       
       set({ ndk, relayStatus });
       
-      // Check for saved private key
-      const privateKeyHex = await SecureStore.getItemAsync(PRIVATE_KEY_STORAGE_KEY);
-      if (privateKeyHex) {
-        console.log('[NDK] Found saved private key, initializing signer');
+      // Authentication initialization:
+      // Use new auth system when enabled by feature flag, otherwise use legacy approach
+      if (FLAGS.useNewAuthSystem) {
+        console.log('[NDK] Using new authentication system');
+        // The AuthService will handle loading saved credentials
+        // This is just to initialize the NDK store state, actual auth will be handled by AuthProvider
+        // component using the AuthService
+        const authService = new AuthService(ndk);
         
-        try {
-          await get().login(privateKeyHex);
-        } catch (error) {
-          console.error('[NDK] Error initializing with saved key:', error);
-          // Remove invalid key
-          await SecureStore.deleteItemAsync(PRIVATE_KEY_STORAGE_KEY);
+        // We don't call authService.initialize() here because that should be done
+        // by the AuthProvider to avoid duplicate initialization
+      } else {
+        console.log('[NDK] Using legacy authentication system');
+        // Legacy: Check for saved private key
+        const privateKeyHex = await SecureStore.getItemAsync(PRIVATE_KEY_STORAGE_KEY);
+        if (privateKeyHex) {
+          console.log('[NDK] Found saved private key, initializing signer');
+          
+          try {
+            await get().login(privateKeyHex);
+          } catch (error) {
+            console.error('[NDK] Error initializing with saved key:', error);
+            // Remove invalid key
+            await SecureStore.deleteItemAsync(PRIVATE_KEY_STORAGE_KEY);
+          }
         }
       }
 

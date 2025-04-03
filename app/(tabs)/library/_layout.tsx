@@ -53,14 +53,16 @@ export default function LibraryLayout() {
           component={TemplatesScreen}
           options={{ title: 'Templates' }}
         />
-        {/* Only show Programs tab in development builds */}
+        {/* Only show Development tab in development builds */}
         {!IS_PRODUCTION && (
           <Tab.Screen
             name="programs"
             component={ProgramsScreen}
-            options={{ title: 'Programs' }}
+            options={{ title: 'Development' }}
           />
         )}
+        
+        {/* Auth Test tab temporarily removed - see auth information in Development tab instead */}
       </Tab.Navigator>
     </TabScreen>
   );

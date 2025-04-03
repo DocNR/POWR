@@ -12,7 +12,7 @@ import { COLORS } from './colors';
  * For local development, keep this as false
  * For TestFlight/App Store builds, set to true
  */
-export const IS_PRODUCTION = true;
+export const IS_PRODUCTION = false; // Temporarily set to false for development
 
 /**
  * App version information

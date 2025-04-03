@@ -497,9 +497,56 @@ export default function ProgramsScreen() {
           <Zap size={18} className={`mr-2 ${activeTab === 'nostr' ? 'text-white' : 'text-foreground'}`} />
           <Text className={activeTab === 'nostr' ? 'text-white' : 'text-foreground'}>Nostr</Text>
         </TouchableOpacity>
+        
+        <TouchableOpacity 
+          className={`flex-1 flex-row items-center justify-center py-3 ${activeTab === 'auth' ? 'bg-primary' : ''}`}
+          onPress={() => setActiveTab('auth')}
+        >
+          <AlertCircle size={18} className={`mr-2 ${activeTab === 'auth' ? 'text-white' : 'text-foreground'}`} />
+          <Text className={activeTab === 'auth' ? 'text-white' : 'text-foreground'}>Auth</Text>
+        </TouchableOpacity>
       </View>
         
       {/* Tab Content */}
+      {activeTab === 'auth' && (
+        <ScrollView className="flex-1 p-4">
+          <View className="py-4 space-y-4">
+            <Text className="text-lg font-semibold text-center mb-4 text-foreground">Authentication System Test</Text>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex-row items-center gap-2">
+                  <AlertCircle size={20} className="text-foreground" />
+                  <Text className="text-lg font-semibold">Auth Test Available</Text>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Text className="text-foreground mb-4">
+                  The Centralized Authentication System has been implemented and is ready for testing.
+                </Text>
+                <Text className="text-foreground mb-4">
+                  You can access the standalone test page by adding the AuthProvider to the root app layout, which
+                  is not included in this development tab to avoid conflicts with the existing authentication system.
+                </Text>
+                <Text className="text-foreground mb-4">
+                  The new authentication system includes:
+                </Text>
+                <View className="space-y-2 ml-4 mb-4">
+                  <Text className="text-foreground">• Support for multiple authentication methods</Text>
+                  <Text className="text-foreground">• Secure logout protocol with proper state handling</Text>
+                  <Text className="text-foreground">• SigningQueue for atomic Nostr event signing</Text>
+                  <Text className="text-foreground">• Feature flag system for controlled rollout</Text>
+                  <Text className="text-foreground">• Type-safe interfaces with improved error handling</Text>
+                </View>
+                <Text className="text-muted-foreground">
+                  The standalone test page (app/test/auth-test.tsx) can be accessed directly when the AuthProvider
+                  is enabled in the app's root layout.
+                </Text>
+              </CardContent>
+            </Card>
+          </View>
+        </ScrollView>
+      )}
       {activeTab === 'database' && (
         <ScrollView className="flex-1 p-4">
           <View className="py-4 space-y-4">
