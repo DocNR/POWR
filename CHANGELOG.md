@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- React Query Android Profile Optimization System
+  - Added platform-specific timeouts for network operations
+  - Created fallback UI system for handling network delays
+  - Implemented Android-specific safety timeouts with auto-recovery
+  - Added error boundaries within profile components
+  - Enhanced refresh mechanisms with better error recovery
+  - Created graceful degradation UI for slow connections
+  - Added real-time monitoring of loading states
+  - Improved user experience during temporary API failures
+
 ### Improved
 - Console logging system
   - Implemented configurable module-level logging controls
@@ -17,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created comprehensive logging documentation
 
 ### Fixed
+- Android profile screen hanging issues
+  - Fixed infinite loading state on profile screen with proper timeouts
+  - Enhanced NostrBandService with AbortController and abort signal support
+  - Added platform-specific timeout settings (5s for Android, 10s for iOS)
+  - Improved error recovery with fallback content display
+  - Added graceful degradation UI for network timeouts
+  - Enhanced cache utilization to improve offline experience
+  - Fixed hook ordering issues in profile components 
+  - Implemented max retry limits to prevent hanging
+  - Added loading attempt tracking to prevent infinite loading
+  - Created better diagnostics with platform-specific logging
+  - Added recovery UI with retry buttons after multiple failures
+  - Implemented safety timeouts to ensure content always displays
+
 - Android profile component loading issues
   - Fixed banner image not showing up in Android profile screen
   - Enhanced useBannerImage hook with improved React Query configuration
@@ -65,6 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved NDK initialization with more robust error handling
   - Enhanced placeholder service pattern for hooks during initialization
   - Implemented consistent hook order pattern to prevent React errors
+
+- React Query-based Profile Data Hooks
+  - Enhanced useProfileStats with React Query for better caching
+  - Implemented platform-specific fetch strategies for Android and iOS
+  - Added automatic timeout handling with AbortController integration
+  - Created proper error state management with fallback values
+  - Implemented memory leak protection with mounted state tracking
+  - Added platform-aware component rendering for better UX
+  - Enhanced error recovery with automatic retries
+  - Implemented useRef for preventing memory leaks in asynchronous operations
+  - Created optimized caching strategies with platform-specific configurations
+  - Added proper dependency tracking in useEffect hooks
 
 ### Fixed
 - React hooks ordering in Android

@@ -1,8 +1,9 @@
 // components/RelayInitializer.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useContext } from 'react';
 import { View } from 'react-native';
 import { useRelayStore } from '@/lib/stores/relayStore';
 import { useNDKStore } from '@/lib/stores/ndk';
+import { NDKContext } from '@/lib/auth/ReactQueryAuthProvider';
 import { useConnectivity } from '@/lib/db/services/ConnectivityService';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
 import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
@@ -15,10 +16,20 @@ import { useDatabase } from '@/components/DatabaseProvider';
  * A component to initialize and load relay data when the app starts
  * This should be placed high in the component tree, ideally in _layout.tsx
  */
-export default function RelayInitializer() {
+interface RelayInitializerProps {
+  reactQueryMode?: boolean; // When true, uses React Query NDK context
+}
+
+export default function RelayInitializer({ reactQueryMode = false }: RelayInitializerProps) {
   const { loadRelays } = useRelayStore();
-  const { ndk } = useNDKStore();
   const { isOnline } = useConnectivity();
+  
+  // Get NDK from the appropriate source based on mode
+  const legacyNDK = useNDKStore(state => state.ndk);
+  const reactQueryNDKContext = useContext(NDKContext);
+  
+  // Use the correct NDK instance based on mode
+  const ndk = reactQueryMode ? reactQueryNDKContext.ndk : legacyNDK;
 
   const db = useDatabase();
 

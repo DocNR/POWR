@@ -14,6 +14,7 @@ interface ReactQueryAuthProviderProps {
   children: ReactNode;
   enableOfflineMode?: boolean;
   queryClient?: QueryClient;
+  enableNDK?: boolean; // New prop to control NDK initialization
 }
 
 /**
@@ -30,6 +31,7 @@ export function ReactQueryAuthProvider({
   children,
   enableOfflineMode = true,
   queryClient: customQueryClient,
+  enableNDK = true, // Default to true for backward compatibility
 }: ReactQueryAuthProviderProps) {
   // Create Query Client if not provided (always created)
   const queryClient = useMemo(() => customQueryClient ?? createQueryClient(), [customQueryClient]);
@@ -44,12 +46,19 @@ export function ReactQueryAuthProvider({
     isInitialized 
   }), [ndk, isInitialized]);
 
-  // Initialize NDK
+  // Initialize NDK only if enableNDK is true
   useEffect(() => {
+    // Skip NDK initialization if enableNDK is false
+    if (!enableNDK) {
+      console.log('[ReactQueryAuthProvider] NDK initialization skipped (enableNDK=false)');
+      setIsInitialized(true); // Still mark as initialized so the app can proceed
+      return;
+    }
+    
     const initNDK = async () => {
       try {
         console.log('[ReactQueryAuthProvider] Initializing NDK...');
-        const result = await initializeNDK();
+        const result = await initializeNDK('react-query');
         setNdk(result.ndk);
         setIsInitialized(true);
         console.log('[ReactQueryAuthProvider] NDK initialized successfully');
@@ -61,7 +70,7 @@ export function ReactQueryAuthProvider({
     };
     
     initNDK();
-  }, [enableOfflineMode]);
+  }, [enableOfflineMode, enableNDK]);
 
   // Always render children, regardless of NDK initialization status
   // This ensures consistent hook ordering in child components

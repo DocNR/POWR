@@ -67,55 +67,96 @@ export class NostrBandService {
       
       logger.info(`[${platform}] Fetching from: ${url}`);
       
-      // Fetch with explicit no-cache headers
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
+      // Create AbortController with timeout for Android
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        if (platform === 'Android') {
+          logger.warn(`[Android] Aborting stats fetch due to timeout for ${hexPubkey.substring(0, 8)}`);
+          controller.abort();
         }
-      });
+      }, 5000); // 5 second timeout for Android
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.error(`[${platform}] API error: ${response.status} - ${errorText}`);
-        throw new Error(`API error: ${response.status} - ${errorText}`);
+      try {
+        // Fetch with explicit no-cache headers and abort signal
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      
+        if (!response.ok) {
+          const errorText = await response.text();
+          logger.error(`[${platform}] API error: ${response.status} - ${errorText}`);
+          throw new Error(`API error: ${response.status} - ${errorText}`);
+        }
+        
+        // Parse with timeout protection
+        const textData = await response.text();
+        const data = JSON.parse(textData) as NostrBandProfileStatsResponse;
+      
+        // Check if we got valid data
+        if (!data || !data.stats || !data.stats[hexPubkey]) {
+          logger.error(`[${platform}] Invalid response from API:`, JSON.stringify(data));
+          
+          // Special handling for Android - return fallback values rather than throwing
+          if (platform === 'Android') {
+            logger.warn(`[Android] Using fallback stats for ${hexPubkey.substring(0, 8)}`);
+            return {
+              pubkey: hexPubkey,
+              followersCount: 0,
+              followingCount: 0,
+              isLoading: false,
+              error: null
+            };
+          }
+          throw new Error('Invalid response from API');
+        }
+        
+        // Extract relevant stats
+        const profileStats = data.stats[hexPubkey];
+      
+        // Create result with real data - ensure we have non-null values
+        const result = {
+          pubkey: hexPubkey,
+          followersCount: profileStats.followers_pubkey_count ?? 0,
+          followingCount: profileStats.pub_following_pubkey_count ?? 0,
+          isLoading: false,
+          error: null
+        };
+      
+        // Log the fetched stats
+        logger.info(`[${platform}] Fetched stats for ${hexPubkey.substring(0, 8)}:`, {
+          followersCount: result.followersCount,
+          followingCount: result.followingCount
+        });
+        
+        return result;
+      } finally {
+        clearTimeout(timeoutId);
       }
-      
-      const data = await response.json() as NostrBandProfileStatsResponse;
-      
-      // Check if we got valid data
-      if (!data || !data.stats || !data.stats[hexPubkey]) {
-        logger.error(`[${platform}] Invalid response from API:`, JSON.stringify(data));
-        throw new Error('Invalid response from API');
-      }
-      
-      // Extract relevant stats
-      const profileStats = data.stats[hexPubkey];
-      
-      // Create result with real data - ensure we have non-null values
-      const result = {
-        pubkey: hexPubkey,
-        followersCount: profileStats.followers_pubkey_count ?? 0,
-        followingCount: profileStats.pub_following_pubkey_count ?? 0,
-        isLoading: false,
-        error: null
-      };
-      
-      // Log the fetched stats
-      logger.info(`[${platform}] Fetched stats for ${hexPubkey.substring(0, 8)}:`, {
-        followersCount: result.followersCount,
-        followingCount: result.followingCount
-      });
-      
-      return result;
     } catch (error) {
       // Log the error with platform info
       logger.error(`[${platform}] Error fetching profile stats:`, error);
       
-      // Always throw to allow the query to properly retry
+      // For Android, return fallback values rather than throwing
+      if (platform === 'Android') {
+        logger.warn(`[Android] Returning fallback stats for ${pubkey.substring(0, 8)} due to error`);
+        return {
+          pubkey: pubkey,
+          followersCount: 0,
+          followingCount: 0,
+          isLoading: false,
+          error: error instanceof Error ? error : new Error(String(error))
+        };
+      }
+      
+      // For other platforms, throw to allow React Query to handle retries
       throw error;
     }
   }

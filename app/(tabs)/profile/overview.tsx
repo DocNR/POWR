@@ -53,6 +53,8 @@ export default function OverviewScreen() {
   const [isOffline, setIsOffline] = useState(false);
   const [entries, setEntries] = useState<AnyFeedEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [renderError, setRenderError] = useState<Error | null>(null);
+  const [loadAttempts, setLoadAttempts] = useState(0);
   
   // IMPORTANT: Always call hooks in the same order on every render to comply with React's Rules of Hooks
   // Instead of conditionally calling the hook based on authentication state,
@@ -68,6 +70,31 @@ export default function OverviewScreen() {
   // Use nullish coalescing to safely access values from the hook
   const loading = socialFeed?.loading || feedLoading;
   const refresh = socialFeed?.refresh || (() => Promise.resolve());
+  
+  // Safety timeout for Android - force refresh the view if stuck loading for too long
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    
+    if (Platform.OS === 'android' && isAuthenticated && loading && loadAttempts < 3) {
+      // Set a safety timeout - if loading takes more than 8 seconds, force a refresh
+      timeoutId = setTimeout(() => {
+        console.log('[Android] Profile view safety timeout triggered, forcing refresh');
+        setLoadAttempts(prev => prev + 1);
+        setFeedLoading(false);
+        if (refresh) {
+          try {
+            refresh();
+          } catch (e) {
+            console.error('[Android] Force refresh error:', e);
+          }
+        }
+      }, 8000);
+    }
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isAuthenticated, loading, refresh, loadAttempts]);
   
   // Update feedItems when socialFeed.feedItems changes
   useEffect(() => {
@@ -584,31 +611,53 @@ export default function OverviewScreen() {
   }, []);
   
   const renderMainContent = useCallback(() => {
-    return (
-    <View className="flex-1">
-      <FlatList
-        data={entries}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        refreshControl={
-          <RefreshControl 
-            refreshing={isRefreshing} 
-            onRefresh={handleRefresh}
-          />
-        }
-        ListHeaderComponent={<ProfileHeader />}
-        ListEmptyComponent={
-          <View className="px-4 py-8">
-            <EmptyFeed message="No posts yet. Share your workouts or create posts to see them here." />
-          </View>
-        }
-        contentContainerStyle={{ 
-          paddingBottom: insets.bottom + 20,
-          flexGrow: entries.length === 0 ? 1 : undefined
-        }}
-      />
-    </View>
-    );
+    // Catch and recover from any rendering errors
+    try {
+      return (
+      <View className="flex-1">
+        <FlatList
+          data={entries}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          refreshControl={
+            <RefreshControl 
+              refreshing={isRefreshing} 
+              onRefresh={handleRefresh}
+            />
+          }
+          ListHeaderComponent={<ProfileHeader />}
+          ListEmptyComponent={
+            <View className="px-4 py-8">
+              <EmptyFeed message="No posts yet. Share your workouts or create posts to see them here." />
+            </View>
+          }
+          contentContainerStyle={{ 
+            paddingBottom: insets.bottom + 20,
+            flexGrow: entries.length === 0 ? 1 : undefined
+          }}
+        />
+      </View>
+      );
+    } catch (error) {
+      setRenderError(error instanceof Error ? error : new Error(String(error)));
+      // Fallback UI when rendering fails
+      return (
+        <View className="flex-1 items-center justify-center p-4">
+          <Text className="text-lg font-bold mb-2">Something went wrong</Text>
+          <Text className="text-sm text-muted-foreground mb-4 text-center">
+            We had trouble loading your profile. Please try again.
+          </Text>
+          <Button 
+            onPress={() => {
+              setRenderError(null);
+              handleRefresh();
+            }}
+          >
+            Retry
+          </Button>
+        </View>
+      );
+    }
   }, [entries, renderItem, isRefreshing, handleRefresh, ProfileHeader, insets.bottom]);
   
   // Final conditional return after all hooks have been called
@@ -617,7 +666,44 @@ export default function OverviewScreen() {
     return renderLoginScreen();
   }
   
+  if (renderError) {
+    // Render error recovery UI
+    return (
+      <View className="flex-1 items-center justify-center p-4">
+        <Text className="text-lg font-bold mb-2">Something went wrong</Text>
+        <Text className="text-sm text-muted-foreground mb-4 text-center">
+          {renderError.message || "We had trouble loading your profile. Please try again."}
+        </Text>
+        <Button 
+          onPress={() => {
+            setRenderError(null);
+            handleRefresh();
+          }}
+        >
+          Retry
+        </Button>
+      </View>
+    );
+  }
+  
+  // Show loading screen, but with a maximum timeout on Android
   if (loading && entries.length === 0) {
+    if (Platform.OS === 'android' && loadAttempts >= 3) {
+      // After 3 attempts, show content anyway with a refresh button
+      return (
+        <View className="flex-1">
+          <ProfileHeader />
+          <View className="flex-1 items-center justify-center p-4">
+            <Text className="mb-4 text-center">
+              Some content may still be loading.
+            </Text>
+            <Button onPress={handleRefresh}>
+              Refresh
+            </Button>
+          </View>
+        </View>
+      );
+    }
     return renderLoadingScreen();
   }
   

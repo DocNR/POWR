@@ -13,9 +13,9 @@ import * as SecureStore from 'expo-secure-store';
 import { RelayService } from '@/lib/db/services/RelayService';
 import { AuthService } from '@/lib/auth/AuthService';
 
-// Feature flag for new auth system
+// Feature flags for authentication systems
 export const FLAGS = {
-  useNewAuthSystem: false, // Temporarily disabled until fully implemented
+  useReactQueryAuth: true, // When true, use React Query auth; when false, use legacy auth
 };
 
 // Constants for SecureStore
@@ -123,9 +123,9 @@ export const useNDKStore = create<NDKStoreState & NDKStoreActions>((set, get) =>
       set({ ndk, relayStatus });
       
       // Authentication initialization:
-      // Use new auth system when enabled by feature flag, otherwise use legacy approach
-      if (FLAGS.useNewAuthSystem) {
-        console.log('[NDK] Using new authentication system');
+      // Use React Query auth when enabled by feature flag, otherwise use legacy approach
+      if (FLAGS.useReactQueryAuth) {
+        console.log('[NDK] Using React Query authentication system');
         // The AuthService will handle loading saved credentials
         // This is just to initialize the NDK store state, actual auth will be handled by AuthProvider
         // component using the AuthService
