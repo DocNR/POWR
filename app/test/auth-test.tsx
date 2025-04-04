@@ -1,15 +1,17 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView, Button, Text, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Button, Text, Platform, ActivityIndicator } from 'react-native';
 import { useAuthState, useAuth } from '@/lib/auth/AuthProvider';
+import { AuthProvider } from '@/lib/auth/AuthProvider';
+import { useNDKStore } from '@/lib/stores/ndk';
 import AuthStatus from '@/components/auth/AuthStatus';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 
 /**
- * Test page for the new authentication system
+ * Internal component that uses auth hooks - must be inside AuthProvider
  */
-export default function AuthTestPage() {
+function AuthTestContent() {
   const { top, bottom } = useSafeAreaInsets();
   const authState = useAuthState();
   const { authService } = useAuth();
@@ -175,6 +177,38 @@ export default function AuthTestPage() {
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * Wrapper component that provides the AuthProvider
+ */
+export default function AuthTestPage() {
+  // Get NDK instance from the store (already initialized in app root)
+  const ndk = useNDKStore(state => state.ndk);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Wait for NDK to be available
+  useEffect(() => {
+    if (ndk) {
+      setIsInitialized(true);
+    }
+  }, [ndk]);
+
+  // Loading state while NDK initializes
+  if (!isInitialized || !ndk) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+        <Text style={{ marginTop: 10 }}>Loading NDK for auth test...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <AuthProvider ndk={ndk}>
+      <AuthTestContent />
+    </AuthProvider>
   );
 }
 

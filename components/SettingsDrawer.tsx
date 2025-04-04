@@ -210,6 +210,17 @@ export default function SettingsDrawer() {
       ),
     },
     {
+      id: 'react-query-demo',
+      icon: RefreshCw,
+      label: 'React Query Demo',
+      onPress: () => {
+        closeDrawer();
+        router.push({
+          pathname: "/test" as any
+        });
+      },
+    },
+    {
       id: 'relays',
       icon: Globe,
       label: 'Manage Relays',

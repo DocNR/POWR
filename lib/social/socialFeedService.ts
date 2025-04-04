@@ -7,6 +7,10 @@ import { SQLiteDatabase } from 'expo-sqlite';
 import { getSocialFeedCache } from '@/lib/db/services/SocialFeedCache';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
 import { POWR_PUBKEY_HEX } from '@/lib/hooks/useFeedHooks';
+import { createLogger } from '@/lib/utils/logger';
+
+// Create service-specific logger
+const logger = createLogger('SocialFeedService');
 
 export class SocialFeedService {
   private ndk: NDK;
@@ -22,7 +26,7 @@ export class SocialFeedService {
         this.socialFeedCache = getSocialFeedCache(db);
         this.socialFeedCache.setNDK(ndk);
       } catch (error) {
-        console.error('[SocialFeedService] Error initializing SocialFeedCache:', error);
+        logger.error('Error initializing SocialFeedCache:', error);
         // Continue without cache - we'll still be able to fetch from network
         this.socialFeedCache = null;
       }
@@ -50,7 +54,7 @@ export class SocialFeedService {
     try {
       return await this.socialFeedCache.getCachedEvents(feedType, limit, since, until);
     } catch (error) {
-      console.error('[SocialFeedService] Error retrieving cached events:', error);
+      logger.error('Error retrieving cached events:', error);
       // Return empty array on error
       return [];
     }
@@ -116,7 +120,7 @@ export class SocialFeedService {
       if (feedType === 'profile') {
         // Profile feed: Show all of a user's posts
         if (!Array.isArray(authors) || authors.length === 0) {
-          console.error('[SocialFeedService] Profile feed requires authors');
+          logger.error('Profile feed requires authors');
           return { ...baseFilter, kinds: [] }; // Return empty filter if no authors
         }
         
@@ -140,11 +144,11 @@ export class SocialFeedService {
       } else if (feedType === 'powr') {
         // POWR feed: Show all content from POWR account(s)
         if (!Array.isArray(authors) || authors.length === 0) {
-          console.error('[SocialFeedService] POWR feed requires authors');
+          logger.error('POWR feed requires authors');
           
           // For POWR feed, if no authors provided, use the POWR_PUBKEY_HEX as fallback
           if (POWR_PUBKEY_HEX) {
-            console.log('[SocialFeedService] Using POWR account as fallback for POWR feed');
+            logger.info('Using POWR account as fallback for POWR feed');
             const fallbackAuthors = [POWR_PUBKEY_HEX];
             return {
               ...baseFilter,
@@ -166,12 +170,12 @@ export class SocialFeedService {
         // Following feed: Show content from followed users
         if (!Array.isArray(authors) || authors.length === 0) {
           // Initial load often has no contacts yet - this is normal
-          console.log('[SocialFeedService] No contacts available for following feed yet, using fallback');
+          logger.info('No contacts available for following feed yet, using fallback');
           
           // For following feed, if no authors provided, use the POWR_PUBKEY_HEX as fallback
           // This ensures at least some content is shown
           if (POWR_PUBKEY_HEX) {
-            console.log('[SocialFeedService] Using POWR account as fallback for initial Following feed load');
+            logger.info('Using POWR account as fallback for initial Following feed load');
             const fallbackAuthors = [POWR_PUBKEY_HEX];
             
             return [
@@ -199,14 +203,14 @@ export class SocialFeedService {
         // 2. Social posts and articles from followed users with fitness tags
         
         // Log the authors to help with debugging
-        console.log(`[SocialFeedService] Following feed with ${authors.length} authors:`, 
+        logger.debug(`Following feed with ${authors.length} authors:`, 
           authors.length > 5 ? authors.slice(0, 5).join(', ') + '...' : authors.join(', '));
         
         // Always include POWR account in following feed
         let followingAuthors = [...authors];
         if (POWR_PUBKEY_HEX && !followingAuthors.includes(POWR_PUBKEY_HEX)) {
           followingAuthors.push(POWR_PUBKEY_HEX);
-          console.log('[SocialFeedService] Added POWR account to following feed authors');
+          logger.debug('Added POWR account to following feed authors');
         }
         
         return [
@@ -244,7 +248,7 @@ export class SocialFeedService {
         ];
       }
     } catch (error) {
-      console.error('[SocialFeedService] Error building filters:', error);
+      logger.error('Error building filters:', error);
       // Return a safe default filter that won't crash but also won't return much
       return {
         kinds: [1], // Just social posts
@@ -275,7 +279,7 @@ export class SocialFeedService {
     const consolidatedFilter = this.buildFilters(options);
     
     // Log the consolidated filter
-    console.log(`[SocialFeedService] Subscribing to ${feedType} feed with filter:`, consolidatedFilter);
+    logger.debug(`Subscribing to ${feedType} feed with filter:`, consolidatedFilter);
 		
 		// Create a single subscription with the consolidated filter
 		const subscription = this.ndk.subscribe(consolidatedFilter, {
@@ -288,9 +292,9 @@ export class SocialFeedService {
 			if (this.socialFeedCache) {
 				try {
 					this.socialFeedCache.cacheEvent(event, feedType)
-						.catch(err => console.error('[SocialFeedService] Error caching event:', err));
+						.catch(err => logger.error('Error caching event:', err));
 				} catch (error) {
-					console.error('[SocialFeedService] Exception while caching event:', error);
+					logger.error('Exception while caching event:', error);
 					// Continue even if caching fails - we'll still pass the event to the callback
 				}
 			}
@@ -301,14 +305,14 @@ export class SocialFeedService {
 		
 		// Set up EOSE handler
 		subscription.on('eose', () => {
-			console.log(`[SocialFeedService] Received EOSE for ${feedType} feed`);
+			logger.debug(`Received EOSE for ${feedType} feed`);
 			if (onEose) onEose();
 		});
 		
 		// Return a Promise with the unsubscribe object
 		return Promise.resolve({
 			unsubscribe: () => {
-				console.log(`[SocialFeedService] Unsubscribing from ${feedType} feed`);
+				logger.debug(`Unsubscribing from ${feedType} feed`);
 				subscription.stop();
 			}
 		});
@@ -400,7 +404,7 @@ export class SocialFeedService {
           return cachedEvent;
         }
       } catch (error) {
-        console.error('[SocialFeedService] Error retrieving cached event:', error);
+        logger.error('Error retrieving cached event:', error);
         // Continue to network fetch if cache fails
       }
     }
@@ -429,7 +433,7 @@ export class SocialFeedService {
             try {
               await this.socialFeedCache.cacheEvent(event, 'referenced');
             } catch (error) {
-              console.error('[SocialFeedService] Error caching referenced event:', error);
+              logger.error('Error caching referenced event:', error);
               // Continue even if caching fails - we can still return the event
             }
           }
@@ -458,7 +462,7 @@ export class SocialFeedService {
         try {
           await this.socialFeedCache.cacheEvent(event, 'referenced');
         } catch (error) {
-          console.error('[SocialFeedService] Error caching referenced event:', error);
+          logger.error('Error caching referenced event:', error);
           // Continue even if caching fails - we can still return the event
         }
       }
@@ -529,17 +533,17 @@ export class SocialFeedService {
     if (isOnline) {
       await event.publish();
     } else {
-      console.log('[SocialFeedService] Offline, event will be published when online');
+      logger.info('Offline, event will be published when online');
     }
     
     // Cache the event if we have a cache
     if (this.socialFeedCache) {
       try {
-        await this.socialFeedCache.cacheEvent(event, 'workout');
-      } catch (error) {
-        console.error('[SocialFeedService] Error caching workout event:', error);
-        // Continue even if caching fails - the event was still published
-      }
+      await this.socialFeedCache.cacheEvent(event, 'workout');
+    } catch (error) {
+      logger.error('Error caching workout event:', error);
+      // Continue even if caching fails - the event was still published
+    }
     }
     
     // Create social share if requested

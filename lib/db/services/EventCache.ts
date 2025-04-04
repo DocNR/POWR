@@ -2,6 +2,10 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { NostrEvent } from '@/types/nostr';
 import { DbService } from '../db-service';
+import { createLogger } from '@/lib/utils/logger';
+
+// Create cache-specific logger
+const logger = createLogger('EventCache');
 
 export class EventCache {
   private db: DbService;
@@ -66,7 +70,7 @@ export class EventCache {
         }
       });
     } catch (error) {
-      console.error('Error caching event:', error);
+      logger.error('Error caching event:', error);
       throw error;
     }
   }
@@ -125,7 +129,7 @@ export class EventCache {
         }
       }
     } catch (error) {
-      console.error('Error caching event without transaction:', error);
+      logger.error('Error caching event without transaction:', error);
       throw error;
     }
   }
@@ -173,7 +177,7 @@ export class EventCache {
 
       return nostrEvent;
     } catch (error) {
-      console.error('Error retrieving event:', error);
+      logger.error('Error retrieving event:', error);
       return null;
     }
   }

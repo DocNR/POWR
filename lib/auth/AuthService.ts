@@ -1,314 +1,247 @@
-import NDK, { NDKUser, NDKSigner, NDKPrivateKeySigner } from "@nostr-dev-kit/ndk-mobile";
-import { Platform } from "react-native";
-import * as SecureStore from "expo-secure-store";
-import { AuthMethod } from "./types";
-import { AuthStateManager } from "./AuthStateManager";
-import { SigningQueue } from "./SigningQueue";
-
-// Constants for SecureStore
-const PRIVATE_KEY_STORAGE_KEY = "powr.private_key";
-const EXTERNAL_SIGNER_STORAGE_KEY = "nostr_external_signer";
+import NDK, { NDKUser, NDKEvent, NDKSigner } from '@nostr-dev-kit/ndk-mobile';
+import * as SecureStore from 'expo-secure-store';
+import { NDKPrivateKeySigner } from '@nostr-dev-kit/ndk-mobile';
+import { NDKAmberSigner } from '../signers/NDKAmberSigner';
+import { generateId, generateDTag } from '@/utils/ids';
+import { v4 as uuidv4 } from 'uuid'; 
+import { AuthMethod } from './types';
 
 /**
- * Service that manages authentication operations
- * Acts as the central implementation for all auth-related functionality
+ * Auth Service for managing authentication with NDK and React Query
+ * 
+ * Provides functionality for:
+ * - Login with private key
+ * - Login with Amber external signer
+ * - Ephemeral key generation
+ * - Secure credential storage
+ * - Logout and cleanup
  */
 export class AuthService {
   private ndk: NDK;
-  private signingQueue = new SigningQueue();
-  
+  private initialized: boolean = false;
+
   constructor(ndk: NDK) {
     this.ndk = ndk;
   }
-  
+
   /**
-   * Initialize from stored state
+   * Initialize the auth service
+   * This is called automatically by the ReactQueryAuthProvider
    */
   async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+
     try {
-      console.log("[AuthService] Initializing...");
-      
-      // Try to restore previous auth session
-      const privateKey = await SecureStore.getItemAsync(PRIVATE_KEY_STORAGE_KEY);
-      
+      // Check if we have credentials stored
+      const privateKey = await SecureStore.getItemAsync('powr.private_key');
+      const externalSignerJson = await SecureStore.getItemAsync('nostr_external_signer');
+
+      // Login with stored credentials if available
       if (privateKey) {
-        console.log("[AuthService] Found stored private key, attempting to login");
         await this.loginWithPrivateKey(privateKey);
-        return;
-      }
-      
-      // Try to restore external signer session
-      const externalSignerJson = await SecureStore.getItemAsync(EXTERNAL_SIGNER_STORAGE_KEY);
-      if (externalSignerJson) {
-        try {
-          const signerInfo = JSON.parse(externalSignerJson);
-          if (signerInfo.type === "amber" && signerInfo.pubkey && signerInfo.packageName) {
-            console.log("[AuthService] Found stored external signer info, attempting to login");
-            await this.loginWithAmber(signerInfo.pubkey, signerInfo.packageName);
-            return;
-          }
-        } catch (error) {
-          console.warn("[AuthService] Error parsing external signer info:", error);
-          // Continue to unauthenticated state
+      } else if (externalSignerJson) {
+        const { method, data } = JSON.parse(externalSignerJson);
+        if (method === 'amber') {
+          await this.restoreAmberSigner(data);
         }
       }
-      
-      console.log("[AuthService] No stored credentials found, remaining unauthenticated");
+
+      this.initialized = true;
     } catch (error) {
-      console.error("[AuthService] Error initializing auth service:", error);
-      AuthStateManager.setError(error instanceof Error ? error : new Error(String(error)));
+      console.error('[AuthService] Error initializing auth service:', error);
+      throw error;
     }
   }
-  
+
   /**
    * Login with a private key
+   * @param privateKey hex private key
+   * @returns NDK user
    */
   async loginWithPrivateKey(privateKey: string): Promise<NDKUser> {
     try {
-      console.log("[AuthService] Starting private key login");
-      AuthStateManager.setAuthenticating("private_key");
-      
-      // Clean the input
-      privateKey = privateKey.trim();
-      
-      // Configure NDK with private key signer
-      this.ndk.signer = await this.createPrivateKeySigner(privateKey);
+      // Create signer
+      const signer = new NDKPrivateKeySigner(privateKey);
+      this.ndk.signer = signer;
       
       // Get user
-      const user = await this.ndk.signer.user();
-      console.log("[AuthService] Signer created, user retrieved:", user.npub);
-      
-      // Fetch profile information if possible
-      try {
-        await user.fetchProfile();
-        console.log("[AuthService] Profile fetched successfully");
-      } catch (profileError) {
-        console.warn("[AuthService] Warning: Could not fetch user profile:", profileError);
-        // Continue even if profile fetch fails
+      await this.ndk.connect();
+      if (!this.ndk.activeUser) {
+        throw new Error('Failed to set active user after login');
       }
-      
-      // Store key securely
-      await SecureStore.setItemAsync(PRIVATE_KEY_STORAGE_KEY, privateKey);
-      
-      // Update auth state
-      AuthStateManager.setAuthenticated(user, "private_key");
-      console.log("[AuthService] Private key login complete");
-      
-      return user;
+
+      // Persist the key securely
+      await SecureStore.setItemAsync('powr.private_key', privateKey);
+
+      return this.ndk.activeUser;
     } catch (error) {
-      console.error("[AuthService] Private key login error:", error);
-      AuthStateManager.setError(error instanceof Error ? error : new Error(String(error)));
+      console.error('[AuthService] Error logging in with private key:', error);
       throw error;
     }
   }
-  
+
   /**
-   * Login with Amber signer
+   * Login with Amber external signer
+   * @returns NDK user
    */
-  async loginWithAmber(pubkey?: string, packageName?: string): Promise<NDKUser> {
+  async loginWithAmber(): Promise<NDKUser> {
     try {
-      console.log("[AuthService] Starting Amber login");
-      AuthStateManager.setAuthenticating("amber");
+      // Request public key from Amber
+      const { pubkey, packageName } = await NDKAmberSigner.requestPublicKey();
       
-      // Request public key from Amber if not provided
-      let effectivePubkey = pubkey;
-      let effectivePackageName = packageName;
+      // Create Amber signer
+      const amberSigner = new NDKAmberSigner(pubkey, packageName);
       
-      if (!effectivePubkey || !effectivePackageName) {
-        console.log("[AuthService] No pubkey/packageName provided, requesting from Amber");
-        const info = await this.requestAmberPublicKey();
-        effectivePubkey = info.pubkey;
-        effectivePackageName = info.packageName;
+      // Set as NDK signer
+      this.ndk.signer = amberSigner;
+      
+      // Connect and get user
+      await this.ndk.connect();
+      if (!this.ndk.activeUser) {
+        throw new Error('Failed to set active user after amber login');
       }
       
-      // Create an NDKAmberSigner
-      console.log("[AuthService] Creating Amber signer with pubkey:", effectivePubkey);
-      this.ndk.signer = await this.createAmberSigner(effectivePubkey, effectivePackageName);
-      
-      // Get user
-      const user = await this.ndk.signer.user();
-      console.log("[AuthService] User fetched from Amber signer");
-      
-      // Fetch profile
-      try {
-        await user.fetchProfile();
-        console.log("[AuthService] Profile fetched successfully");
-      } catch (profileError) {
-        console.warn("[AuthService] Warning: Could not fetch user profile:", profileError);
-        // Continue even if profile fetch fails
-      }
-      
-      // Store signer info securely
-      const signerInfo = JSON.stringify({
-        type: "amber",
-        pubkey: effectivePubkey,
-        packageName: effectivePackageName
+      // Store the signer info
+      const signerData = { 
+        pubkey: pubkey,
+        packageName: packageName
+      };
+      const externalSignerInfo = JSON.stringify({
+        method: 'amber',
+        data: signerData
       });
-      await SecureStore.setItemAsync(EXTERNAL_SIGNER_STORAGE_KEY, signerInfo);
       
-      // Update auth state
-      AuthStateManager.setAuthenticated(user, "amber");
-      console.log("[AuthService] Amber login complete");
+      await SecureStore.setItemAsync('nostr_external_signer', externalSignerInfo);
+      await SecureStore.deleteItemAsync('powr.private_key'); // Clear any stored private key
       
-      return user;
+      return this.ndk.activeUser;
     } catch (error) {
-      console.error("[AuthService] Amber login error:", error);
-      AuthStateManager.setError(error instanceof Error ? error : new Error(String(error)));
+      console.error('[AuthService] Error logging in with Amber:', error);
       throw error;
     }
   }
   
   /**
-   * Create ephemeral key (no login)
+   * Restore an Amber signer session
+   * @param signerData Previous signer data
+   * @returns NDK user
+   */
+  private async restoreAmberSigner(signerData: any): Promise<NDKUser> {
+    try {
+      // Create Amber signer with existing data
+      const amberSigner = new NDKAmberSigner(signerData.pubkey, signerData.packageName);
+      
+      // Set as NDK signer
+      this.ndk.signer = amberSigner;
+      
+      // Connect and get user
+      await this.ndk.connect();
+      if (!this.ndk.activeUser) {
+        throw new Error('Failed to set active user after amber signer restore');
+      }
+      
+      return this.ndk.activeUser;
+    } catch (error) {
+      console.error('[AuthService] Error restoring Amber signer:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an ephemeral key for temporary use
+   * @returns NDK user
    */
   async createEphemeralKey(): Promise<NDKUser> {
     try {
-      console.log("[AuthService] Creating ephemeral key");
-      AuthStateManager.setAuthenticating("ephemeral");
+      // Generate a random key (not persisted)
+      // This creates a hex string of 64 characters (32 bytes)
+      // Use uuidv4 to generate random bytes
+      const randomId = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+      const privateKey = randomId.substring(0, 64); // Ensure exactly 64 hex chars (32 bytes)
+      const signer = new NDKPrivateKeySigner(privateKey);
       
-      // Generate a random key
-      this.ndk.signer = await this.createEphemeralSigner();
+      // Set as NDK signer
+      this.ndk.signer = signer;
       
-      // Get user
-      const user = await this.ndk.signer.user();
-      console.log("[AuthService] Ephemeral key created, user npub:", user.npub);
+      // Connect and get user
+      await this.ndk.connect();
+      if (!this.ndk.activeUser) {
+        throw new Error('Failed to set active user after ephemeral key creation');
+      }
       
-      // Update auth state
-      AuthStateManager.setAuthenticated(user, "ephemeral");
-      console.log("[AuthService] Ephemeral login complete");
+      // Clear any stored credentials
+      await SecureStore.deleteItemAsync('powr.private_key');
+      await SecureStore.deleteItemAsync('nostr_external_signer');
       
-      return user;
+      return this.ndk.activeUser;
     } catch (error) {
-      console.error("[AuthService] Ephemeral key creation error:", error);
-      AuthStateManager.setError(error instanceof Error ? error : new Error(String(error)));
+      console.error('[AuthService] Error creating ephemeral key:', error);
       throw error;
     }
   }
-  
+
   /**
-   * Logout
+   * Log out the current user
    */
   async logout(): Promise<void> {
     try {
-      console.log("[AuthService] Logging out");
+      // Clear stored credentials
+      await SecureStore.deleteItemAsync('powr.private_key');
+      await SecureStore.deleteItemAsync('nostr_external_signer');
       
-      // Cancel any pending sign operations
-      this.signingQueue.cancelAll("User logged out");
-      
-      // Notify the Amber app of session termination (Android only)
-      if (Platform.OS === "android" && this.ndk.signer) {
-        try {
-          const signerInfo = await SecureStore.getItemAsync(EXTERNAL_SIGNER_STORAGE_KEY);
-          if (signerInfo) {
-            console.log("[AuthService] Notifying Amber of session termination");
-            // This would call the native module method to terminate the Amber session
-            // Will be implemented in the AmberSignerModule.kt
-          }
-        } catch (error) {
-          console.warn("[AuthService] Error terminating Amber session:", error);
-          // Continue with logout even if Amber notification fails
-        }
-      }
-      
-      // Clear NDK signer
-      console.log("[AuthService] Clearing NDK signer");
+      // Reset NDK
       this.ndk.signer = undefined;
       
-      // Clear auth state - this will also clear storage
-      await AuthStateManager.logout();
-      
-      console.log("[AuthService] Logout complete");
-    } catch (error) {
-      console.error("[AuthService] Logout error:", error);
-      throw error;
-    }
-  }
-  
-  // Private helper methods for creating specific signers
-  
-  /**
-   * Creates a private key signer from a hex or nsec string
-   */
-  private async createPrivateKeySigner(privateKey: string): Promise<NDKSigner> {
-    console.log("[AuthService] Creating private key signer");
-    
-    // Handle nsec formatted keys
-    if (privateKey.startsWith("nsec")) {
+      // Simple cleanup for NDK instance
+      // NDK doesn't have a formal disconnect method
       try {
-        const { nip19 } = await import("nostr-tools");
-        const { data } = nip19.decode(privateKey);
-        // Convert the decoded data (Uint8Array) to hex string
-        privateKey = Buffer.from(data as Uint8Array).toString("hex");
-      } catch (error) {
-        console.error("[AuthService] Error decoding nsec:", error);
-        throw new Error("Invalid nsec format");
-      }
-    }
-    
-    // Ensure private key is valid hex format
-    if (privateKey.length !== 64 || !/^[0-9a-f]+$/i.test(privateKey)) {
-      throw new Error("Invalid private key format - must be nsec or 64-character hex");
-    }
-    
-    return new NDKPrivateKeySigner(privateKey);
-  }
-  
-  /**
-   * Requests a public key from Amber
-   */
-  private async requestAmberPublicKey(): Promise<{ pubkey: string, packageName: string }> {
-    console.log("[AuthService] Requesting public key from Amber");
-    
-    if (Platform.OS !== "android") {
-      throw new Error("Amber signer is only available on Android");
-    }
-    
-    try {
-      // We'll dynamically import NDKAmberSigner to avoid circular dependencies
-      const { default: NDKAmberSigner } = await import("@/lib/signers/NDKAmberSigner");
-      // Call the static method to request a public key
-      const { pubkey, packageName } = await NDKAmberSigner.requestPublicKey();
-      
-      if (!pubkey || !packageName) {
-        throw new Error("Amber returned invalid pubkey or packageName");
+        // Clean up relay connections if they exist
+        if (this.ndk.pool) {
+          // Cast to any to bypass TypeScript errors with internal NDK API
+          const pool = this.ndk.pool as any;
+          if (pool.relayByUrl) {
+            Object.values(pool.relayByUrl).forEach((relay: any) => {
+              try {
+                if (relay && relay.close) relay.close();
+              } catch (e) {
+                console.warn('Error closing relay:', e);
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Error during NDK resource cleanup:', e);
       }
       
-      return { pubkey, packageName };
+      console.log('[AuthService] Logged out successfully');
     } catch (error) {
-      console.error("[AuthService] Error requesting public key from Amber:", error);
+      console.error('[AuthService] Error during logout:', error);
       throw error;
     }
   }
-  
+
   /**
-   * Creates an Amber signer with the given pubkey and package name
+   * Get the current authentication method
+   * @returns Auth method or undefined if not authenticated
    */
-  private async createAmberSigner(pubkey: string, packageName: string): Promise<NDKSigner> {
-    console.log("[AuthService] Creating Amber signer");
-    
-    if (Platform.OS !== "android") {
-      throw new Error("Amber signer is only available on Android");
+  async getCurrentAuthMethod(): Promise<AuthMethod | undefined> {
+    try {
+      if (await SecureStore.getItemAsync('powr.private_key')) {
+        return 'private_key';
+      }
+      
+      const externalSignerJson = await SecureStore.getItemAsync('nostr_external_signer');
+      if (externalSignerJson) {
+        const { method } = JSON.parse(externalSignerJson);
+        return method === 'amber' ? 'amber' : undefined;
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.error('[AuthService] Error getting current auth method:', error);
+      return undefined;
     }
-    
-    // Dynamically import to avoid circular dependencies
-    const { default: NDKAmberSigner } = await import("@/lib/signers/NDKAmberSigner");
-    return new NDKAmberSigner(pubkey, packageName);
-  }
-  
-  /**
-   * Creates an ephemeral signer with a random keypair
-   */
-  private async createEphemeralSigner(): Promise<NDKSigner> {
-    console.log("[AuthService] Creating ephemeral signer");
-    
-    // Generate a new random keypair
-    const { generateSecretKey } = await import("nostr-tools");
-    const secretKeyBytes = generateSecretKey();
-    // Convert to hex for the private key signer
-    const privateKey = Array.from(secretKeyBytes)
-      .map(byte => byte.toString(16).padStart(2, '0'))
-      .join('');
-    
-    return new NDKPrivateKeySigner(privateKey);
   }
 }

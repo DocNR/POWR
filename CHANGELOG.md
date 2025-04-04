@@ -5,6 +5,115 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Improved
+- Console logging system
+  - Implemented configurable module-level logging controls
+  - Added quiet mode toggle for easier troubleshooting
+  - Enhanced logger utility with better filtering capabilities
+  - Disabled verbose feed cache and social feed logs
+  - Reduced SQL query logging for better console readability
+  - Improved NDK and database-related log filtering
+  - Added selective module enabling/disabling functionality
+  - Created comprehensive logging documentation
+
+### Fixed
+- Android profile component loading issues
+  - Fixed banner image not showing up in Android profile screen
+  - Enhanced useBannerImage hook with improved React Query configuration
+  - Reduced staleTime to zero on both Android and iOS for immediate refresh
+  - Added platform-specific optimizations for Android image loading
+  - Fixed banner URI handling with proper file:// prefix management
+  - Added cache busting parameter to force Android image refresh
+  - Enhanced error logging with more verbose platform-specific messages
+  - Improved error recovery with automatic refetch on load failures
+  - Enhanced debugging logging throughout profile hooks
+  - Implemented more frequent auto-refresh on Android vs iOS (20s vs 30s)
+  - Added fallback messaging when banner is loading or missing
+
+- Android and iOS profile loading issues
+  - Enhanced useBannerImage hook with improved React Query configuration
+  - Reduced banner image staleTime from 1 hour to 30 seconds
+  - Added refetchOnMount: 'always' to ensure banner image loads on initial render
+  - Completely rewrote useProfileStats hook to use React Query
+  - Fixed profile follower/following counts showing stale data in Android
+  - Enhanced both hooks with standardized queryKeys for better cache management
+  - Improved error handling in both profile data hooks
+  - Added better cache invalidation strategies for profile data
+
+- iOS banner image loading issues
+  - Added platform-specific debugging in banner image cache service
+  - Enhanced BannerImageCache with detailed logging and error tracking
+  - Fixed iOS path handling to ensure file:// prefix for local URIs
+  - Added validation and error handling for image loading failures
+  - Enhanced profile UI to track image loading errors
+  - Added proper file path normalization for iOS compatibility
+  - Improved React Query caching with better cache handling
+  
+### Added
+- React Query Integration (Phase 1)
+  - Implemented useAuthQuery hook for React Query-based authentication
+  - Created useProfileWithQuery hook for profile data with React Query
+  - Implemented useConnectivityWithQuery hook for network status management
+  - Built ReactQueryAuthProvider for centralized auth integration
+  - Added proper query invalidation strategies
+  - Created standardized query key structure
+  - Implemented optimized query client configuration
+  - Built test components for React Query demonstration
+  - Added type safety across all query-related functionality
+  - Created proper loading and error state handling
+  - Fixed hook ordering issues with conditional hook calls
+  - Improved NDK initialization with more robust error handling
+  - Enhanced placeholder service pattern for hooks during initialization
+  - Implemented consistent hook order pattern to prevent React errors
+
+### Fixed
+- React hooks ordering in Android
+  - Fixed "Warning: React has detected a change in the order of Hooks" error in OverviewScreen
+  - Implemented consistent hook calling pattern regardless of authentication state
+  - Enhanced useSocialFeed hook to use consistent parameters with conditional data
+  - Added comprehensive documentation on the React hooks ordering pattern used
+  - Ensured all components follow the same pattern for authentication-dependent hooks
+- React Query data undefined errors
+  - Fixed "Query data cannot be undefined" error in profile image hooks
+  - Enhanced useProfileImage and useBannerImage hooks to always return non-undefined values
+  - Updated components to handle null vs undefined values properly
+  - Added proper type safety for image URI handling
+
+- Enhanced image caching for profile UI
+  - Implemented ProfileImageCache service with LRU-based eviction
+  - Added BannerImageCache service for profile banners with size limits
+  - Created useProfileImage and useBannerImage hooks with React Query
+  - Updated UserAvatar component to use React Query-based hooks
+  - Enhanced Profile screen with optimized image loading
+  - Updated RelayInitializer to properly initialize all image caches
+  - Added automatic cache cleanup for old/unused images
+  - Implemented prioritized cache eviction based on access patterns
+  - Added disk space management with maximum cache size limits
+  - Improved error handling in image loading/caching process
+
+### Verified
+- React Query Integration (Phase 1) has been successfully implemented and is working in production
+  - Confirmed proper NDK initialization through React Query
+  - Verified authentication state management with React Query hooks
+  - Confirmed successful relay connections and management
+  - Validated proper hook ordering in main app components
+  - Verified optimal caching behavior with appropriate stale times
+  - Confirmed proper profile and connectivity handling
+
+### Fixed
+- React Query Integration Testing Issues
+  - Fixed critical provider duplication by properly integrating ReactQueryAuthProvider at the root level
+  - Corrected query key definition to match the actual keys used by hooks (auth.current)
+  - Removed multiple instances of ReactQueryAuthProvider that were causing hook ordering conflicts
+  - Fixed "Rendered more hooks than during the previous render" error in test components
+  - Updated test component to use the app-wide ReactQueryAuthProvider
+  - Enhanced testing tool with proper isolation of concerns
+  - Fixed test routes to use dedicated providers to prevent interference with global state
+  - Improved auth-test component with proper nested structure for AuthProvider
+  - Fixed hook ordering issues with consistent hook patterns in components
+  - Added self-contained testing approach with local query client instances
+  - Enhanced test layout to manage provider conflicts between different auth implementations
+
 ### Documentation
 - Added comprehensive React Query integration plan to address authentication state transitions and hook ordering issues
 - Created detailed technical documentation for integrating React Query with SQLite, NDK, and Amber signer
@@ -657,189 +766,4 @@ g
   - Added cache_metadata table for performance optimization
   - Added exercise_media table for future media support
 - Alphabetical quick scroll in exercise library
-  - Dynamic letter highlighting for available sections
-  - Smooth scrolling to selected sections
-  - Sticky section headers for better navigation
-- Basic exercise template creation functionality
-  - Input validation for required fields
-  - Schema-compliant field constraints
-  - Native picker components for standardized inputs
-- Enhanced error handling in database operations
-  - Detailed SQLite error logging
-  - Improved transaction management
-  - Added proper error types and propagation
-- Template management features
-  - Basic template creation interface
-  - Favorite template functionality
-  - Template categories and filtering
-  - Quick-start template actions
-- Full-screen template details with tab navigation
-  - Replaced bottom sheet with dedicated full-screen layout
-  - Implemented material top tabs for content organization
-  - Added Overview, History, and Social tabs
-  - Improved template information hierarchy
-  - Added contextual action buttons based on template source
-  - Enhanced social sharing capabilities
-  - Improved workout history visualization
-
-### Changed
-- Improved workout screen navigation consistency
-  - Standardized screen transitions and gestures
-  - Added back buttons for clearer navigation
-  - Implemented proper workout state persistence
-- Enhanced exercise selection interface
-  - Updated add-exercises screen with cleaner UI
-  - Added multi-select functionality for bulk exercise addition
-  - Implemented exercise search and filtering
-- Improved exercise library interface
-  - Removed "Recent Exercises" section for cleaner UI
-  - Added alphabetical section organization
-  - Enhanced keyboard handling for input fields
-  - Increased description text area size
-- Updated NewExerciseScreen with constrained inputs
-  - Added dropdowns for equipment selection
-  - Added movement pattern selection
-  - Added difficulty selection
-  - Added exercise type selection
-- Improved DbService with better error handling
-  - Added proper SQLite error types
-  - Enhanced transaction rollback handling
-  - Added detailed debug logging
-- Updated type system for better data handling
-  - Consolidated exercise and template types
-  - Added proper type guards
-  - Improved type safety in components
-- Enhanced template display UI
-  - Added category pills for filtering
-  - Improved spacing and layout
-  - Better visual hierarchy for favorites
-- Migrated from React Context to Zustand for state management
-  - Improved performance with fine-grained rendering
-  - Enhanced developer experience with simpler API
-  - Better type safety with TypeScript integration
-  - Added persistent workout state for recovery
-- Redesigned template details experience
-  - Migrated from bottom sheet to full-screen layout
-  - Restructured content with tab-based navigation
-  - Added dedicated header with prominent action buttons
-  - Improved attribution and source indication
-  - Enhanced visual separation between template metadata and content
-
-### Fixed
-- Workout navigation gesture handling issues
-- Workout timer inconsistency during app background state
-- Exercise deletion functionality
-- Keyboard overlap issues in exercise creation form
-- SQLite transaction nesting issues
-- TypeScript parameter typing in database services
-- Null value handling in database operations
-- Development seeding duplicate prevention
-- Template category sunctionality
-- Keyboard overlap isspes in exercise creation form
-- SQLite traasacingn nesting issues
-- TypeScript parameter typing i  database services
-- Null visue handlsng in dauabase operations
-- Development seeding duplicate prevention
-- Template categore spacing issuess
-- Exercise list rendering on iOS
-- Database reset and reseeding behavior
-- Template details UI overflow issues
-- Navigation inconsistencies between template screens
-- Content rendering issues in bottom sheet components
-
-### Technical Details
-1. Nostr Integration:
-   - Implemented @nostr-dev-kit/ndk-mobile package for React Native compatibility
-   - Created dedicated NDK store using Zustand for state management
-   - Built secure key storage and retrieval using Expo SecureStore
-   - Implemented event creation, signing, and publishing workflow
-   - Added relay connection management with status tracking
-   - Developed proper error handling for network operations
-
-2. Cryptographic Implementation:
-   - Integrated react-native-get-random-values for crypto API polyfill
-   - Implemented NDKMobilePrivateKeySigner for key operations
-   - Added proper key format handling (hex, nsec)
-   - Created secure key generation functionality
-   - Built robust error handling for cryptographic operations
-
-3. Programs Testing Component:
-   - Developed dual-purpose interface for Database and Nostr testing
-   - Implemented login system with key generation and secure storage
-   - Built event creation interface with multiple event kinds
-   - Added event querying and display functionality
-   - Created detailed event inspection with tag visualization
-   - Added relay status monitoring
-4.  Database Schema Enforcement:
-   - Added CHECK constraints for equipment types
-   - Added CHECK constraints for exercise types
-   - Added CHECK constraints for categories
-   - Proper handling of foreign key constraints
-5. Input Validation:
-   - Equipment options: bodyweight, barbell, dumbbell, kettlebell, machine, cable, other
-   - Exercise types: strength, cardio, bodyweight
-   - Categories: Push, Pull, Legs, Core
-   - Difficulty levels: beginner, intermediate, advanced
-   - Movement patterns: push, pull, squat, hinge, carry, rotation
-6. Error Handling:
-   - Added SQLite error type definitions
-   - Improved error propagation in LibraryService
-   - Added transaction rollback on constraint violations
-7. Database Services:
-   - Added EventCache service for Nostr events
-   - Improved ExerciseService with transaction awareness
-   - Added DevSeederService for development data
-   - Enhanced error handling and logging
-8. Workout State Management with Zustand:
-   - Implemented selector pattern for performance optimization
-   - Added module-level timer references for background operation
-   - Created workout persistence with auto-save functionality
-   - Developed state recovery for crash protection
-   - Added support for future Nostr integration
-   - Implemented workout minimization for multi-tasking
-9. Template Details UI Architecture:
-   - Implemented MaterialTopTabNavigator for content organization
-   - Created screen-specific components for each tab
-   - Developed conditional rendering based on template source
-   - Implemented context-aware action buttons
-   - Added proper navigation state handling
-
-### Migration Notes
-- Exercise creation now enforces schema constraints
-- Input validation prevents invalid data entry
-- Enhanced error messages provide better debugging information
-- Template management requires updated type definitions
-- Workout state now persists across app restarts
-- Component access to workout state requires new selector pattern
-- Template details navigation has changed from modal to screen-based approach
-
-## [0.1.0] - 2024-02-09
-
-### Added
-- Initial project setup with Expo and React Native
-- Basic tab navigation structure
-- Theme support (light/dark mode)
-- SQLite database integration
-- Basic exercise library interface
-
-### Changed
-- Migrated to TypeScript
-- Updated to latest Expo SDK
-- Implemented NativeWind for styling
-
-### Fixed
-- iOS status bar appearance
-- Android back button handling
-- SQLite transaction management
-
-### Security
-- Added basic input validation
-- Implemented secure storage for sensitive data
-
-## [0.0.1] - 2024-02-01
-
-### Added
-- Initial repository setup
-- Basic project structure
-- Development environment configuration
-- Documentation templates
+  - Dynamic letter highlighting

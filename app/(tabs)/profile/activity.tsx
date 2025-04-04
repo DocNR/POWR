@@ -35,14 +35,21 @@ export default function ActivityScreen() {
   const totalPrograms = 0; // Placeholder for programs count
   
   // Load personal records
+  // IMPORTANT: Always call all hooks in the same order, even when not authenticated
+  // This ensures consistent hook ordering across renders to comply with React's Rules of Hooks
   useEffect(() => {
     async function loadRecords() {
-      if (!isAuthenticated) return;
-      
       try {
         setLoading(true);
-        const personalRecords = await analytics.getPersonalRecords(undefined, 3);
-        setRecords(personalRecords);
+        
+        // Only fetch records if authenticated, but always run the effect
+        if (isAuthenticated) {
+          const personalRecords = await analytics.getPersonalRecords(undefined, 3);
+          setRecords(personalRecords);
+        } else {
+          // Reset records when not authenticated
+          setRecords([]);
+        }
       } catch (error) {
         console.error('Error loading personal records:', error);
       } finally {

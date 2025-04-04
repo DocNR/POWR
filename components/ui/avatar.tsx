@@ -14,6 +14,7 @@ const Avatar = React.forwardRef<AvatarPrimitive.RootRef, AvatarPrimitive.RootPro
     <AvatarPrimitiveRoot
       ref={ref}
       className={cn('relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full', className)}
+      style={{ backgroundColor: 'transparent' }}
       {...props}
     />
   )
@@ -25,6 +26,7 @@ const AvatarImage = React.forwardRef<AvatarPrimitive.ImageRef, AvatarPrimitive.I
     <AvatarPrimitiveImage
       ref={ref}
       className={cn('aspect-square h-full w-full', className)}
+      style={{ backgroundColor: 'transparent' }}
       {...props}
     />
   )
@@ -36,9 +38,10 @@ const AvatarFallback = React.forwardRef<AvatarPrimitive.FallbackRef, AvatarPrimi
     <AvatarPrimitiveFallback
       ref={ref}
       className={cn(
-        'flex h-full w-full items-center justify-center rounded-full bg-muted',
+        'flex h-full w-full items-center justify-center rounded-full',
         className
       )}
+      style={{ backgroundColor: 'transparent' }}
       {...props}
     />
   )
@@ -56,9 +59,10 @@ const RobohashFallback = React.forwardRef<AvatarPrimitive.FallbackRef, RobohashF
     <AvatarPrimitiveFallback
       ref={ref}
       className={cn(
-        'flex h-full w-full items-center justify-center rounded-full bg-muted p-0 overflow-hidden',
+        'flex h-full w-full items-center justify-center rounded-full p-0 overflow-hidden',
         className
       )}
+      style={{ backgroundColor: 'transparent' }}
       {...props}
     >
       <Image 

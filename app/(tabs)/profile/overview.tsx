@@ -1,11 +1,12 @@
 // app/(tabs)/profile/overview.tsx
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, FlatList, RefreshControl, Pressable, TouchableOpacity, ImageBackground, Clipboard } from 'react-native';
+import { View, FlatList, RefreshControl, Pressable, TouchableOpacity, ImageBackground, Clipboard, Platform } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { useNDKCurrentUser } from '@/lib/hooks/useNDK';
 import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBannerImage } from '@/lib/hooks/useBannerImage';
 import NostrLoginSheet from '@/components/sheets/NostrLoginSheet';
 import NostrProfileLogin from '@/components/social/NostrProfileLogin';
 import EnhancedSocialPost from '@/components/social/EnhancedSocialPost';
@@ -53,18 +54,20 @@ export default function OverviewScreen() {
   const [entries, setEntries] = useState<AnyFeedEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Only call useSocialFeed when authenticated to prevent the error
-  const socialFeed = isAuthenticated ? useSocialFeed({
+  // IMPORTANT: Always call hooks in the same order on every render to comply with React's Rules of Hooks
+  // Instead of conditionally calling the hook based on authentication state,
+  // we always call it but pass empty/default parameters when not authenticated
+  // This ensures consistent hook ordering between authenticated and non-authenticated states
+  const socialFeed = useSocialFeed({
     feedType: 'profile',
-    authors: currentUser?.pubkey ? [currentUser.pubkey] : [],
+    authors: isAuthenticated && currentUser?.pubkey ? [currentUser.pubkey] : [],
     limit: 30
-  }) : null;
+  });
   
-  // Extract values from socialFeed when authenticated
-  const loading = isAuthenticated ? socialFeed?.loading || false : feedLoading;
-  const refresh = isAuthenticated 
-    ? (socialFeed?.refresh ? socialFeed.refresh : () => Promise.resolve()) 
-    : () => Promise.resolve();
+  // Extract values from socialFeed - available regardless of auth state
+  // Use nullish coalescing to safely access values from the hook
+  const loading = socialFeed?.loading || feedLoading;
+  const refresh = socialFeed?.refresh || (() => Promise.resolve());
   
   // Update feedItems when socialFeed.feedItems changes
   useEffect(() => {
@@ -157,9 +160,15 @@ export default function OverviewScreen() {
   const profileImageUrl = currentUser?.profile?.image || 
                          currentUser?.profile?.picture || 
                          (currentUser?.profile as any)?.avatar;
-                         
-  const bannerImageUrl = currentUser?.profile?.banner ||
-                        (currentUser?.profile as any)?.background;
+   
+  // Use our React Query hook for banner images
+  const defaultBannerUrl = currentUser?.profile?.banner ||
+                         (currentUser?.profile as any)?.background;
+
+  const { data: bannerImageUrl, refetch: refetchBannerImage } = useBannerImage(
+    currentUser?.pubkey,
+    defaultBannerUrl
+  );
                          
   const displayName = isAuthenticated 
     ? (currentUser?.profile?.displayName || currentUser?.profile?.name || 'Nostr User') 
@@ -177,31 +186,120 @@ export default function OverviewScreen() {
   // Profile follower stats component - always call useProfileStats hook 
   // even if isAuthenticated is false (passing empty pubkey)
   // This ensures consistent hook ordering regardless of authentication state
-  const { followersCount, followingCount, isLoading: statsLoading } = useProfileStats({ 
+  const { 
+    followersCount, 
+    followingCount, 
+    isLoading: statsLoading, 
+    refresh: refreshStats,
+    lastRefreshed: statsLastRefreshed
+  } = useProfileStats({ 
     pubkey: pubkey || '', 
-    refreshInterval: 60000 * 15 // refresh every 15 minutes
+    refreshInterval: 10000 // 10 second refresh interval for real-time updates
   });
   
+  // Track last fetch time to force component updates
+  const [lastStatsFetch, setLastStatsFetch] = useState<number>(Date.now());
+  
+  // Update the lastStatsFetch whenever stats are refreshed
+  useEffect(() => {
+    if (statsLastRefreshed) {
+      setLastStatsFetch(statsLastRefreshed);
+    }
+  }, [statsLastRefreshed]);
+  
+  // Manual refresh function with visual feedback
+  const manualRefreshStats = useCallback(async () => {
+    console.log(`[${Platform.OS}] Manually refreshing follower stats...`);
+    if (refreshStats) {
+      try {
+        await refreshStats();
+        console.log(`[${Platform.OS}] Follower stats refreshed successfully`);
+        // Force update even if the values didn't change
+        setLastStatsFetch(Date.now());
+      } catch (error) {
+        console.error(`[${Platform.OS}] Error refreshing follower stats:`, error);
+      }
+    }
+  }, [refreshStats]);
+  
   // Use a separate component to avoid conditionally rendered hooks
-  const ProfileFollowerStats = React.memo(() => {
+  // Do NOT use React.memo here - we need to re-render this even when props don't change
+  const ProfileFollowerStats = () => {
+    // Add local state to track if a manual refresh is happening
+    const [isManuallyRefreshing, setIsManuallyRefreshing] = useState(false);
+    
+    // This will run on every render to ensure we're showing fresh data
+    useEffect(() => {
+      console.log(`[${Platform.OS}] Rendering ProfileFollowerStats with:`, { 
+        followersCount, 
+        followingCount, 
+        statsLoading,
+        isManuallyRefreshing,
+        lastRefreshed: new Date(lastStatsFetch).toISOString()
+      });
+    }, [followersCount, followingCount, statsLoading, lastStatsFetch, isManuallyRefreshing]);
+    
+    // Enhanced manual refresh function with visual feedback
+    const triggerManualRefresh = useCallback(async () => {
+      if (isManuallyRefreshing) return; // Prevent multiple simultaneous refreshes
+      
+      try {
+        setIsManuallyRefreshing(true);
+        console.log(`[${Platform.OS}] Manual refresh triggered by user tap`);
+        await manualRefreshStats();
+      } catch (error) {
+        console.error(`[${Platform.OS}] Error during manual refresh:`, error);
+      } finally {
+        // Short delay before removing loading indicator for better UX
+        setTimeout(() => setIsManuallyRefreshing(false), 500);
+      }
+    }, [isManuallyRefreshing, manualRefreshStats]);
+    
+    // Always show actual values when available, regardless of loading state
+    // Only show dots when we have no values at all
+    // This ensures Android doesn't get stuck showing loading indicators
+    const followingDisplay = followingCount > 0 ? 
+      followingCount.toLocaleString() : 
+      (statsLoading || isManuallyRefreshing ? '...' : '0');
+      
+    const followersDisplay = followersCount > 0 ? 
+      followersCount.toLocaleString() : 
+      (statsLoading || isManuallyRefreshing ? '...' : '0');
+    
     return (
-      <View className="flex-row mb-2">
-        <TouchableOpacity className="mr-4">
+      <View className="flex-row items-center mb-2">
+        <TouchableOpacity 
+          className="mr-4 py-1 flex-row items-center" 
+          onPress={triggerManualRefresh}
+          disabled={isManuallyRefreshing}
+          accessibilityLabel="Refresh follower stats"
+        >
           <Text>
-            <Text className="font-bold">{statsLoading ? '...' : followingCount.toLocaleString()}</Text>
+            <Text className="font-bold">{followingDisplay}</Text>
             <Text className="text-muted-foreground"> following</Text>
           </Text>
+          {isManuallyRefreshing && (
+            <ActivityIndicator size="small" style={{ marginLeft: 4 }} />
+          )}
         </TouchableOpacity>
         
-        <TouchableOpacity>
+        <TouchableOpacity 
+          className="py-1 flex-row items-center"
+          onPress={triggerManualRefresh}
+          disabled={isManuallyRefreshing}
+          accessibilityLabel="Refresh follower stats"
+        >
           <Text>
-            <Text className="font-bold">{statsLoading ? '...' : followersCount.toLocaleString()}</Text>
+            <Text className="font-bold">{followersDisplay}</Text>
             <Text className="text-muted-foreground"> followers</Text>
           </Text>
+          {isManuallyRefreshing && (
+            <ActivityIndicator size="small" style={{ marginLeft: 4 }} />
+          )}
         </TouchableOpacity>
       </View>
     );
-  });
+  };
   
   // Generate npub format for display
   const npubFormat = React.useMemo(() => {
@@ -221,19 +319,54 @@ export default function OverviewScreen() {
     return `${npubFormat.substring(0, 8)}...${npubFormat.substring(npubFormat.length - 5)}`;
   }, [npubFormat]);
   
-  // Handle refresh
+  // Handle refresh - now also refreshes banner image and forces state updates
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await resetFeed();
-      // Add a slight delay to ensure the UI updates
-      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log(`[${Platform.OS}] Starting full profile refresh...`);
+      
+      // Create an array of refresh promises to run in parallel
+      const refreshPromises = [];
+      
+      // Refresh feed content
+      refreshPromises.push(resetFeed());
+      
+      // Refresh profile stats from nostr.band
+      if (refreshStats) {
+        refreshPromises.push(
+          refreshStats()
+            .then(() => {
+              console.log(`[${Platform.OS}] Profile stats refreshed successfully:`);
+              // Force component update even if values didn't change
+              setLastStatsFetch(Date.now());
+            })
+            .catch(error => console.error(`[${Platform.OS}] Error refreshing profile stats:`, error))
+        );
+      }
+      
+      // Refresh banner image
+      if (refetchBannerImage) {
+        refreshPromises.push(
+          refetchBannerImage()
+            .then(() => console.log(`[${Platform.OS}] Banner image refreshed successfully`))
+            .catch(error => console.error(`[${Platform.OS}] Error refreshing banner image:`, error))
+        );
+      }
+      
+      // Wait for all refresh operations to complete
+      await Promise.all(refreshPromises);
+      
+      // Log the current values after refresh
+      console.log(`[${Platform.OS}] Profile refresh completed successfully. Current stats:`, {
+        followersCount,
+        followingCount
+      });
     } catch (error) {
-      console.error('Error refreshing feed:', error);
+      console.error(`[${Platform.OS}] Error during profile refresh:`, error);
     } finally {
       setIsRefreshing(false);
     }
-  }, [resetFeed]);
+  }, [resetFeed, refreshStats, refetchBannerImage, followersCount, followingCount, setLastStatsFetch]);
   
   // Handle post selection
   const handlePostPress = useCallback((entry: AnyFeedEntry) => {
@@ -297,6 +430,15 @@ export default function OverviewScreen() {
     // Using callbacks defined at the parent level
     // This prevents inconsistent hook counts during render
     
+    // Debugging banner image loading
+    useEffect(() => {
+      console.log('Banner image state in ProfileHeader:', {
+        bannerImageUrl,
+        defaultBannerUrl,
+        pubkey: pubkey?.substring(0, 8)
+      });
+    }, [bannerImageUrl, defaultBannerUrl]);
+    
     return (
     <View>
       {/* Banner Image */}
@@ -306,11 +448,30 @@ export default function OverviewScreen() {
             source={{ uri: bannerImageUrl }} 
             className="w-full h-full"
             resizeMode="cover"
+            onError={(e) => {
+              console.error(`Banner image loading error: ${JSON.stringify(e.nativeEvent)}`);
+              console.error(`Failed URL: ${bannerImageUrl}`);
+              
+              // Force a re-render of the gradient fallback on error
+              if (refetchBannerImage) {
+                console.log('Attempting to refetch banner image after error...');
+                refetchBannerImage().catch(err => 
+                  console.error('Failed to refetch banner image:', err)
+                );
+              }
+            }}
+            onLoad={() => {
+              console.log(`Banner image loaded successfully: ${bannerImageUrl}`);
+            }}
           >
             <View className="absolute inset-0 bg-black/20" />
           </ImageBackground>
         ) : (
-          <View className="w-full h-full bg-gradient-to-b from-primary/80 to-primary/30" />
+          <View className="w-full h-40 bg-gradient-to-b from-primary/80 to-primary/30">
+            <Text className="text-center text-white pt-16 opacity-50">
+              {defaultBannerUrl ? 'Loading banner...' : 'No banner image'}
+            </Text>
+          </View>
         )}
       </View>
       
@@ -322,8 +483,16 @@ export default function OverviewScreen() {
             uri={profileImageUrl}
             pubkey={pubkey}
             name={displayName}
-            className="mr-4 border-4 border-background"
-            style={{ width: 90, height: 90 }}
+            className="mr-4"
+            style={{ 
+              width: 90, 
+              height: 90,
+              backgroundColor: 'transparent',
+              overflow: 'hidden',
+              borderWidth: 0,
+              shadowOpacity: 0,
+              elevation: 0
+            }}
           />
           
           {/* Edit Profile button - positioned to the right */}
@@ -367,7 +536,7 @@ export default function OverviewScreen() {
             </View>
           )}
           
-          {/* Follower stats - no longer passing pubkey as prop since we're calling useProfileStats in parent */}
+          {/* Follower stats - render the separated component to avoid hook ordering issues */}
           <ProfileFollowerStats />
           
           {/* About text */}
@@ -381,10 +550,23 @@ export default function OverviewScreen() {
       </View>
     </View>
     );
-  }, [displayName, username, profileImageUrl, aboutText, pubkey, npubFormat, shortenedNpub, theme.colors.text, router, showQRCode, copyPubkey, isAuthenticated]);
-  
-  // Profile components must be defined before conditional returns
-  // to ensure that React hook ordering remains consistent
+  }, [
+    displayName, 
+    username, 
+    profileImageUrl, 
+    aboutText, 
+    pubkey, 
+    npubFormat, 
+    shortenedNpub, 
+    theme.colors.text, 
+    router, 
+    showQRCode, 
+    copyPubkey, 
+    isAuthenticated,
+    bannerImageUrl,
+    defaultBannerUrl,
+    refetchBannerImage
+  ]);
   
   // Render functions for different app states
   const renderLoginScreen = useCallback(() => {

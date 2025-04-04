@@ -12,6 +12,10 @@ import POWRPackService from '@/lib/db/services/POWRPackService';
 import { logDatabaseInfo } from '@/lib/db/debug';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { useLibraryStore } from '@/lib/stores/libraryStore';
+import { createLogger, setQuietMode } from '@/lib/utils/logger';
+
+// Create database-specific logger
+const logger = createLogger('DatabaseProvider');
 
 // Create context for services
 interface DatabaseServicesContextValue {
@@ -45,7 +49,7 @@ const DelayedInitializer: React.FC<{children: React.ReactNode}> = ({children}) =
   React.useEffect(() => {
     // Small delay to ensure database is fully ready
     const timer = setTimeout(() => {
-      console.log('[Database] Delayed initialization complete');
+      logger.info('Delayed initialization complete');
       setReady(true);
     }, 300); // 300ms delay should be sufficient
     
@@ -76,6 +80,18 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
     powrPackService: null,
     db: null,
   });
+  
+  // Enable quiet mode to reduce console noise
+  React.useEffect(() => {
+    // Set quiet mode (only show errors) to reduce console output
+    setQuietMode(true);
+    logger.info('Quiet mode enabled to reduce console output');
+    
+    return () => {
+      // Restore normal logging when component unmounts
+      setQuietMode(false);
+    };
+  }, []);
   
   // Get NDK from store to provide to services
   const ndk = useNDKStore(state => state.ndk);

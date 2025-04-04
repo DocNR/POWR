@@ -6,6 +6,10 @@ import { DbService } from '../db-service';
 import { POWR_EVENT_KINDS } from '@/types/nostr-workout';
 import { FeedItem } from '@/lib/hooks/useSocialFeed';
 import { LRUCache } from 'typescript-lru-cache';
+import { createLogger } from '@/lib/utils/logger';
+
+// Create cache-specific logger
+const logger = createLogger('SocialFeedCache');
 
 /**
  * Service for caching social feed events
@@ -62,7 +66,7 @@ export class SocialFeedCache {
   private bufferWrite(query: string, params: any[]) {
     // Limit buffer size to prevent memory issues
     if (this.writeBuffer.length >= 1000) {
-      console.warn('[SocialFeedCache] Write buffer is full, dropping oldest operation');
+      logger.warn('Write buffer is full, dropping oldest operation');
       this.writeBuffer.shift(); // Remove oldest operation
     }
     
@@ -146,7 +150,7 @@ export class SocialFeedCache {
           // Execute the transaction
           await transaction();
         } catch (error) {
-          console.error('[SocialFeedCache] Error executing queued transaction:', error);
+          logger.error('Error executing queued transaction:', error);
         } finally {
           // Release the lock
           SocialFeedCache.releaseTransactionLock();
@@ -174,7 +178,7 @@ export class SocialFeedCache {
     
     // Check if database is available
     if (!this.isDbAvailable()) {
-      console.log('[SocialFeedCache] Database not available, delaying flush');
+      logger.info('Database not available, delaying flush');
       this.scheduleNextFlush(true); // Schedule with backoff
       return;
     }
@@ -189,7 +193,7 @@ export class SocialFeedCache {
     try {
       // Check if we've exceeded the maximum retry count
       if (this.retryCount > this.maxRetryCount) {
-        console.warn(`[SocialFeedCache] Exceeded maximum retry count (${this.maxRetryCount}), dropping ${bufferCopy.length} operations`);
+        logger.warn(`Exceeded maximum retry count (${this.maxRetryCount}), dropping ${bufferCopy.length} operations`);
         // Reset retry count but don't retry these operations
         this.retryCount = 0;
         this.processingTransaction = false;
@@ -210,7 +214,7 @@ export class SocialFeedCache {
                 await this.db.runAsync(query, params);
               } catch (innerError) {
                 // Log individual query errors but continue with other queries
-                console.error(`[SocialFeedCache] Error executing query: ${query}`, innerError);
+                logger.error(`Error executing query: ${query}`, innerError);
                 // Don't rethrow to allow other queries to proceed
               }
             }
@@ -220,7 +224,7 @@ export class SocialFeedCache {
           this.retryCount = 0;
           this.dbAvailable = true; // Mark database as available
         } catch (error) {
-          console.error('[SocialFeedCache] Error in transaction:', error);
+          logger.error('Error in transaction:', error);
           
           // Check for database connection errors
           if (error instanceof Error && 
@@ -228,7 +232,7 @@ export class SocialFeedCache {
                error.message.includes('Database not available'))) {
             // Mark database as unavailable
             this.dbAvailable = false;
-            console.warn('[SocialFeedCache] Database connection issue detected, marking as unavailable');
+            logger.warn('Database connection issue detected, marking as unavailable');
             
             // Add all operations back to the buffer
             this.writeBuffer = [...bufferCopy, ...this.writeBuffer];
@@ -251,7 +255,7 @@ export class SocialFeedCache {
         }
       });
     } catch (error) {
-      console.error('[SocialFeedCache] Error flushing write buffer:', error);
+      logger.error('Error flushing write buffer:', error);
     } finally {
       this.processingTransaction = false;
       this.scheduleNextFlush();
@@ -278,7 +282,7 @@ export class SocialFeedCache {
         );
       }
       
-      console.log(`[SocialFeedCache] Scheduling next flush in ${delay}ms (retry: ${this.retryCount})`);
+      logger.debug(`Scheduling next flush in ${delay}ms (retry: ${this.retryCount})`);
       this.bufferFlushTimer = setTimeout(() => this.flushWriteBuffer(), delay);
     }
   }
@@ -305,9 +309,9 @@ export class SocialFeedCache {
         ON feed_cache (feed_type, created_at DESC)
       `);
       
-      console.log('[SocialFeedCache] Feed cache table initialized');
+      logger.info('Feed cache table initialized');
     } catch (error) {
-      console.error('[SocialFeedCache] Error initializing table:', error);
+      logger.error('Error initializing table:', error);
     }
   }
   
@@ -394,7 +398,7 @@ export class SocialFeedCache {
         ]
       );
     } catch (error) {
-      console.error('[SocialFeedCache] Error caching event:', error);
+      logger.error('Error caching event:', error);
     }
   }
   
@@ -470,7 +474,7 @@ export class SocialFeedCache {
       
       return events;
     } catch (error) {
-      console.error('[SocialFeedCache] Error getting cached events:', error);
+      logger.error('Error getting cached events:', error);
       return [];
     }
   }
@@ -530,7 +534,7 @@ export class SocialFeedCache {
             tags: event.tags || []
           }, true); // Skip if already exists
         } catch (error) {
-          console.error('[SocialFeedCache] Error caching referenced event:', error);
+          logger.error('Error caching referenced event:', error);
           // Continue even if caching fails - we can still return the event
         }
         
@@ -539,7 +543,7 @@ export class SocialFeedCache {
       
       return null;
     } catch (error) {
-      console.error('[SocialFeedCache] Error caching referenced event:', error);
+      logger.error('Error caching referenced event:', error);
       return null;
     }
   }
@@ -573,7 +577,7 @@ export class SocialFeedCache {
       
       return ndkEvent;
     } catch (error) {
-      console.error('[SocialFeedCache] Error getting cached event:', error);
+      logger.error('Error getting cached event:', error);
       return null;
     }
   }
@@ -600,9 +604,9 @@ export class SocialFeedCache {
         [cutoffTimestamp]
       );
       
-      console.log(`[SocialFeedCache] Cleared ${oldEvents.length} old events from feed cache`);
+      logger.info(`Cleared ${oldEvents.length} old events from feed cache`);
     } catch (error) {
-      console.error('[SocialFeedCache] Error clearing old cache:', error);
+      logger.error('Error clearing old cache:', error);
     }
   }
 }

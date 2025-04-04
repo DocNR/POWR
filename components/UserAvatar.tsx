@@ -1,11 +1,11 @@
 // components/UserAvatar.tsx
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React from 'react';
+import { View } from 'react-native';
 import { RobohashAvatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
-import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
-import { getRobohashUrl, getAvatarSeed } from '@/utils/avatar';
+import { getAvatarSeed } from '@/utils/avatar';
+import { useProfileImage } from '@/lib/hooks/useProfileImage';
 
 interface UserAvatarProps {
   uri?: string;
@@ -34,41 +34,46 @@ export default function UserAvatar({
   style,
   onPress,
 }: UserAvatarProps) {
-  const [cachedImage, setCachedImage] = useState<string | null>(null);
+  // Get profile image with React Query integration and extract the refetch function
+  const { data: cachedImage, isLoading, isError, error, refetch: refreshProfileImage } = useProfileImage(
+    !uri && pubkey ? pubkey : undefined, 
+    undefined
+  );
   
-  // Attempt to load cached profile image if available
-  useEffect(() => {
-    if (!uri && pubkey) {
-      // Try to get cached image if URI is not provided
-      profileImageCache.getProfileImageUri(pubkey)
-        .then((cachedUri: string | undefined) => {
-          if (cachedUri) {
-            setCachedImage(cachedUri);
-          }
-        })
-        .catch((error: Error) => {
-          console.error('Error getting cached profile image:', error);
-        });
+  // Log any errors loading the profile image
+  React.useEffect(() => {
+    if (isError && error) {
+      console.error(`Error loading profile image for ${pubkey?.substring(0, 8) || 'unknown'}: `, error);
     }
-  }, [uri, pubkey]);
+  }, [isError, error, pubkey]);
   
   // Get a consistent seed for Robohash using our utility function
   const seed = React.useMemo(() => {
     return getAvatarSeed(pubkey, name || 'anonymous-user');
   }, [pubkey, name]);
   
-  // Use cached image if available, otherwise use provided URI
-  const imageUrl = uri || cachedImage || undefined;
+  // Use provided URI, cached image, or undefined
+  // Convert null to undefined to maintain backwards compatibility with components expecting string | undefined
+  const imageUrl = uri || (cachedImage === null ? undefined : cachedImage);
   
   return (
-    <View className={cn("items-center", className)}>
+    <View 
+      className={cn("items-center", className)}
+      style={{ backgroundColor: 'transparent' }}
+    >
       <RobohashAvatar 
         uri={imageUrl}
         seed={seed}
         size={size}
         onPress={onPress}
         isInteractive={Boolean(onPress)}
-        style={style}
+        style={{
+          ...style,
+          backgroundColor: 'transparent',
+          shadowColor: 'transparent',
+          borderColor: 'transparent',
+          elevation: 0,
+        }}
       />
       
       {showName && name && (

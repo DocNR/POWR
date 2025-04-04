@@ -1,23 +1,18 @@
-import { useEffect } from 'react';
+import { useContext } from 'react';
+import { NDKContext } from '@/lib/auth/ReactQueryAuthProvider';
 import { useNDKStore } from '@/lib/stores/ndk';
 import type { NDKUser, NDKEvent, NDKFilter } from '@nostr-dev-kit/ndk-mobile';
 
-// Core hook for NDK access
+// Core hook for NDK access 
+// Uses the context from ReactQueryAuthProvider rather than Zustand store
 export function useNDK() {
-  const { ndk, isLoading, error, init } = useNDKStore(state => ({
-    ndk: state.ndk,
-    isLoading: state.isLoading,
-    error: state.error,
-    init: state.init
-  }));
+  const { ndk, isInitialized } = useContext(NDKContext);
 
-  useEffect(() => {
-    if (!ndk && !isLoading) {
-      init();
-    }
-  }, [ndk, isLoading, init]);
-
-  return { ndk, isLoading, error };
+  return { 
+    ndk, 
+    isLoading: !isInitialized,
+    error: !ndk && isInitialized ? new Error('NDK initialization failed') : undefined
+  };
 }
 
 // Hook for current user info

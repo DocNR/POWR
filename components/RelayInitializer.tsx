@@ -6,6 +6,7 @@ import { useNDKStore } from '@/lib/stores/ndk';
 import { useConnectivity } from '@/lib/db/services/ConnectivityService';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
 import { profileImageCache } from '@/lib/db/services/ProfileImageCache';
+import { bannerImageCache } from '@/lib/db/services/BannerImageCache';
 import { getSocialFeedCache } from '@/lib/db/services/SocialFeedCache';
 import { getContactCacheService } from '@/lib/db/services/ContactCacheService';
 import { useDatabase } from '@/components/DatabaseProvider';
@@ -21,11 +22,15 @@ export default function RelayInitializer() {
 
   const db = useDatabase();
 
-  // Initialize ProfileImageCache and SocialFeedCache with NDK instance
+  // Initialize all caches with NDK instance
   useEffect(() => {
     if (ndk) {
-      console.log('[RelayInitializer] Setting NDK instance in ProfileImageCache');
+      console.log('[RelayInitializer] Setting NDK instance in image caches');
       profileImageCache.setNDK(ndk);
+      bannerImageCache.setNDK(ndk);
+      
+      // Cache initialization is handled within setNDK
+      console.log('[RelayInitializer] Image caches initialized');
       
       // Initialize caches with NDK instance
       if (db) {

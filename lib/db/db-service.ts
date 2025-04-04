@@ -1,9 +1,12 @@
 // lib/db/db-service.ts
 import { SQLiteDatabase } from 'expo-sqlite';
+import { createLogger } from '@/lib/utils/logger';
+
+// Create database-specific logger
+const logger = createLogger('SQLite');
 
 export class DbService {
   private db: SQLiteDatabase;
-  private readonly DEBUG = __DEV__;
 
   constructor(db: SQLiteDatabase) {
     this.db = db;
@@ -11,25 +14,21 @@ export class DbService {
 
   async execAsync(sql: string): Promise<void> {
     try {
-      if (this.DEBUG) {
-        console.log('Executing SQL:', sql);
-      }
+      logger.debug('Executing SQL:', sql);
       await this.db.execAsync(sql);
     } catch (error) {
-      console.error('SQL Error:', error);
+      logger.error('SQL Error:', error);
       throw error;
     }
   }
 
   async runAsync(sql: string, params: any[] = []) {
     try {
-      if (this.DEBUG) {
-        console.log('Running SQL:', sql);
-        console.log('Parameters:', params);
-      }
+      logger.debug('Running SQL:', sql);
+      logger.debug('Parameters:', params);
       return await this.db.runAsync(sql, params);
     } catch (error) {
-      console.error('SQL Error:', error);
+      logger.error('SQL Error:', error);
       throw error;
     }
   }
@@ -38,7 +37,7 @@ export class DbService {
     try {
       return await this.db.getFirstAsync<T>(sql, params);
     } catch (error) {
-      console.error('SQL Error:', error);
+      logger.error('SQL Error:', error);
       throw error;
     }
   }
@@ -47,7 +46,7 @@ export class DbService {
     try {
       return await this.db.getAllAsync<T>(sql, params);
     } catch (error) {
-      console.error('SQL Error:', error);
+      logger.error('SQL Error:', error);
       throw error;
     }
   }
@@ -58,7 +57,7 @@ export class DbService {
         await action();
       });
     } catch (error) {
-      console.error('Transaction Error:', error);
+      logger.error('Transaction Error:', error);
       throw error;
     }
   }

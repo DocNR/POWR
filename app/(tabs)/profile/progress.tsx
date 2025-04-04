@@ -71,22 +71,29 @@ export default function ProgressScreen() {
   const [includeNostr, setIncludeNostr] = useState(true);
   
   // Load workout statistics when period or includeNostr changes
+  // IMPORTANT: Always call all hooks in the same order, regardless of authentication state
+  // This ensures consistent hook ordering across renders to comply with React's Rules of Hooks
   useEffect(() => {
     async function loadStats() {
-      if (!isAuthenticated) return;
-      
       try {
         setLoading(true);
         
-        // Pass includeNostr flag to analytics service
-        analyticsService.setIncludeNostr(includeNostr);
-        
-        const workoutStats = await analytics.getWorkoutStats(period);
-        setStats(workoutStats);
-        
-        // Load personal records
-        const personalRecords = await analytics.getPersonalRecords(undefined, 5);
-        setRecords(personalRecords);
+        // Only fetch stats if authenticated, but always run the effect
+        if (isAuthenticated) {
+          // Pass includeNostr flag to analytics service
+          analyticsService.setIncludeNostr(includeNostr);
+          
+          const workoutStats = await analytics.getWorkoutStats(period);
+          setStats(workoutStats);
+          
+          // Load personal records
+          const personalRecords = await analytics.getPersonalRecords(undefined, 5);
+          setRecords(personalRecords);
+        } else {
+          // Reset stats and records when not authenticated
+          setStats(null);
+          setRecords([]);
+        }
       } catch (error) {
         console.error('Error loading analytics data:', error);
       } finally {

@@ -7,6 +7,7 @@ import { useNDK } from '@/lib/hooks/useNDK';
 import { SQLiteDatabase } from 'expo-sqlite';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
 import { useDatabase } from '@/components/DatabaseProvider';
+import { createLogger, socialFeedLogger, eventProcessingLogger } from '@/lib/utils/logger';
 import { 
   parseWorkoutRecord, 
   parseExerciseTemplate, 
@@ -64,16 +65,16 @@ export function useSocialFeed(
   useEffect(() => {
     if (ndk && !socialServiceRef.current) {
       try {
-        console.log('[useSocialFeed] Initializing SocialFeedService');
+        socialFeedLogger.info('Initializing SocialFeedService');
         socialServiceRef.current = new SocialFeedService(ndk, db);
-        console.log('[useSocialFeed] SocialFeedService initialized successfully');
+        socialFeedLogger.info('SocialFeedService initialized successfully');
       } catch (error) {
-        console.error('[useSocialFeed] Error initializing SocialFeedService:', error);
+        socialFeedLogger.error('Error initializing SocialFeedService:', error);
         // Log more detailed error information
         if (error instanceof Error) {
-          console.error(`[useSocialFeed] Error details: ${error.message}`);
+          socialFeedLogger.error(`Error details: ${error.message}`);
           if (error.stack) {
-            console.error(`[useSocialFeed] Stack trace: ${error.stack}`);
+            socialFeedLogger.error(`Stack trace: ${error.stack}`);
           }
         }
         
@@ -99,7 +100,7 @@ export function useSocialFeed(
       // Skip if we've seen this event before or event has no ID
       if (!event.id || seenEvents.current.has(event.id)) return;
       
-      console.log(`Processing event ${event.id}, kind ${event.kind} from ${event.pubkey}`);
+      eventProcessingLogger.verbose(`Processing event ${event.id}, kind ${event.kind} from ${event.pubkey}`);
       
       // Check if this event is quoted by another event we've already seen
       // Skip unless it's from the POWR account (always show POWR content)
@@ -107,7 +108,7 @@ export function useSocialFeed(
         quotedEvents.current.has(event.id) && 
         event.pubkey !== POWR_PUBKEY_HEX
       ) {
-        console.log(`Event ${event.id} filtered out: quoted=${true}, pubkey=${event.pubkey}`);
+        eventProcessingLogger.debug(`Event ${event.id} filtered out: quoted=${true}, pubkey=${event.pubkey}`);
         return;
       }
       
@@ -293,16 +294,16 @@ export function useSocialFeed(
         if (dTags.length > 0) {
           const identifier = dTags[0][1];
           if (identifier && quotedEvents.current.has(`${event.pubkey}:${identifier}`)) {
-            // This addressable event is quoted, so we'll skip it
-            console.log(`Addressable event ${event.id} filtered out: quoted as ${event.pubkey}:${identifier}`);
-            return;
+          // This addressable event is quoted, so we'll skip it
+          eventProcessingLogger.debug(`Addressable event ${event.id} filtered out: quoted as ${event.pubkey}:${identifier}`);
+          return;
           }
         }
       }
       
       // Add to feed items if we were able to parse it
       if (feedItem) {
-        console.log(`Adding event ${event.id} to feed as ${feedItem.type}`);
+        eventProcessingLogger.verbose(`Adding event ${event.id} to feed as ${feedItem.type}`);
         setFeedItems(current => {
           const newItems = [...current, feedItem as FeedItem];
           // Sort by created_at (most recent first)
@@ -315,7 +316,7 @@ export function useSocialFeed(
         }
       }
     } catch (error) {
-      console.error('Error processing event:', error);
+      eventProcessingLogger.error('Error processing event:', error);
     }
   }, [oldestTimestamp, options.feedType]);
 
@@ -380,7 +381,7 @@ export function useSocialFeed(
     
     // Prevent rapid resubscriptions unless forceRefresh is true
     if (subscriptionCooldown.current && !forceRefresh) {
-      console.log('[useSocialFeed] Subscription on cooldown, skipping (use forceRefresh to override)');
+      socialFeedLogger.debug('Subscription on cooldown, skipping (use forceRefresh to override)');
       return;
     }
     
@@ -388,11 +389,11 @@ export function useSocialFeed(
     // Reset counter if this is a forced refresh
     if (forceRefresh) {
       subscriptionAttempts.current = 0;
-      console.log('[useSocialFeed] Force refresh requested, resetting attempt counter');
+      socialFeedLogger.debug('Force refresh requested, resetting attempt counter');
     } else {
       subscriptionAttempts.current += 1;
       if (subscriptionAttempts.current > maxSubscriptionAttempts) {
-        console.error(`[useSocialFeed] Too many subscription attempts (${subscriptionAttempts.current}), giving up`);
+        socialFeedLogger.error(`Too many subscription attempts (${subscriptionAttempts.current}), giving up`);
         setLoading(false);
         return;
       }
@@ -403,16 +404,16 @@ export function useSocialFeed(
     // Initialize social service if not already done
     if (!socialServiceRef.current) {
       try {
-        console.log('[useSocialFeed] Initializing SocialFeedService in loadFeed');
+        socialFeedLogger.info('Initializing SocialFeedService in loadFeed');
         socialServiceRef.current = new SocialFeedService(ndk, db);
-        console.log('[useSocialFeed] SocialFeedService initialized successfully in loadFeed');
+        socialFeedLogger.info('SocialFeedService initialized successfully in loadFeed');
       } catch (error) {
-        console.error('[useSocialFeed] Error initializing SocialFeedService in loadFeed:', error);
+        socialFeedLogger.error('Error initializing SocialFeedService in loadFeed:', error);
         // Log more detailed error information
         if (error instanceof Error) {
-          console.error(`[useSocialFeed] Error details: ${error.message}`);
+          socialFeedLogger.error(`Error details: ${error.message}`);
           if (error.stack) {
-            console.error(`[useSocialFeed] Stack trace: ${error.stack}`);
+            socialFeedLogger.error(`Stack trace: ${error.stack}`);
           }
         }
         
@@ -423,7 +424,7 @@ export function useSocialFeed(
     
     // Clean up any existing subscription
     if (subscriptionRef.current) {
-      console.log(`[useSocialFeed] Cleaning up existing subscription for ${feedOptions.feedType} feed`);
+      socialFeedLogger.debug(`Cleaning up existing subscription for ${feedOptions.feedType} feed`);
       subscriptionRef.current.unsubscribe();
       subscriptionRef.current = null;
     }
@@ -437,19 +438,19 @@ export function useSocialFeed(
     }, 5000); // Increased cooldown period
     
     try {
-      console.log(`[useSocialFeed] Loading ${feedOptions.feedType} feed with authors:`, feedOptions.authors);
-      console.log(`[useSocialFeed] Time range: since=${new Date(feedOptions.since * 1000).toISOString()}, until=${feedOptions.until ? new Date(feedOptions.until * 1000).toISOString() : 'now'}`);
+      socialFeedLogger.info(`Loading ${feedOptions.feedType} feed with authors:`, feedOptions.authors);
+      socialFeedLogger.debug(`Time range: since=${new Date(feedOptions.since * 1000).toISOString()}, until=${feedOptions.until ? new Date(feedOptions.until * 1000).toISOString() : 'now'}`);
       
       // For following feed, log if we have no authors but continue with subscription
       // The socialFeedService will use the POWR_PUBKEY_HEX as fallback
       if (feedOptions.feedType === 'following' && (!feedOptions.authors || feedOptions.authors.length === 0)) {
-        console.log('[useSocialFeed] Following feed with no authors, continuing with fallback');
+        socialFeedLogger.info('Following feed with no authors, continuing with fallback');
         // We'll continue with the subscription and rely on the fallback in socialFeedService
       }
       
       // Build and validate filters before subscribing
       if (!socialServiceRef.current) {
-        console.error('[useSocialFeed] Social service not initialized');
+        socialFeedLogger.error('Social service not initialized');
         setLoading(false);
         return;
       }
@@ -464,12 +465,12 @@ export function useSocialFeed(
       });
       
       if (!filters || Object.keys(filters).length === 0) {
-        console.log('[useSocialFeed] No valid filters to subscribe with, skipping');
+        socialFeedLogger.warn('No valid filters to subscribe with, skipping');
         setLoading(false);
         return;
       }
       
-      console.log(`[useSocialFeed] Subscribing with filters:`, JSON.stringify(filters));
+      socialFeedLogger.debug(`Subscribing with filters:`, JSON.stringify(filters));
       
       // Subscribe to feed
       const subscription = await socialServiceRef.current.subscribeFeed({
@@ -488,11 +489,11 @@ export function useSocialFeed(
       if (subscription) {
         subscriptionRef.current = subscription;
       } else {
-        console.error('[useSocialFeed] Failed to create subscription');
+        socialFeedLogger.error('Failed to create subscription');
         setLoading(false);
       }
     } catch (error) {
-      console.error('[useSocialFeed] Error loading feed:', error);
+      socialFeedLogger.error('Error loading feed:', error);
       setLoading(false);
     }
   }, [ndk, db, feedOptions, processEvent]);
@@ -506,16 +507,16 @@ export function useSocialFeed(
     // Initialize social service if not already done
     if (!socialServiceRef.current) {
       try {
-        console.log('[useSocialFeed] Initializing SocialFeedService in loadCachedFeed');
+        socialFeedLogger.info('Initializing SocialFeedService in loadCachedFeed');
         socialServiceRef.current = new SocialFeedService(ndk, db);
-        console.log('[useSocialFeed] SocialFeedService initialized successfully in loadCachedFeed');
+        socialFeedLogger.info('SocialFeedService initialized successfully in loadCachedFeed');
       } catch (error) {
-        console.error('[useSocialFeed] Error initializing SocialFeedService in loadCachedFeed:', error);
+        socialFeedLogger.error('Error initializing SocialFeedService in loadCachedFeed:', error);
         // Log more detailed error information
         if (error instanceof Error) {
-          console.error(`[useSocialFeed] Error details: ${error.message}`);
+          socialFeedLogger.error(`Error details: ${error.message}`);
           if (error.stack) {
-            console.error(`[useSocialFeed] Stack trace: ${error.stack}`);
+            socialFeedLogger.error(`Stack trace: ${error.stack}`);
           }
         }
         
@@ -540,12 +541,12 @@ export function useSocialFeed(
             processEvent(event);
           }
         } catch (cacheError) {
-          console.error('Error retrieving cached events:', cacheError);
+          socialFeedLogger.error('Error retrieving cached events:', cacheError);
           // Continue even if cache retrieval fails - we'll try to fetch from network
         }
       }
     } catch (error) {
-      console.error('Error loading cached feed:', error);
+      socialFeedLogger.error('Error loading cached feed:', error);
     } finally {
       setLoading(false);
     }
@@ -553,7 +554,7 @@ export function useSocialFeed(
   
   // Refresh feed (clear events and reload)
   const refresh = useCallback(async (forceRefresh = true) => {
-    console.log(`Refreshing ${options.feedType} feed (force=${forceRefresh})`);
+    socialFeedLogger.info(`Refreshing ${options.feedType} feed (force=${forceRefresh})`);
     setFeedItems([]);
     seenEvents.current.clear();
     quotedEvents.current.clear(); // Also reset quoted events
