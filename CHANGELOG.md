@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Documentation
+- Added comprehensive React Query integration plan to address authentication state transitions and hook ordering issues
+- Created detailed technical documentation for integrating React Query with SQLite, NDK, and Amber signer
+- Added detailed conflict resolution strategies for local-first Nostr app
+- Implemented enhanced error handling patterns for React Query
+- Developed executive summary for stakeholder review
+
+### Fixed
+- Android database initialization error (NullPointerException) by:
+  - Creating a platform-specific database initialization path for Android
+  - Implementing resilient error handling with step-by-step table creation
+  - Simplifying SQL statements for better Android compatibility
+  - Replacing dynamic imports with static imports
+
 ### Added
 - Centralized Authentication System with Advanced Security
   - Implemented new AuthService for unified authentication management

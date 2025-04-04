@@ -1,6 +1,8 @@
 // lib/db/schema.ts
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
+// Import the migration functions directly to avoid dynamic imports that can fail on Android
+import { addNostrFieldsToWorkouts, createNostrWorkoutsTable } from './migrations/add-nostr-fields-to-workouts';
 
 export const SCHEMA_VERSION = 12;
 
@@ -132,10 +134,7 @@ class Schema {
     try {
       console.log('[Schema] Running migration v11 - Adding Nostr fields to workouts');
       
-      // Import the migration functions
-      const { addNostrFieldsToWorkouts, createNostrWorkoutsTable } = await import('./migrations/add-nostr-fields-to-workouts');
-      
-      // Run the migrations
+      // Run the migrations using the directly imported functions
       await addNostrFieldsToWorkouts(db);
       await createNostrWorkoutsTable(db);
       
@@ -194,9 +193,305 @@ class Schema {
     }
   }
 
+  // Method specifically for Android database initialization
+  async createTablesAndroid(db: SQLiteDatabase): Promise<void> {
+    try {
+      console.log('[Schema] Using Android-specific database initialization');
+      
+      // Create schema_version table separately without transaction
+      try {
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            updated_at INTEGER NOT NULL
+          );
+        `);
+        console.log('[Schema] Schema_version table created successfully on Android');
+      } catch (error) {
+        console.error('[Schema] Error creating schema_version table on Android:', error);
+      }
+      
+      // Get current version 
+      const currentVersion = await this.getCurrentVersion(db);
+      console.log(`[Schema] Android - Current version: ${currentVersion}, Target version: ${SCHEMA_VERSION}`);
+      
+      // If already at current version, just check for missing tables
+      if (currentVersion === SCHEMA_VERSION) {
+        console.log(`[Schema] Android - Database already at version ${SCHEMA_VERSION}, checking for missing tables`);
+        await this.ensureCriticalTablesExist(db);
+        return;
+      }
+      
+      // For Android, we'll create tables one by one without a transaction
+      
+      // 1. Drop all tables except schema_version (if needed)
+      await this.dropAllTables(db);
+      
+      // 2. Create tables one by one - simplifying CHECK constraints for Android
+      try {
+        // Create exercises table - removed CHECK constraints for Android
+        console.log('[Schema] Android - Creating exercises table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS exercises (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            type TEXT NOT NULL,
+            category TEXT NOT NULL,
+            equipment TEXT,
+            description TEXT,
+            format_json TEXT,
+            format_units_json TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            source TEXT NOT NULL DEFAULT 'local',
+            nostr_event_id TEXT
+          );
+        `);
+        console.log('[Schema] Android - Exercises table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating exercises table:', error);
+      }
+      
+      try {
+        // Create exercise_tags table
+        console.log('[Schema] Android - Creating exercise_tags table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS exercise_tags (
+            exercise_id TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
+            UNIQUE(exercise_id, tag)
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_exercise_tags ON exercise_tags(tag);`);
+        console.log('[Schema] Android - Exercise_tags table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating exercise_tags table:', error);
+      }
+      
+      try {
+        // Create nostr_events table
+        console.log('[Schema] Android - Creating nostr_events table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS nostr_events (
+            id TEXT PRIMARY KEY,
+            pubkey TEXT NOT NULL,
+            kind INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            sig TEXT,
+            raw_event TEXT NOT NULL,
+            received_at INTEGER NOT NULL
+          );
+        `);
+        console.log('[Schema] Android - Nostr_events table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating nostr_events table:', error);
+      }
+      
+      try {
+        // Create event_tags table
+        console.log('[Schema] Android - Creating event_tags table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS event_tags (
+            event_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            value TEXT NOT NULL,
+            index_num INTEGER NOT NULL,
+            FOREIGN KEY(event_id) REFERENCES nostr_events(id) ON DELETE CASCADE
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_event_tags ON event_tags(name, value);`);
+        console.log('[Schema] Android - Event_tags table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating event_tags table:', error);
+      }
+      
+      try {
+        // Create templates table
+        console.log('[Schema] Android - Creating templates table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS templates (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            nostr_event_id TEXT,
+            source TEXT NOT NULL DEFAULT 'local',
+            parent_id TEXT,
+            is_archived BOOLEAN NOT NULL DEFAULT 0,
+            author_pubkey TEXT
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_templates_updated_at ON templates(updated_at);`);
+        console.log('[Schema] Android - Templates table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating templates table:', error);
+      }
+      
+      try {
+        // Create template_exercises table
+        console.log('[Schema] Android - Creating template_exercises table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS template_exercises (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            display_order INTEGER NOT NULL,
+            target_sets INTEGER,
+            target_reps INTEGER,
+            target_weight REAL,
+            notes TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_template_exercises_template_id ON template_exercises(template_id);`);
+        console.log('[Schema] Android - Template_exercises table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating template_exercises table:', error);
+      }
+      
+      try {
+        // Create powr_packs table
+        console.log('[Schema] Android - Creating powr_packs table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS powr_packs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            author_pubkey TEXT,
+            nostr_event_id TEXT,
+            import_date INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_powr_packs_import_date ON powr_packs(import_date DESC);`);
+        console.log('[Schema] Android - Powr_packs table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating powr_packs table:', error);
+      }
+      
+      try {
+        // Create powr_pack_items table - removed CHECK constraint for Android
+        console.log('[Schema] Android - Creating powr_pack_items table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS powr_pack_items (
+            pack_id TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            item_type TEXT NOT NULL,
+            item_order INTEGER,
+            is_imported BOOLEAN NOT NULL DEFAULT 0,
+            nostr_event_id TEXT,
+            PRIMARY KEY (pack_id, item_id),
+            FOREIGN KEY (pack_id) REFERENCES powr_packs(id) ON DELETE CASCADE
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_powr_pack_items_type ON powr_pack_items(item_type);`);
+        console.log('[Schema] Android - Powr_pack_items table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating powr_pack_items table:', error);
+      }
+      
+      try {
+        // Create favorites table
+        console.log('[Schema] Android - Creating favorites table...');
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS favorites (
+            id TEXT PRIMARY KEY,
+            content_type TEXT NOT NULL,
+            content_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            pubkey TEXT,
+            created_at INTEGER NOT NULL,
+            UNIQUE(content_type, content_id)
+          );
+        `);
+        
+        await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_favorites_content ON favorites(content_type, content_id);`);
+        console.log('[Schema] Android - Favorites table created successfully');
+      } catch (error) {
+        console.error('[Schema] Android - Error creating favorites table:', error);
+      }
+      
+      // Run migrations one by one
+      if (currentVersion < 8) {
+        try {
+          await this.migrate_v8(db);
+        } catch (error) {
+          console.error('[Schema] Android - Error in migrate_v8:', error);
+        }
+      }
+      
+      if (currentVersion < 9) {
+        try {
+          await this.migrate_v9(db);
+        } catch (error) {
+          console.error('[Schema] Android - Error in migrate_v9:', error);
+        }
+      }
+      
+      if (currentVersion < 10) {
+        try {
+          await this.migrate_v10(db);
+        } catch (error) {
+          console.error('[Schema] Android - Error in migrate_v10:', error);
+        }
+      }
+      
+      if (currentVersion < 11) {
+        try {
+          await this.migrate_v11(db);
+        } catch (error) {
+          console.error('[Schema] Android - Error in migrate_v11:', error);
+        }
+      }
+      
+      if (currentVersion < 12) {
+        try {
+          await this.migrate_v12(db);
+        } catch (error) {
+          console.error('[Schema] Android - Error in migrate_v12:', error);
+        }
+      }
+      
+      // Update schema version
+      try {
+        await this.updateSchemaVersion(db);
+      } catch (error) {
+        console.error('[Schema] Android - Error updating schema version:', error);
+      }
+      
+      // Finally, make sure critical tables exist
+      await this.ensureCriticalTablesExist(db);
+      
+      console.log('[Schema] Android - Database initialization completed');
+    } catch (error) {
+      console.error('[Schema] Android - Error initializing database:', error);
+      // Don't throw - try to continue with partial initialization
+    }
+  }
+
   async createTables(db: SQLiteDatabase): Promise<void> {
     try {
       console.log(`[Schema] Initializing database on ${Platform.OS}`);
+      
+      // For Android, use a specialized initialization method
+      if (Platform.OS === 'android') {
+        await this.createTablesAndroid(db);
+        return;
+      }
+      
+      // iOS and other platforms - use the original implementation
       
       // First, ensure schema_version table exists since we need it for version checking
       await db.execAsync(`
