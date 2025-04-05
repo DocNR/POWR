@@ -17,6 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved user experience during temporary API failures
 
 ### Improved
+- Profile loading performance dramatically enhanced
+  - Added ultra-early content display after just 500ms
+  - Implemented progressive content loading with three-tier system
+  - Reduced timeouts from 5s to 4s on Android and from 4s to 3s on iOS
+  - Added aggressive content rendering that prioritizes partial data
+  - Enhanced render state logic to show any available content immediately
+  - Improved parallel data loading for all profile elements
+  - Added multiple fallback timers to ensure content is always shown
+  - Enhanced safety protocol for recovering from long-loading states
+
+- Profile overview screen architecture
+  - Completely refactored to use component extraction pattern
+  - Created separate presentational components (ProfileHeader, ProfileFeed)
+  - Implemented centralized data hook (useProfilePageData) to fix hook ordering issues
+  - Added consistent hook ordering regardless of authentication state
+  - Implemented platform-specific timeout handling (6s for iOS, 8s for Android)
+  - Enhanced error recovery with automatic retry system
+  - Added proper TypeScript typing across all components
+  - Improved banner image and profile stats loading with better error handling
+
 - Console logging system
   - Implemented configurable module-level logging controls
   - Added quiet mode toggle for easier troubleshooting
@@ -28,6 +48,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created comprehensive logging documentation
 
 ### Fixed
+- Private key authentication persistence
+  - Fixed inconsistent storage key naming between legacy and React Query auth systems
+  - Standardized on 'nostr_privkey' for all private key storage
+  - Added comprehensive logging to debug authentication initialization
+  - Improved key retrieval in AuthService with legacy key detection
+  - Enhanced error handling in the authentication restoration process
+  - Implemented proper cross-checking between storage systems
+  - Added validation and normalization for securely stored private keys
+
+- Profile overview screen crashes
+  - Fixed "Rendered more hooks than during the previous render" error
+  - Eliminated "Rendered fewer hooks than expected" errors during login/logout
+  - Fixed hook ordering issues with consistent hook patterns
+  - Resolved banner image loading failures
+  - Added proper type safety for React Query results
+  - Fixed null/undefined handling in image URLs and stats data
+  - Enhanced component safety with consistent rendering patterns
+
+- Authentication persistence issues
+  - Fixed private key authentication not persisting across app restarts
+  - Enhanced credential storage with more reliable SecureStore integration
+  - Implemented robust auth state restoration during app initialization
+  - Added better error handling with credential cleanup on failed restoration
+  - Created constants for SecureStore keys to ensure consistency
+  - Enhanced AuthService with improved promise handling for multiple calls
+  - Fixed NDK initialization to properly restore authentication state
+  - Added private key normalization to handle platform-specific formatting differences
+  - Added improved key validation with detailed platform-specific logging
+  - Added public key caching for faster reference
+  - Improved ReactQueryAuthProvider with better initialization sequence
+  - Enhanced error handling throughout authentication flow
+  - Added comprehensive logging for better debugging
+  - Fixed race conditions in authentication state transitions
+  - Implemented initialization tracking to prevent duplicate auth operations
+
 - Android profile screen hanging issues
   - Fixed infinite loading state on profile screen with proper timeouts
   - Enhanced NostrBandService with AbortController and abort signal support
@@ -690,117 +745,4 @@ g
 - Overall data persistence architecture
   - Consistent service-based approach
   - Improved type safety
-  - Enhanced error propagation
-  
-# Changelog - March 6, 2025
-
-## Added
-- Comprehensive workout completion flow
-  - Implemented three-tier storage approach (Local Only, Publish Complete, Publish Limited)
-  - Added support for template modifications with options to keep original, update, or save as new
-  - Created celebration screen with confetti animation
-  - Integrated social sharing capabilities for Nostr
-  - Built detailed workout summary with achievement tracking
-  - Added workout statistics including duration, volume, and set completion
-  - Implemented privacy-focused publishing options
-  - Added template attribution and modification tracking
-- NDK mobile integration for Nostr functionality
-  - Added event publishing and subscription capabilities 
-  - Implemented proper type safety for NDK interactions
-  - Created testing components for NDK functionality verification
-- Enhanced exercise management with Nostr support
-  - Implemented exercise creation, editing, and forking workflows
-  - Added support for custom exercise event kinds (33401)
-  - Built exercise publication queue for offline-first functionality
-- User profile integration
-  - Added profile fetching and caching
-  - Implemented profile-based permissions for content editing
-  - Fixed type definitions for NDK user profiles
-- Robust workout state management
-  - Fixed favorites persistence in SQLite
-  - Added template-based workout initialization
-  - Implemented workout tracking with real-time updates
-
-## Fixed
-- TypeScript errors across multiple components:
-  - Resolved NDK-related type errors in ExerciseSheet component
-  - Fixed FavoritesService reference errors in workoutStore
-  - Corrected null/undefined handling in NDKEvent initialization
-  - Fixed profile type compatibility in useProfile hook
-  - Added proper type definitions for NDK UserProfile
-- Dependency errors in PublicationQueue and DevSeeder services
-- Source and authorization checks for exercise editing permissions
-- Component interoperability with NDK mobile
-
-## Improved
-- Enhanced relay connection management
-  - Added timeout-based connection attempts
-  - Implemented better connection status tracking
-  - Added relay connectivity verification before publishing
-  - Improved error handling for publishing failures
-- Workout completion UI
-  - Added scrollable interfaces for better content accessibility
-  - Enhanced visual feedback for selected options
-  - Improved button placement and visual hierarchy
-  - Added clearer visual indicators for selected storage options
-- Refactored code for better type safety
-- Enhanced error handling with proper type checking
-- Improved Nostr event creation workflow with NDK
-- Streamlined user authentication process
-- Enhanced development environment with better type checking
-
-## [Unreleased]
-
-### Added
-- Successful Nostr protocol integration
-  - Implemented NDK-mobile for React Native compatibility
-  - Added secure key management with Expo SecureStore
-  - Created event signing and publishing functionality
-  - Built relay connection management system
-  - Implemented event caching for offline support
-  - Added support for various Nostr event kinds (Text, Exercise, Template, Workout)
-- Programs component for testing Nostr functionality
-  - Created tabbed interface with Database and Nostr sections
-  - Implemented user authentication flow
-  - Added event creation with multiple event types
-  - Built query functionality for retrieving events
-  - Developed event display with detailed tag inspection
-  - Added login/logout capabilities with secure key handling
-- Enhanced crypto support for React Native environment
-  - Implemented proper cryptographic polyfills
-  - Added secure random number generation
-  - Built robust key management system
-  - Developed signer implementation for Nostr
-- Zustand workout store for state management
-  - Created comprehensive workout state store with Zustand
-  - Implemented selectors for efficient state access
-  - Added workout persistence and recovery
-  - Built automatic timer management with background support
-  - Developed minimization and maximization functionality
-- Zustand workout store for state management
-  - Created comprehensive workout state store with Zustand
-  - Implemented selectors for efficient state access
-  - Added workout persistence and recovery
-  - Built automatic timer management with background support
-  - Developed minimization and maximization functionality
-- Workout tracking implementation with real-time tracking
-  - Added workout timer with proper background handling
-  - Implemented rest timer functionality
-  - Added exercise set tracking with weight and reps
-  - Created workout minimization and maximization system
-  - Implemented active workout bar for minimized workouts
-- SQLite database implementation with development seeding
-  - Successfully integrated SQLite with proper transaction handling
-  - Added mock exercise library with 10 initial exercises
-  - Implemented development database seeder
-  - Added debug logging for database operations
-- Event caching system for future Nostr integration
-  - Added EventCache service for Nostr event handling
-  - Implemented proper transaction management
-  - Added cache metadata tracking
-- Database schema improvements
-  - Added nostr_events and event_tags tables
-  - Added cache_metadata table for performance optimization
-  - Added exercise_media table for future media support
-- Alphabetical quick scroll in exercise library
-  - Dynamic letter highlighting
+  - Enhanced error

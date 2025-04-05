@@ -52,13 +52,13 @@ export function useProfileStats(options: UseProfileStatsOptions = {}) {
       refetchInterval: refreshInterval > 0 ? refreshInterval : 30000, // 30 seconds default on Android
     },
     ios: {
-      // More aggressive settings for iOS
+      // More aggressive settings for iOS with reduced timeout
       staleTime: 0, // No stale time - always refetch when used
       gcTime: 2 * 60 * 1000, // 2 minutes
-      retry: 3, // More retries on iOS
+      retry: 2, // Reduced retries on iOS to avoid hanging
       retryDelay: 1000, // 1 second between retries
-      timeout: 10000, // 10 second timeout for iOS
-      refetchInterval: refreshInterval > 0 ? refreshInterval : 10000, // 10 seconds default on iOS
+      timeout: 6000, // Reduced to 6 second timeout for iOS (was 10s)
+      refetchInterval: refreshInterval > 0 ? refreshInterval : 15000, // 15 seconds default on iOS (was 10s)
     },
     default: {
       // Fallback settings
@@ -88,13 +88,19 @@ export function useProfileStats(options: UseProfileStatsOptions = {}) {
       logger.info(`[${platform}] Fetching profile stats for ${pubkey?.substring(0, 8)}...`);
       
       try {
-        // Create timeout that works with AbortSignal
+        // Create our own abort controller that we can trigger manually on timeout
+        const timeoutController = new AbortController();
+        
+        // Configure timeout
         const timeoutId = setTimeout(() => {
           if (!signal.aborted && isMounted.current) {
             logger.warn(`[${platform}] Profile stats fetch timed out after ${platformConfig.timeout}ms`);
-            // Create a controller to manually abort if we hit our timeout
-            const abortController = new AbortController();
-            abortController.abort();
+            // Abort our manual controller to cancel the fetch
+            try {
+              timeoutController.abort();
+            } catch (e) {
+              logger.error(`[${platform}] Error aborting fetch: ${e}`);
+            }
           }
         }, platformConfig.timeout);
         
@@ -130,18 +136,16 @@ export function useProfileStats(options: UseProfileStatsOptions = {}) {
       } catch (error) {
         logger.error(`[${platform}] Error fetching profile stats: ${error}`);
         
-        // On Android, return fallback values rather than throwing
-        if (platform === 'Android') {
-          return {
-            pubkey,
-            followersCount: 0,
-            followingCount: 0,
-            isLoading: false,
-            error: error instanceof Error ? error : new Error(String(error))
-          };
-        }
-        
-        throw error;
+        // On any platform, return fallback values rather than throwing
+        // This prevents the UI from hanging in error states
+        logger.warn(`[${platform}] Returning fallback stats after error`);
+        return {
+          pubkey,
+          followersCount: 0,
+          followingCount: 0,
+          isLoading: false,
+          error: error instanceof Error ? error : new Error(String(error))
+        };
       }
     },
     // Configuration based on platform
