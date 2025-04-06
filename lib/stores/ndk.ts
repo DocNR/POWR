@@ -13,13 +13,15 @@ import * as SecureStore from 'expo-secure-store';
 import { RelayService } from '@/lib/db/services/RelayService';
 import { AuthService } from '@/lib/auth/AuthService';
 
+import { SECURE_STORE_KEYS } from '@/lib/auth/constants';
+
 // Feature flags for authentication systems
 export const FLAGS = {
-  useReactQueryAuth: true, // When true, use React Query auth; when false, use legacy auth
+  useReactQueryAuth: false, // When true, use React Query auth; when false, use legacy auth
 };
 
 // Constants for SecureStore
-const PRIVATE_KEY_STORAGE_KEY = 'nostr_privkey';
+const PRIVATE_KEY_STORAGE_KEY = SECURE_STORE_KEYS.PRIVATE_KEY;
 
 // Default relays
 const DEFAULT_RELAYS = [

@@ -23,6 +23,8 @@ import { useWorkoutStore } from '@/stores/workoutStore';
 import { ConnectivityService } from '@/lib/db/services/ConnectivityService';
 import { AuthProvider } from '@/lib/auth/AuthProvider';
 import { ReactQueryAuthProvider } from '@/lib/auth/ReactQueryAuthProvider';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createQueryClient } from '@/lib/queryClient';
 
 // Import splash screens with improved fallback mechanism
 let SplashComponent: React.ComponentType<{onFinish: () => void}>;
@@ -115,6 +117,8 @@ export default function RootLayout() {
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const { init } = useNDKStore();
   const initializationPromise = React.useRef<Promise<void> | null>(null);
+  // Create a query client instance that can be used by both auth systems
+  const queryClient = React.useMemo(() => createQueryClient(), []);
 
   // Start app initialization immediately
   React.useEffect(() => {
@@ -135,12 +139,23 @@ export default function RootLayout() {
           // Start database initialization and NDK initialization in parallel
           const initPromises = [];
           
-          // Initialize NDK with timeout
-          const ndkPromise = init().catch(error => {
-            console.error('NDK initialization error:', error);
-            // Continue even if NDK fails
-            return { offlineMode: true };
-          });
+          // Initialize NDK with credentials migration first
+          const ndkPromise = (async () => {
+            try {
+              // Import and run key migration before NDK init
+              const { migrateKeysIfNeeded } = await import('@/lib/auth/persistence/secureStorage');
+              console.log('Running pre-NDK credential migration...');
+              await migrateKeysIfNeeded();
+              
+              // Now initialize NDK
+              console.log('Starting NDK initialization...');
+              return await init();
+            } catch (error) {
+              console.error('NDK initialization error:', error);
+              // Continue even if NDK fails
+              return { offlineMode: true };
+            }
+          })();
           initPromises.push(ndkPromise);
           
           // Load favorites from SQLite (local operation)
@@ -232,7 +247,7 @@ export default function RootLayout() {
               {/* Conditionally render authentication providers based on feature flag */}
               {FLAGS.useReactQueryAuth ? (
                 /* Use React Query Auth system */
-                <ReactQueryAuthProvider enableNDK={true}>
+                <ReactQueryAuthProvider enableNDK={true} queryClient={queryClient}>
                   {/* React Query specific components */}
                   <RelayInitializer reactQueryMode={true} />
                   <OfflineIndicator />
@@ -253,26 +268,30 @@ export default function RootLayout() {
                   <PortalHost />
                 </ReactQueryAuthProvider>
               ) : (
-                /* Use Legacy Auth system */
-                <AuthProvider ndk={useNDKStore.getState().ndk!}>
-                  <RelayInitializer reactQueryMode={false} />
-                  <OfflineIndicator />
-                  
-                  <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen 
-                      name="(tabs)" 
-                      options={{
-                        headerShown: false,
-                      }}
-                    />
-                  </Stack>
-                  
-                  {/* Settings drawer needs to be outside the navigation stack */}
-                  <SettingsDrawer />
-                  
-                  <PortalHost />
-                </AuthProvider>
+                /* Use Legacy Auth system but still provide QueryClientProvider and NDKContext for data fetching */
+                <QueryClientProvider client={queryClient}>
+                  <NDKContext.Provider value={{ ndk: useNDKStore.getState().ndk, isInitialized: true }}>
+                    <AuthProvider ndk={useNDKStore.getState().ndk!}>
+                      <RelayInitializer reactQueryMode={false} />
+                      <OfflineIndicator />
+                      
+                      <StatusBar style={isDarkColorScheme ? 'light' : 'dark'} />
+                      <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen 
+                          name="(tabs)" 
+                          options={{
+                            headerShown: false,
+                          }}
+                        />
+                      </Stack>
+                      
+                      {/* Settings drawer needs to be outside the navigation stack */}
+                      <SettingsDrawer />
+                      
+                      <PortalHost />
+                    </AuthProvider>
+                  </NDKContext.Provider>
+                </QueryClientProvider>
               )}
             </SettingsDrawerProvider>
           </ThemeProvider>

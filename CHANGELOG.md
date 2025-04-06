@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Authentication persistence debugging tools
+  - Created dedicated AuthPersistenceTest screen for diagnosing credential issues
+  - Added comprehensive SecureStore key visualization
+  - Implemented manual key migration triggering
+  - Added test key creation functionality for simulating scenarios
+  - Built key clearing utilities for testing from scratch
+  - Added interactive testing workflow with detailed instructions
+  - Enhanced error handling with better messaging
+
 - React Query Android Profile Optimization System
   - Added platform-specific timeouts for network operations
   - Created fallback UI system for handling network delays
@@ -17,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved user experience during temporary API failures
 
 ### Improved
+- Authentication initialization sequence
+  - Added proper awaiting of NDK relay connections
+  - Implemented credential migration before authentication starts
+  - Enhanced AuthProvider with improved initialization flow
+  - Added robustness against race conditions during startup
+  - Implemented proper detection of stored credentials
+  - Created key migration system between storage locations
+  - Enhanced app_layout.tsx to ensure proper initialization order
+  - Added detailed technical documentation for the auth system
+
 - Profile loading performance dramatically enhanced
   - Added ultra-early content display after just 500ms
   - Implemented progressive content loading with three-tier system
@@ -48,6 +67,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created comprehensive logging documentation
 
 ### Fixed
+- Authentication storage key inconsistencies
+  - Fixed inconsistent key naming between different auth systems
+  - Implemented consistent SECURE_STORE_KEYS constants
+  - Created migration utility in secureStorage.ts
+  - Added key migration from legacy to standardized locations
+  - Fixed AuthProvider and AuthStateManager to use the same keys
+  - Enhanced NDK store to use standardized key constants
+  - Added migration status tracking to prevent duplicate migrations
+  - Created diagnostic tool for checking credential storage
+  - Fixed ReactQueryAuthProvider to use the same key constants
+  - Added detailed documentation in authentication_persistence_debug_guide.md
+
 - Private key authentication persistence
   - Fixed inconsistent storage key naming between legacy and React Query auth systems
   - Standardized on 'nostr_privkey' for all private key storage
@@ -82,6 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added comprehensive logging for better debugging
   - Fixed race conditions in authentication state transitions
   - Implemented initialization tracking to prevent duplicate auth operations
+  - Added waiting for NDK pool initialization before auth operations
+  - Created one-time migration system for legacy credentials
+  - Fixed delayed authentication restoration with improved sequence checks
+  - Enhanced credential consistency verification at startup
+  - Added test tools for diagnosing and fixing authentication issues
 
 - Android profile screen hanging issues
   - Fixed infinite loading state on profile screen with proper timeouts
@@ -698,51 +734,4 @@ g
   - Added type safety for complex operations
   - Improved error handling throughout relay management
 
-# Changelog - March 8, 2025
-
-## Added
-- Database schema upgrade to version 5
-  - Added workouts, workout_exercises, and workout_sets tables
-  - Added templates and template_exercises tables
-  - Added publication_queue table for offline-first functionality
-  - Added app_status table for connectivity tracking
-- New database services
-  - WorkoutService for managing workout data persistence
-  - Enhanced TemplateService for template management
-  - NostrWorkoutService for Nostr event conversion
-  - Updated PublicationQueueService for offline publishing
-- React hooks for database access
-  - useWorkouts hook for workout operations
-  - useTemplates hook for template operations
-- Improved workout completion flow
-  - Three-tier storage approach (Local Only, Publish Complete, Publish Limited)
-  - Template modification options (keep original, update, save as new)
-  - Enhanced social sharing capabilities
-  - Detailed workout summary with statistics
-- Enhanced database debugging tools
-  - Added proper error handling and logging
-  - Improved transaction management
-  - Added connectivity status tracking
-
-## Fixed
-- Missing workout and template table errors
-- Incomplete data storage issues
-- Template management synchronization
-- Nostr event conversion between app models and Nostr protocol
-- Workout persistence across app sessions
-- Database transaction handling in workout operations
-- Template reference handling in workout records
-
-## Improved
-- Workout store persistence layer
-  - Enhanced integration with database services
-  - Better error handling for database operations
-  - Improved Nostr connectivity detection
-- Template management workflow
-  - Proper versioning and attribution
-  - Enhanced modification tracking
-  - Better user control over template sharing
-- Overall data persistence architecture
-  - Consistent service-based approach
-  - Improved type safety
-  - Enhanced error
+# Changelog - March 8,

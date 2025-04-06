@@ -7,8 +7,9 @@ import {
   AuthMethod,
   SigningOperation 
 } from "./types";
+import { SECURE_STORE_KEYS } from "./constants";
 
-const PRIVATE_KEY_STORAGE_KEY = "powr.private_key";
+const PRIVATE_KEY_STORAGE_KEY = SECURE_STORE_KEYS.PRIVATE_KEY; // Use the constant from constants.ts
 
 /**
  * Zustand store that manages the authentication state

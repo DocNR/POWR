@@ -210,6 +210,12 @@ export default function SettingsDrawer() {
       ),
     },
     {
+      id: 'developer-tools-header',
+      icon: () => null,
+      label: '',
+      onPress: () => {},
+    },
+    {
       id: 'react-query-demo',
       icon: RefreshCw,
       label: 'React Query Demo',
@@ -217,6 +223,17 @@ export default function SettingsDrawer() {
         closeDrawer();
         router.push({
           pathname: "/test" as any
+        });
+      },
+    },
+    {
+      id: 'auth-debug',
+      icon: Database,
+      label: 'Auth Debug Tools',
+      onPress: () => {
+        closeDrawer();
+        router.push({
+          pathname: "/test/auth-persistence-test" as any
         });
       },
     },

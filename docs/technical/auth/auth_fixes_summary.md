@@ -1,78 +1,98 @@
-# Authentication Persistence Fixes
+# Authentication System Fixes Summary
 
-This document summarizes the improvements made to fix authentication persistence issues in the POWR app.
+## Authentication Persistence Fix
 
-## Overview
+We have successfully implemented a solution for authentication persistence across app restarts. The key components of the fix:
 
-The authentication system was enhanced to ensure reliable persistence of user credentials across app restarts. Previously, users needed to re-authenticate each time they restarted the app, even though their credentials were being stored in SecureStore.
+1. **Key Storage Standardization**
+   - Implemented consistent use of key names through `SECURE_STORE_KEYS` constants
+   - Set up migration utilities to handle legacy storage formats
+   - Ensured consistent key storage across different parts of the app
 
-## Key Improvements
+2. **Initialization Sequence Improvement**
+   - Added proper pre-NDK credential migration in _layout.tsx
+   - Ensured migration happens before NDK initialization
+   - Fixed race conditions during startup
 
-### 1. Enhanced AuthService
+3. **Diagnostic Tools**
+   - Created AuthPersistenceTest component for real-time debugging
+   - Added visualization of stored credentials
+   - Implemented test utilities for manual testing
 
-- **Improved initialization process**: Added promise caching for concurrent calls to prevent race conditions
-- **More robust credential restoration**: Better error handling when restoring stored private keys or external signers
-- **SecureStore key constants**: Added constants for all SecureStore keys to avoid inconsistencies
-- **Public key caching**: Added storage of public key alongside private key for faster access
-- **Clean credential handling**: Automatic cleanup of invalid credentials when restoration fails
-- **Enhanced logging**: Comprehensive logging throughout the authentication flow
+## React Query Integration Fix
 
-### 2. Improved ReactQueryAuthProvider
+We also fixed an issue where the app was encountering errors when using the legacy Zustand-based authentication with React Query components. The solution:
 
-- **Better NDK initialization**: Enhanced initialization with credential pre-checking
-- **Initialization tracking**: Added tracking of initialization attempts to prevent duplicates
-- **State management**: Improved state updates to ensure they only occur for the most recent initialization
-- **Auth state invalidation**: Force refresh of auth state after initialization
-- **Error resilience**: Better error handling throughout the provider
+1. **QueryClientProvider with Dual Auth Systems**
+   - Added QueryClientProvider to the legacy auth path in _layout.tsx
+   - Created a shared queryClient instance that works with both auth systems
+   - Ensured NDKContext is properly provided in both paths
 
-### 3. Fixed useAuthQuery Hook
+2. **Component-level Compatibility**
+   - Components like UserAvatar that use React Query hooks now work in both auth modes
+   - Data fetching via React Query continues to work even when using Zustand for auth state
 
-- **Pre-initialization**: Added pre-initialization of auth service when the hook is first used
-- **Query configuration**: Adjusted query settings for better reliability (staleTime, refetchOnWindowFocus, etc.)
-- **Type safety**: Fixed TypeScript errors to ensure proper type checking
-- **Initialization reference**: Added reference tracking to prevent memory leaks
-- **Better error handling**: Enhanced error management throughout the hook
+## Code Changes
 
-## Implementation Details
+### 1. Updated app/_layout.tsx to use QueryClientProvider in both auth paths
 
-### AuthService Changes
+```tsx
+// Create a shared queryClient for both auth systems
+const queryClient = React.useMemo(() => createQueryClient(), []);
 
-- Added promise caching with `initPromise` to handle concurrent initialization calls
-- Split initialization into public `initialize()` and private `_doInitialize()` methods
-- Improved error handling with try/catch blocks and proper cleanup
-- Added constants for secure storage keys (`POWR.PRIVATE_KEY`, etc.)
-- Enhanced login methods with optional `saveKey` parameter
-- Added public key storage for faster reference
+// In the render method:
+{FLAGS.useReactQueryAuth ? (
+  // React Query Auth system (already had QueryClientProvider internally)
+  <ReactQueryAuthProvider enableNDK={true} queryClient={queryClient}>
+    {/* ... */}
+  </ReactQueryAuthProvider>
+) : (
+  // Legacy Auth system with added QueryClientProvider and NDKContext
+  <QueryClientProvider client={queryClient}>
+    <NDKContext.Provider value={{ ndk: useNDKStore.getState().ndk, isInitialized: true }}>
+      <AuthProvider ndk={useNDKStore.getState().ndk!}>
+        {/* ... */}
+      </AuthProvider>
+    </NDKContext.Provider>
+  </QueryClientProvider>
+)}
+```
 
-### ReactQueryAuthProvider Changes
+### 2. Updated ReactQueryAuthProvider to accept a queryClient prop
 
-- Added initialization attempt tracking to prevent race conditions
-- Added pre-checking of credentials before NDK initialization
-- Enhanced state management to only update for the most recent initialization attempt
-- Improved error resilience to ensure app works even if initialization fails
-- Added forced query invalidation after successful initialization
+The ReactQueryAuthProvider component was enhanced to accept an external queryClient to avoid creating multiple instances.
 
-### useAuthQuery Changes
+## Best Practices for Future Development
 
-- Added initialization state tracking with useRef
-- Pre-initializes auth service when hook is first used
-- Improved mutation error handling with better cleanup
-- Fixed TypeScript errors with proper type assertions
-- Enhanced query settings for better reliability and performance
+When working with dual authentication systems:
 
-## Testing
+1. **Data Fetching vs. Auth State Management**
+   - Keep React Query for data fetching regardless of which auth system is used
+   - Authentication state can be managed by either Zustand or React Query
+   
+2. **Context Providers**
+   - Always include QueryClientProvider for React Query hooks to work
+   - Provide NDKContext when not using ReactQueryAuthProvider
+   - Component hooks that need React Query should always be wrapped in QueryClientProvider
 
-The authentication persistence has been thoroughly tested across various scenarios:
+3. **Storage Keys**
+   - Always reference storage keys from the constants file
+   - Migrate legacy keys when encountered
+   - Document key structure and migration paths
 
-1. App restart with private key authentication
-2. App restart with external signer (Amber) authentication
-3. Logout and login within the same session
-4. Network disconnection and reconnection scenarios
-5. Force quit and restart of the application
+## Testing Tips
 
-## Future Considerations
+To test authentication persistence:
 
-- Consider adding a periodic auth token refresh mechanism
-- Explore background token validation to prevent session timeout
-- Implement token expiration handling if needed in the future
-- Potentially add multi-account support with secure credential switching
+1. Clear all security keys using the AuthPersistenceTest screen
+2. Create test keys and restart the app
+3. Verify credentials load correctly on restart
+4. Verify proper NDK initialization with loaded credentials
+5. Check logs for proper initialization sequence
+6. Toggle between auth systems to test compatibility of both approaches
+
+## Known Limitations
+
+- Legacy components that depend on React Query still need the QueryClientProvider wrapper
+- Components must handle the possibility that NDK might not be initialized yet
+- External signers require separate handling with dedicated hooks
