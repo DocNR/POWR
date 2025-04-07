@@ -1,6 +1,6 @@
 // components/workout/WorkoutCompletionFlow.tsx
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, ScrollView } from 'react-native';
+import { View, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,6 +20,7 @@ import {
   Cog
 } from 'lucide-react-native';
 import { TemplateService } from '@/lib/db/services/TemplateService';
+import { NostrWorkoutService } from '@/lib/db/services/NostrWorkoutService';
 import Confetti from '@/components/Confetti';
 
 /**
@@ -178,109 +179,41 @@ function StorageOptionsTab({
           </TouchableOpacity>
         )}
         
-        {/* Template options section - only if needed */}
-        {hasTemplateChanges && (
-          <>
-            <Separator className="my-2" />
-            
-            <Text className="text-lg font-semibold text-foreground">Template Options</Text>
-            <Text className="text-muted-foreground">
-              Your workout includes modifications to the original template
-            </Text>
-            
-            {/* Keep original option */}
-            <TouchableOpacity 
-              onPress={() => handleTemplateAction('keep_original')}
-              activeOpacity={0.7}
-            >
-              <Card 
-                style={options.templateAction === 'keep_original' ? { 
-                  borderColor: purpleColor,
-                  borderWidth: 1.5,
-                } : {}}
-              >
-                <CardContent className="p-4">
-                  <View>
-                    <Text className="font-medium text-foreground">Keep Original</Text>
-                    <Text className="text-sm text-muted-foreground">
-                      Don't update the template
-                    </Text>
-                  </View>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-            
-            {/* Update existing option */}
-            <TouchableOpacity 
-              onPress={() => handleTemplateAction('update_existing')}
-              activeOpacity={0.7}
-            >
-              <Card 
-                style={options.templateAction === 'update_existing' ? { 
-                  borderColor: purpleColor,
-                  borderWidth: 1.5,
-                } : {}}
-              >
-                <CardContent className="p-4">
-                  <View>
-                    <Text className="font-medium text-foreground">Update Template</Text>
-                    <Text className="text-sm text-muted-foreground">
-                      Save these changes to the original template
-                    </Text>
-                  </View>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-            
-            {/* Save as new option */}
-            <TouchableOpacity 
-              onPress={() => handleTemplateAction('save_as_new')}
-              activeOpacity={0.7}
-            >
-              <Card 
-                style={options.templateAction === 'save_as_new' ? { 
-                  borderColor: purpleColor,
-                  borderWidth: 1.5,
-                } : {}}
-              >
-                <CardContent className="p-4">
-                  <View>
-                    <Text className="font-medium text-foreground">Save as New</Text>
-                    <Text className="text-sm text-muted-foreground">
-                      Create a new template from this workout
-                    </Text>
-                  </View>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-            
-            {/* Template name input if save as new is selected */}
-            {options.templateAction === 'save_as_new' && (
-              <View className="mt-2 mb-4">
-                <Text className="text-sm mb-2">New template name:</Text>
-                <Input
-                  placeholder="My Custom Template"
-                  value={options.newTemplateName || activeWorkout?.title || ''}
-                  onChangeText={(text) => setOptions({
-                    ...options,
-                    newTemplateName: text
-                  })}
-                />
-              </View>
-            )}
-          </>
-        )}
+        {/* Workout Description field and Next button */}
+        <View>
+          <Text className="text-lg font-semibold text-foreground">Workout Notes</Text>
+          <Text className="text-muted-foreground mb-2">
+            Add context or details about your workout
+          </Text>
+          <Input
+            multiline
+            numberOfLines={4}
+            placeholder="Tough upper body workout today. Feeling stronger!"
+            value={options.workoutDescription || ''}
+            onChangeText={(text) => setOptions({
+              ...options,
+              workoutDescription: text
+            })}
+            className="min-h-[100px] p-3 bg-background dark:bg-muted border-[0.5px] border-input dark:border-0"
+            style={{ marginBottom: 16 }}
+          />
+        </View>
         
-        {/* Next button */}
+        {/* Next button with direct styling */}
         <Button 
           onPress={onNext}
-          className="w-full mb-6"
-          style={{ backgroundColor: purpleColor }}
+          className="w-full"
+          style={{ 
+            backgroundColor: purpleColor,
+            marginTop: 16
+          }}
         >
           <Text className="text-white font-medium">
             Next
           </Text>
         </Button>
+        
+        {/* Template options section removed as it was causing bugs */}
       </View>
     </ScrollView>
   );
@@ -507,34 +440,28 @@ function CelebrationTab({
   onComplete: (options: WorkoutCompletionOptions) => void
 }) {
   const { isAuthenticated } = useNDKCurrentUser();
-  const { activeWorkout } = useWorkoutStore();
+  const { activeWorkout, isPublishing, publishingStatus, publishError } = useWorkoutStore();
   const [showConfetti, setShowConfetti] = useState(true);
   const [shareMessage, setShareMessage] = useState('');
   
   // Purple color used throughout the app
   const purpleColor = 'hsl(261, 90%, 66%)';
   
-  // Generate default share message
+  // Disable buttons during publishing
+  const isDisabled = isPublishing;
+  
+  // Generate default share message on load
   useEffect(() => {
-    // Create default message based on workout data
-    let message = "Just completed a workout! 💪";
-    
     if (activeWorkout) {
-      const exerciseCount = activeWorkout.exercises.length;
-      const completedSets = activeWorkout.exercises.reduce(
-        (total, exercise) => total + exercise.sets.filter(set => set.isCompleted).length, 0
+      // Use the enhanced formatter from NostrWorkoutService
+      const formattedMessage = NostrWorkoutService.createFormattedSocialMessage(
+        activeWorkout,
+        "Just completed a workout! 💪"
       );
-      
-      // Add workout details
-      message = `Just completed a workout with ${exerciseCount} exercises and ${completedSets} sets! 💪`;
-      
-      // Add mock PR info
-      if (Math.random() > 0.5) {
-        message += " Hit some new PRs today! 🏆";
-      }
+      setShareMessage(formattedMessage);
+    } else {
+      setShareMessage("Just completed a workout! 💪 #powr #nostr");
     }
-    
-    setShareMessage(message);
   }, [activeWorkout]);
   
   const handleShare = () => {
@@ -573,6 +500,25 @@ function CelebrationTab({
             </Text>
           </View>
           
+          {/* Show publishing status */}
+          {isPublishing && (
+            <View className="mb-4 p-4 bg-primary/10 rounded-lg w-full">
+              <Text className="text-foreground font-medium mb-2 text-center">
+                {publishingStatus === 'saving' && 'Saving workout...'}
+                {publishingStatus === 'publishing-workout' && 'Publishing workout record...'}
+                {publishingStatus === 'publishing-social' && 'Sharing to Nostr...'}
+              </Text>
+              <ActivityIndicator size="small" className="my-2" />
+            </View>
+          )}
+          
+          {/* Show error if any */}
+          {publishError && (
+            <View className="mb-4 p-4 bg-destructive/10 rounded-lg w-full">
+              <Text className="text-destructive font-medium">{publishError}</Text>
+            </View>
+          )}
+          
           {/* Show sharing options for Nostr if appropriate */}
           {isAuthenticated && options.storageType !== 'local_only' && (
             <>
@@ -592,13 +538,18 @@ function CelebrationTab({
                   numberOfLines={4}
                   value={shareMessage}
                   onChangeText={setShareMessage}
-                  className="min-h-[120px] p-3 mb-4"
+                  className="min-h-[120px] p-3 mb-4 bg-background dark:bg-muted border-[0.5px] border-input dark:border-0"
+                  editable={!isDisabled}
                 />
                 
                 <Button
                   className="w-full mb-3"
-                  style={{ backgroundColor: purpleColor }}
+                  style={{ 
+                    backgroundColor: purpleColor,
+                    opacity: isDisabled ? 0.5 : 1 
+                  }}
                   onPress={handleShare}
+                  disabled={isDisabled}
                 >
                   <Text className="text-white font-medium">
                     Share to Nostr
@@ -609,6 +560,8 @@ function CelebrationTab({
                   variant="outline"
                   className="w-full"
                   onPress={handleSkip}
+                  disabled={isDisabled}
+                  style={{ opacity: isDisabled ? 0.5 : 1 }}
                 >
                   <Text>
                     Skip Sharing
@@ -622,7 +575,11 @@ function CelebrationTab({
           {(options.storageType === 'local_only' || !isAuthenticated) && (
             <Button
               className="w-full mt-4"
-              style={{ backgroundColor: purpleColor }}
+              style={{ 
+                backgroundColor: purpleColor,
+                opacity: isDisabled ? 0.5 : 1
+              }}
+              disabled={isDisabled}
               onPress={handleSkip}
             >
               <Text className="text-white font-medium">

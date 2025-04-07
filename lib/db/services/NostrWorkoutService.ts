@@ -27,7 +27,25 @@ export class NostrWorkoutService {
    * Creates a social share event that quotes the workout record
    */
   static createSocialShareEvent(workoutEventId: string, message: string): NostrEvent {
-    return this.createShareEvent(workoutEventId, '1301', message);
+    return {
+      kind: 1,
+      content: message,
+      tags: [
+        // Quote the event
+        ['q', workoutEventId],
+        // Add kind tag
+        ['k', '1301'],
+        // Add standard fitness tag
+        ['t', 'fitness'],
+        // Add workout tag
+        ['t', 'workout'],
+        // Add powr tag
+        ['t', 'powr'],
+        // Add client tag for Nostr client display
+        ['client', 'POWR App']
+      ],
+      created_at: Math.floor(Date.now() / 1000)
+    };
   }
 
   /**
@@ -66,11 +84,66 @@ export class NostrWorkoutService {
         ['t', 'fitness'],
         // Add content-specific tags
         ...contentTypeTags,
+        // Add client tag
+        ['client', 'POWR App'],
         // Add any additional tags
         ...additionalTags
       ],
       created_at: Math.floor(Date.now() / 1000)
     };
+  }
+
+  /**
+   * Creates a formatted social message for workout sharing
+   */
+  static createFormattedSocialMessage(workout: Workout, customMessage?: string): string {
+    // Format date and time
+    const startDate = new Date(workout.startTime);
+    const endDate = workout.endTime ? new Date(workout.endTime) : new Date();
+    const formattedDate = startDate.toLocaleDateString();
+    const startTime = startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const endTime = endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    // Calculate duration
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const hours = Math.floor(durationMs / (1000 * 60 * 60));
+    const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    // Calculate total volume
+    const totalVolume = workout.exercises.reduce((total, ex) => 
+      total + ex.sets.reduce((sum, set) => sum + ((set.weight || 0) * (set.reps || 0)), 0), 0);
+    
+    // Format the message
+    let formattedMessage = 
+      `${customMessage || ''}\n\n` +
+      `#workout #${workout.type} #powr\n\n` +
+      `🏋️ ${workout.title}\n` +
+      `📅 ${formattedDate} ${startTime}-${endTime}\n` +
+      `⏱️ Duration: ${hours > 0 ? `${hours}h ` : ''}${minutes}m\n` +
+      `💪 Total Volume: ${totalVolume.toLocaleString()} kg\n\n`;
+
+    // Add exercise details
+    workout.exercises.forEach(exercise => {
+      // Just use one of a few basic emojis
+      let exerciseEmoji = "⚡"; // Zap as requested
+      
+      // Or alternatively use a small set based on broad categories
+      if (exercise.type === "cardio") {
+        exerciseEmoji = "🏃";
+      } else if (exercise.type === "strength") {
+        exerciseEmoji = "🏋️";
+      }
+      
+      formattedMessage += `${exerciseEmoji} ${exercise.title}\n`;
+      
+      exercise.sets.filter(set => set.isCompleted).forEach((set, index) => {
+        formattedMessage += `${index + 1}. ${set.weight || 0} Kg x ${set.reps || 0} Reps\n`;
+      });
+      
+      formattedMessage += '\n';
+    });
+    
+    return formattedMessage;
   }
 
   /**

@@ -96,6 +96,9 @@ export interface WorkoutCompletionOptions {
   // Template update options
   templateAction: 'keep_original' | 'update_existing' | 'save_as_new';
   newTemplateName?: string;
+  
+  // Workout description - added to the workout record content
+  workoutDescription?: string;
 }
 
 /**

@@ -5,6 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Removed
+- Removed "Use Template" button from the home screen for MVP
+  - Simplified UI to focus on Quick Start option for MVP
+  - Preserved underlying functionality for future re-implementation
+
+### Fixed
+- UI issues in workout completion flow
+  - Fixed weird line across input box in the 1301 event content box by adding subtle border styling
+  - Removed template options section that was causing bugs with workout templates
+  - Updated input styling to use consistent design across all multiline inputs
+  - Made input boxes clearly visible in light mode with thin borders
+  - Standardized spacing between input fields and buttons
+### Fixed
+- Exercise display improvements in social feeds and history
+  - Fixed exercise IDs showing instead of proper names in social feeds and history tabs
+  - Enhanced exercise name resolution with improved POWR format ID handling
+  - Enhanced exercise name resolution in workout history service
+  - Improved exercise name extraction for social feed posts
+  - Added comprehensive pattern matching for common exercises
+  - Added fallback naming strategies for unrecognized exercise IDs
+  - Implemented database lookup system for exercise titles
+  - Added name resolution for UUID-based exercise IDs in social feed
+  - Enhanced workout templates to display proper exercise names
+  - Resolved exercise titles in social feed posts via database integration
+  - Added specific handling for "local:" prefixed IDs in exercise naming
+  - Improved debug logging for exercise name resolution
+  - Enhanced EnhancedSocialPost components with multi-strategy name resolution
 ### Added
 - Authentication persistence debugging tools
   - Created dedicated AuthPersistenceTest screen for diagnosing credential issues
@@ -26,6 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved user experience during temporary API failures
 
 ### Improved
+- Workout completion flow and publishing process
+  - Added workout description field for better context in workout records
+  - Enhanced NostrWorkoutService with client tag for better Nostr client display
+  - Improved social message formatting with comprehensive workout details
+  - Added publication state tracking (saving, publishing, error states)
+  - Enhanced error handling with descriptive messages
+  - Added visual indicators for publishing progress
+  - Implemented navigation guards to prevent back navigation during publishing
+  - Added formatted workout summary in social posts (date, time, duration, volume)
+  - Improved accessibility with disabled UI elements during publishing
+
 - Authentication initialization sequence
   - Added proper awaiting of NDK relay connections
   - Implemented credential migration before authentication starts
@@ -685,53 +723,4 @@ g
   - Created POWRPackService for fetching, importing, and managing packs
   - Built NostrIntegration helper for conversion between Nostr events and local models
   - Implemented interface to browse and import workout packs from the community
-  - Added pack management screen with import/delete functionality
-  - Created pack discovery in POWR Community tab
-  - Added dependency tracking for exercises required by templates
-  - Implemented selective import with smart dependency management
-  - Added clipboard support for sharing pack addresses
-
-## Improved
-- Enhanced Social experience
-  - Added POWR Pack discovery to POWR Community tab
-  - Implemented horizontal scrolling gallery for featured packs
-  - Added loading states with skeleton UI
-  - Improved visual presentation of shared content
-- Settings drawer enhancements
-  - Added POWR Packs management option
-  - Improved navigation structure
-- Nostr integration
-  - Added support for NIP-51 lists (kind 30004)
-  - Enhanced compatibility between app models and Nostr events
-  - Improved type safety for Nostr operations
-  - Better error handling for network operations
-  - Expanded event type support for templates and exercises
-  
-# Changelog - March 9, 2025
-
-## Added
-- Relay management system
-  - Added relays table to SQLite schema (version 3)
-  - Created RelayService for database operations
-  - Implemented RelayStore using Zustand for state management
-  - Added compatibility layer for NDK and NDK-mobile
-  - Added relay management UI in settings drawer
-  - Implemented relay connection status tracking
-  - Added support for read/write permissions
-  - Created relay initialization system with defaults
-
-## Improved
-- Enhanced NDK initialization
-  - Added proper relay configuration loading
-  - Improved connection status tracking
-  - Enhanced error handling for relay operations
-- Settings drawer enhancements
-  - Added relay management option
-  - Improved navigation structure
-  - Enhanced user interface
-- NDK compatibility
-  - Created universal interfaces for NDK implementations
-  - Added type safety for complex operations
-  - Improved error handling throughout relay management
-
-# Changelog - March 8,
+  - Added pack management screen

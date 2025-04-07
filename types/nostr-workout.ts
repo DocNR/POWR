@@ -129,9 +129,13 @@ export function parseWorkoutRecord(event: NDKEvent): ParsedWorkoutRecord {
       const reference = tag[1] || '';
       const parts = reference.split(':');
       
+      const id = parts.length > 2 ? parts[2] : reference;
+      // Get a basic name, will be improved by lookupExerciseTitle in UI components
+      const name = extractExerciseName(reference);
+      
       return {
-        id: parts.length > 2 ? parts[2] : reference,
-        name: extractExerciseName(reference),
+        id,
+        name,
         weight: tag[3] ? parseFloat(tag[3]) : undefined,
         reps: tag[4] ? parseInt(tag[4]) : undefined,
         rpe: tag[5] ? parseFloat(tag[5]) : undefined,
@@ -386,14 +390,161 @@ export function parseLongformContent(event: NDKEvent): ParsedLongformContent {
   };
 }
 
-// Extract exercise name from reference - this should be replaced with lookup from your database
-function extractExerciseName(reference: string): string {
-  // This is a placeholder function
-  // In production, you would look up the exercise name from your database
-  // For now, just return a formatted version of the reference
-  const parts = reference.split(':');
-  if (parts.length > 2) {
-    return `Exercise ${parts[2].substring(0, 6)}`;
+// Extract exercise name from reference 
+export function extractExerciseName(reference: string): string {
+  if (!reference) return 'Exercise';
+  
+  // Handle the "local:" prefix pattern seen in logs (e.g., "local:m94c2cm7-mrhvwgfcr0b")
+  if (reference.startsWith('local:')) {
+    const localIdentifier = reference.substring(6); // Remove "local:" prefix
+    
+    // Use the UUID pattern for local IDs
+    if (localIdentifier.includes('-')) {
+      const parts = localIdentifier.split('-');
+      if (parts.length === 2) {
+        // Format might be something like "m94c2cm7-mrhvwgfcr0b"
+        return `Exercise ${parts[0].substring(0, 4)}`;
+      }
+    }
   }
-  return 'Unknown Exercise';
+  
+  // Split the reference to get the parts for standard format
+  const parts = reference.split(':');
+  
+  // Get the identifier part (usually the last part)
+  let identifier = '';
+  if (parts.length > 2) {
+    identifier = parts[2];
+  } else if (reference) {
+    identifier = reference;
+  }
+  
+  // Enhanced naming detection for common exercises
+  
+  // Bench variations
+  if (identifier.match(/bench[-_]?press/i) || 
+      identifier.match(/chest[-_]?press/i)) return 'Bench Press';
+  
+  // Squat variations
+  if (identifier.match(/squat/i)) {
+    if (identifier.match(/front/i)) return 'Front Squat';
+    if (identifier.match(/back/i)) return 'Back Squat';
+    if (identifier.match(/goblet/i)) return 'Goblet Squat';
+    return 'Squat';
+  }
+  
+  // Deadlift variations
+  if (identifier.match(/deadlift/i)) {
+    if (identifier.match(/romanian/i) || identifier.match(/rdl/i)) return 'Romanian Deadlift';
+    if (identifier.match(/stiff[-_]?leg/i) || identifier.match(/sldl/i)) return 'Stiff-Leg Deadlift';
+    if (identifier.match(/sumo/i)) return 'Sumo Deadlift';
+    return 'Deadlift';
+  }
+  
+  // Press variations
+  if (identifier.match(/shoulder[-_]?press/i) || 
+      identifier.match(/overhead[-_]?press/i) || 
+      identifier.match(/ohp/i)) return 'Shoulder Press';
+  
+  // Pull variations  
+  if (identifier.match(/pull[-_]?up/i)) return 'Pull Up';
+  if (identifier.match(/chin[-_]?up/i)) return 'Chin Up';
+  
+  // Push variations
+  if (identifier.match(/push[-_]?up/i)) return 'Push Up';
+  if (identifier.match(/dip/i)) return 'Dip';
+  
+  // Row variations
+  if (identifier.match(/row/i)) {
+    if (identifier.match(/barbell/i)) return 'Barbell Row';
+    if (identifier.match(/dumbbell/i) || identifier.match(/db/i)) return 'Dumbbell Row';
+    return 'Row';
+  }
+  
+  // Back exercises
+  if (identifier.match(/lat[-_]?pulldown/i) || identifier.match(/lat[-_]?pull/i)) return 'Lat Pulldown';
+  
+  // Arm exercises
+  if (identifier.match(/bicep[-_]?curl/i) || identifier.match(/curl/i)) return 'Bicep Curl';
+  if (identifier.match(/tricep/i)) {
+    if (identifier.match(/extension/i)) return 'Tricep Extension';
+    if (identifier.match(/pushdown/i)) return 'Tricep Pushdown';
+    return 'Tricep Exercise';
+  }
+  
+  // Leg exercises
+  if (identifier.match(/leg[-_]?press/i)) return 'Leg Press';
+  if (identifier.match(/leg[-_]?curl/i)) return 'Leg Curl';
+  if (identifier.match(/leg[-_]?ext/i)) return 'Leg Extension';
+  if (identifier.match(/calf[-_]?raise/i)) return 'Calf Raise';
+  if (identifier.match(/lunge/i)) return 'Lunge';
+  
+  // Core exercises
+  if (identifier.match(/plank/i)) return 'Plank';
+  if (identifier.match(/crunch/i)) return 'Crunch';
+  if (identifier.match(/sit[-_]?up/i)) return 'Sit Up';
+  
+  // If the ID appears to contain a name with dashes or underscores
+  if (identifier.includes('-') || identifier.includes('_')) {
+    // Extract name parts and create a more readable name
+    const words = identifier.split(/[-_]/).filter(word => /^[a-zA-Z]+$/.test(word));
+    if (words.length > 0) {
+      return words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+    }
+  }
+  
+    // For POWR's specific ID format: mXXXXXXX-XXXXXXXXXX
+    if (identifier.match(/^m[a-z0-9]{7}-[a-z0-9]{10}$/i)) {
+      // This matches patterns like "m8l428e1-3yedofspbpy"
+      // Get the first 4 characters after 'm' and capitalize
+      return `Exercise ${identifier.substring(1, 5).toUpperCase()}`;
+    }
+    
+    // For UUIDs and other random IDs
+    if (identifier.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      return 'Exercise';  // Will be resolved by lookupExerciseTitle later
+    }
+  
+  // For any unrecognized format with alphabetic characters, try to make it readable
+  if (/[a-zA-Z]/.test(identifier)) {
+    // Break camelCase
+    const nameParts = identifier.replace(/([a-z])([A-Z])/g, '$1 $2').split(' ');
+    return nameParts.map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ');
+  }
+  
+  // Last resort fallback
+  return 'Exercise';
+}
+
+// Global variable to store a database connection that can be set from outside
+let _dbConnection: any = null;
+
+// Function to set the database connection from outside this module
+export function setDatabaseConnection(db: any) {
+  _dbConnection = db;
+}
+
+// Function to look up an exercise title from the database
+export async function lookupExerciseTitle(exerciseId: string): Promise<string | null> {
+  try {
+    if (!_dbConnection) {
+      console.warn('No DB connection available for exercise title lookup');
+      return null;
+    }
+    
+    // Query the database for the exercise title
+    const exercise = await _dbConnection.getFirstAsync(
+      `SELECT title FROM exercises WHERE id = ?`,
+      [exerciseId]
+    );
+    
+    if (exercise && typeof exercise.title === 'string') {
+      return exercise.title;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error looking up exercise title:', error);
+    return null;
+  }
 }

@@ -557,8 +557,8 @@ export class UnifiedWorkoutHistoryService {
           
           if (!parsedWorkout) continue;
           
-          // Convert to Workout type
-          const workout = this.convertParsedWorkoutToWorkout(parsedWorkout, event);
+          // Convert to Workout type - make sure to await it
+          const workout = await this.convertParsedWorkoutToWorkout(parsedWorkout, event);
           workouts.push(workout);
         } catch (error) {
           console.error('Error parsing workout event:', error);
@@ -575,7 +575,41 @@ export class UnifiedWorkoutHistoryService {
   /**
    * Convert a parsed workout record to a Workout object
    */
-  private convertParsedWorkoutToWorkout(parsedWorkout: ParsedWorkoutRecord, event: NDKEvent): Workout {
+  private async convertParsedWorkoutToWorkout(parsedWorkout: ParsedWorkoutRecord, event: NDKEvent): Promise<Workout> {
+    // First, resolve all exercise names before constructing the workout object
+    const exercises = await Promise.all(parsedWorkout.exercises.map(async (ex) => {
+      // Get a human-readable name for the exercise
+      // If ex.name is an ID (typically starts with numbers or contains special characters),
+      // use a more descriptive name based on the exercise type
+      const isLikelyId = /^[0-9]|:|\//.test(ex.name);
+      const exerciseName = isLikelyId 
+        ? await this.getExerciseNameFromId(ex.id) 
+        : ex.name;
+      
+      return {
+        id: ex.id,
+        title: exerciseName,
+        exerciseId: ex.id,
+        type: 'strength' as const,
+        category: 'Core' as const,
+        sets: [{
+          id: generateId('nostr'),
+          weight: ex.weight,
+          reps: ex.reps,
+          rpe: ex.rpe,
+          type: (ex.setType as any) || 'normal',
+          isCompleted: true
+        }],
+        isCompleted: true,
+        created_at: parsedWorkout.createdAt,
+        lastUpdated: parsedWorkout.createdAt,
+        availability: { 
+          source: ['nostr' as 'nostr'] // Explicitly cast to StorageSource
+        },
+        tags: []
+      };
+    }));
+    
     return {
       id: parsedWorkout.id,
       title: parsedWorkout.title,
@@ -586,38 +620,7 @@ export class UnifiedWorkoutHistoryService {
       notes: parsedWorkout.notes,
       created_at: parsedWorkout.createdAt,
       lastUpdated: parsedWorkout.createdAt,
-      
-      // Convert exercises
-      exercises: parsedWorkout.exercises.map(ex => {
-        // Get a human-readable name for the exercise
-        // If ex.name is an ID (typically starts with numbers or contains special characters),
-        // use a more descriptive name based on the exercise type
-        const isLikelyId = /^[0-9]|:|\//.test(ex.name);
-        const exerciseName = isLikelyId 
-          ? this.getExerciseNameFromId(ex.id) || `Exercise ${ex.id.substring(0, 4)}` 
-          : ex.name;
-          
-        return {
-          id: ex.id,
-          title: exerciseName,
-          exerciseId: ex.id,
-          type: 'strength',
-          category: 'Core',
-          sets: [{
-            id: generateId('nostr'),
-            weight: ex.weight,
-            reps: ex.reps,
-            rpe: ex.rpe,
-            type: (ex.setType as any) || 'normal',
-            isCompleted: true
-          }],
-          isCompleted: true,
-          created_at: parsedWorkout.createdAt,
-          lastUpdated: parsedWorkout.createdAt,
-          availability: { source: ['nostr'] },
-          tags: []
-        };
-      }),
+      exercises,
       
       // Add Nostr-specific metadata
       availability: {
@@ -633,14 +636,25 @@ export class UnifiedWorkoutHistoryService {
    * This method attempts to look up the exercise in the local database
    * or use a mapping of common exercise IDs to names
    */
-  private getExerciseNameFromId(exerciseId: string): string | null {
+  private async getExerciseNameFromId(exerciseId: string): Promise<string> {
     try {
-      // Common exercise name mappings
+      // First, try to get the exercise name from the database
+      const exercise = await this.db.getFirstAsync<{ title: string }>(
+        `SELECT title FROM exercises WHERE id = ?`,
+        [exerciseId]
+      );
+      
+      if (exercise && exercise.title) {
+        return exercise.title;
+      }
+      
+      // Expanded common exercise name mappings
       const commonExercises: Record<string, string> = {
         'bench-press': 'Bench Press',
         'squat': 'Squat',
         'deadlift': 'Deadlift',
         'shoulder-press': 'Shoulder Press',
+        'overhead-press': 'Overhead Press',
         'pull-up': 'Pull Up',
         'push-up': 'Push Up',
         'barbell-row': 'Barbell Row',
@@ -656,21 +670,100 @@ export class UnifiedWorkoutHistoryService {
         'lunge': 'Lunge',
         'dip': 'Dip',
         'chin-up': 'Chin Up',
-        'military-press': 'Military Press'
+        'military-press': 'Military Press',
+        // Add more common exercises
+        'chest-press': 'Chest Press',
+        'chest-fly': 'Chest Fly',
+        'row': 'Row',
+        'push-down': 'Push Down',
+        'lateral-raise': 'Lateral Raise',
+        'front-raise': 'Front Raise',
+        'rear-delt-fly': 'Rear Delt Fly',
+        'face-pull': 'Face Pull',
+        'shrug': 'Shrug',
+        'crunch': 'Crunch',
+        'russian-twist': 'Russian Twist',
+        'leg-raise': 'Leg Raise',
+        'glute-bridge': 'Glute Bridge',
+        'hip-thrust': 'Hip Thrust',
+        'back-extension': 'Back Extension',
+        'good-morning': 'Good Morning',
+        'rdl': 'Romanian Deadlift',
+        'romanian-deadlift': 'Romanian Deadlift',
+        'hack-squat': 'Hack Squat',
+        'front-squat': 'Front Squat',
+        'goblet-squat': 'Goblet Squat',
+        'bulgarian-split-squat': 'Bulgarian Split Squat',
+        'split-squat': 'Split Squat',
+        'step-up': 'Step Up',
+        'calf-press': 'Calf Press',
+        'seated-calf-raise': 'Seated Calf Raise',
+        'standing-calf-raise': 'Standing Calf Raise',
+        'preacher-curl': 'Preacher Curl',
+        'hammer-curl': 'Hammer Curl',
+        'concentration-curl': 'Concentration Curl',
+        'skull-crusher': 'Skull Crusher',
+        'tricep-pushdown': 'Tricep Pushdown',
+        'tricep-kickback': 'Tricep Kickback',
+        'cable-row': 'Cable Row',
+        'cable-fly': 'Cable Fly',
+        'cable-curl': 'Cable Curl',
+        'cable-extension': 'Cable Extension',
+        'cable-lateral-raise': 'Cable Lateral Raise',
+        'cable-face-pull': 'Cable Face Pull',
+        'machine-chest-press': 'Machine Chest Press',
+        'machine-shoulder-press': 'Machine Shoulder Press',
+        'machine-row': 'Machine Row',
+        'machine-lat-pulldown': 'Machine Lat Pulldown',
+        'machine-bicep-curl': 'Machine Bicep Curl',
+        'machine-tricep-extension': 'Machine Tricep Extension',
+        'machine-leg-press': 'Machine Leg Press',
+        'machine-leg-extension': 'Machine Leg Extension',
+        'machine-leg-curl': 'Machine Leg Curl',
+        'machine-calf-raise': 'Machine Calf Raise',
+        'smith-machine-squat': 'Smith Machine Squat',
+        'smith-machine-bench-press': 'Smith Machine Bench Press',
+        'smith-machine-shoulder-press': 'Smith Machine Shoulder Press',
+        'smith-machine-row': 'Smith Machine Row',
+        'smith-machine-calf-raise': 'Smith Machine Calf Raise',
+        'incline-bench-press': 'Incline Bench Press',
+        'incline-dumbbell-press': 'Incline Dumbbell Press',
+        'decline-bench-press': 'Decline Bench Press',
+        'decline-dumbbell-press': 'Decline Dumbbell Press',
+        'dumbbell-fly': 'Dumbbell Fly',
+        'dumbbell-row': 'Dumbbell Row',
+        'dumbbell-press': 'Dumbbell Press',
+        'dumbbell-curl': 'Dumbbell Curl',
+        'dumbbell-lateral-raise': 'Dumbbell Lateral Raise',
+        'dumbbell-front-raise': 'Dumbbell Front Raise',
+        'dumbbell-rear-delt-fly': 'Dumbbell Rear Delt Fly',
+        'dumbbell-shrug': 'Dumbbell Shrug',
+        'ez-bar-curl': 'EZ Bar Curl',
+        'ez-bar-skull-crusher': 'EZ Bar Skull Crusher',
+        'ez-bar-preacher-curl': 'EZ Bar Preacher Curl'
       };
       
       // Check if it's a common exercise
       for (const [key, name] of Object.entries(commonExercises)) {
-        if (exerciseId.includes(key)) {
+        if (exerciseId.toLowerCase().includes(key.toLowerCase())) {
           return name;
         }
       }
       
-      // Handle specific format seen in logs: "Exercise m8l4pk"
-      if (exerciseId.match(/^m[0-9a-z]{5,6}$/)) {
-        // This appears to be a short ID, return a generic name with a number
-        const shortId = exerciseId.substring(1, 4).toUpperCase();
-        return `Exercise ${shortId}`;
+      // Handle specific format seen in logs: "Exercise m8l4pk" or other ID-like patterns
+      if (exerciseId.match(/^[a-z][0-9a-z]{4,6}$/i) || exerciseId.match(/^[0-9a-f]{8,}$/i)) {
+        // Look in the database again, but with a more flexible search
+        const fuzzyMatch = await this.db.getFirstAsync<{ title: string }>(
+          `SELECT title FROM exercises WHERE id LIKE ? LIMIT 1`,
+          [`%${exerciseId.substring(0, 4)}%`]
+        );
+        
+        if (fuzzyMatch && fuzzyMatch.title) {
+          return fuzzyMatch.title;
+        }
+        
+        // If all else fails, convert the ID to a nicer format
+        return `Exercise ${exerciseId.substring(0, 4).toUpperCase()}`;
       }
       
       // If not found in common exercises, try to extract a name from the ID
@@ -999,8 +1092,8 @@ export class UnifiedWorkoutHistoryService {
       throw new Error(`Failed to parse workout from event ${eventId}`);
     }
     
-    // Convert to Workout type
-    const workout = this.convertParsedWorkoutToWorkout(parsedWorkout, event);
+    // Convert to Workout type - make sure to await it
+    const workout = await this.convertParsedWorkoutToWorkout(parsedWorkout, event);
     
     // Update the source to include both local and Nostr
     workout.availability.source = ['nostr', 'local'];
@@ -1106,11 +1199,12 @@ export class UnifiedWorkoutHistoryService {
     }, { closeOnEose: false });
     
     // Handle events
-    sub.on('event', (event: NDKEvent) => {
+    sub.on('event', async (event: NDKEvent) => {
       try {
         const parsedWorkout = parseWorkoutRecord(event);
         if (parsedWorkout) {
-          const workout = this.convertParsedWorkoutToWorkout(parsedWorkout, event);
+          // Make sure to await the async conversion
+          const workout = await this.convertParsedWorkoutToWorkout(parsedWorkout, event);
           callback(workout);
         }
       } catch (error) {
@@ -1220,7 +1314,7 @@ export class UnifiedWorkoutHistoryService {
           created_at: exercise.created_at,
           lastUpdated: exercise.updated_at,
           isCompleted: mappedSets.every(set => set.isCompleted),
-          availability: { source: ['local'] }
+          availability: { source: ['local' as 'local'] } // Explicitly cast to StorageSource
         });
       }
       

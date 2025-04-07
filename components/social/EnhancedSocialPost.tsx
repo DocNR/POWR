@@ -18,6 +18,7 @@ import {
 } from '@/types/nostr-workout';
 import { formatDistance } from 'date-fns';
 import Markdown from 'react-native-markdown-display';
+import { useExerciseNames, useTemplateExerciseNames } from '@/lib/hooks/useExerciseNames';
 
 // Helper functions for all components to use
 // Format timestamp
@@ -236,6 +237,33 @@ export default function EnhancedSocialPost({ item, onPress }: SocialPostProps) {
 
 // Component for workout records
 function WorkoutContent({ workout }: { workout: ParsedWorkoutRecord }) {
+  // Use our React Query hook for resolving exercise names
+  const { 
+    data: exerciseNames = {}, 
+    isLoading,
+    isError
+  } = useExerciseNames(workout);
+
+  // Add enhanced logging for debugging
+  useEffect(() => {
+    console.log('[DEBUG] Original workout exercises:', workout.exercises);
+    console.log('[DEBUG] Resolved exercise names:', exerciseNames);
+  }, [workout.exercises, exerciseNames]);
+
+  // Log status for debugging
+  useEffect(() => {
+    if (isLoading) {
+      console.log('[WorkoutContent] Loading exercise names...');
+    } else if (isError) {
+      console.error('[WorkoutContent] Error loading exercise names');
+    } else if (exerciseNames) {
+      // Log more details about each exercise ID for debugging
+      Object.entries(exerciseNames).forEach(([id, name]) => {
+        console.log(`[WorkoutContent] Exercise ${id} resolved to: ${name}`);
+      });
+    }
+  }, [isLoading, isError, exerciseNames]);
+  
   return (
     <View>
       <Text className="text-lg font-semibold mb-2">{workout.title}</Text>
@@ -262,14 +290,53 @@ function WorkoutContent({ workout }: { workout: ParsedWorkoutRecord }) {
         {workout.exercises.length > 0 && (
           <View>
             <Text className="font-medium mb-1">Exercises:</Text>
-            {workout.exercises.slice(0, 3).map((exercise, index) => (
-              <Text key={index} className="text-sm">
-                • {exercise.name} 
-                {exercise.weight ? ` - ${exercise.weight}kg` : ''}
-                {exercise.reps ? ` × ${exercise.reps}` : ''}
-                {exercise.rpe ? ` @ RPE ${exercise.rpe}` : ''}
-              </Text>
-            ))}
+            {workout.exercises.slice(0, 3).map((exercise, index) => {
+              // Get the exercise ID
+              const exerciseId = exercise.id;
+              
+              // Enhanced name resolution with multiple strategies
+              let displayName;
+              
+              // Strategy 1: Check exerciseNames from useExerciseNames hook
+              if (exerciseNames[exerciseId]) {
+                displayName = exerciseNames[exerciseId];
+                console.log(`[SocialFeed] Using resolved name for ${exerciseId}: ${displayName}`);
+              }
+              // Strategy 2: Check existing name if it's meaningful
+              else if (exercise.name && exercise.name !== 'Exercise' && exercise.name !== 'Unknown Exercise') {
+                displayName = exercise.name;
+                console.log(`[SocialFeed] Using original name for ${exerciseId}: ${displayName}`);
+              }
+              // Strategy 3: Format POWR-specific IDs nicely
+              else if (exerciseId && exerciseId.match(/^m[a-z0-9]{7}-[a-z0-9]{10}$/i)) {
+                displayName = `Exercise ${exerciseId.substring(1, 5).toUpperCase()}`;
+                console.log(`[SocialFeed] Formatting POWR ID ${exerciseId} to: ${displayName}`);
+              }
+              // Strategy 4: Handle "local:" prefix
+              else if (exerciseId && exerciseId.startsWith('local:')) {
+                const localId = exerciseId.substring(6);
+                if (localId.match(/^m[a-z0-9]{7}-[a-z0-9]{10}$/i)) {
+                  displayName = `Exercise ${localId.substring(1, 5).toUpperCase()}`;
+                  console.log(`[SocialFeed] Formatting local POWR ID ${exerciseId} to: ${displayName}`);
+                } else {
+                  displayName = `Exercise ${index + 1}`;
+                }
+              }
+              // Strategy 5: Last resort fallback
+              else {
+                displayName = `Exercise ${index + 1}`;
+                console.log(`[SocialFeed] Using fallback name for ${exerciseId}: ${displayName}`);
+              }
+              
+              return (
+                <Text key={index} className="text-sm">
+                  • {displayName}
+                  {exercise.weight ? ` - ${exercise.weight}kg` : ''}
+                  {exercise.reps ? ` × ${exercise.reps}` : ''}
+                  {exercise.rpe ? ` @ RPE ${exercise.rpe}` : ''}
+                </Text>
+              );
+            })}
             {workout.exercises.length > 3 && (
               <Text className="text-xs text-muted-foreground mt-1">
                 +{workout.exercises.length - 3} more exercises
@@ -336,6 +403,28 @@ function ExerciseContent({ exercise }: { exercise: ParsedExerciseTemplate }) {
 
 // Component for workout templates
 function TemplateContent({ template }: { template: ParsedWorkoutTemplate }) {
+  // Use our React Query hook for resolving template exercise names
+  const { 
+    data: exerciseNames = {}, 
+    isLoading,
+    isError 
+  } = useTemplateExerciseNames(template.id, template.exercises);
+  
+  // Log status for debugging with more detailed information
+  useEffect(() => {
+    if (isLoading) {
+      console.log('[TemplateContent] Loading exercise names...');
+    } else if (isError) {
+      console.error('[TemplateContent] Error loading exercise names');
+    } else if (exerciseNames) {
+      // Log more details about each exercise ID for debugging
+      Object.entries(exerciseNames).forEach(([id, name]) => {
+        console.log(`[TemplateContent] Exercise ${id} resolved to: ${name}`);
+      });
+      console.log('[TemplateContent] Exercise names loaded:', exerciseNames);
+    }
+  }, [isLoading, isError, exerciseNames]);
+  
   return (
     <View>
       <Text className="text-lg font-semibold mb-2">{template.title}</Text>
@@ -368,11 +457,36 @@ function TemplateContent({ template }: { template: ParsedWorkoutTemplate }) {
         {template.exercises.length > 0 && (
           <View>
             <Text className="font-medium mb-1">Exercises:</Text>
-            {template.exercises.slice(0, 3).map((exercise, index) => (
-              <Text key={index} className="text-sm">
-                • {exercise.name || 'Exercise ' + (index + 1)}
-              </Text>
-            ))}
+            {template.exercises.slice(0, 3).map((exercise, index) => {
+              // Get the exercise ID for better debugging
+              const exerciseId = exercise.reference;
+              
+              // First try to get the name from exerciseNames
+              let displayName = exerciseNames[exerciseId];
+              
+              // If no name found, try to use the existing name
+              if (!displayName && exercise.name && exercise.name !== 'Exercise') {
+                displayName = exercise.name;
+              }
+              
+              // Special handling for POWR-specific ID format (Mxxxxxxx-xxxxxxxxxx)
+              if (!displayName && exerciseId && exerciseId.match(/^m[a-z0-9]{7}-[a-z0-9]{10}$/i)) {
+                // Create a better-looking name from the ID: first 4 chars after the 'm'
+                displayName = `Exercise ${exerciseId.substring(1, 5).toUpperCase()}`;
+                console.log(`[TemplateContent] Formatted POWR ID ${exerciseId} to ${displayName}`);
+              }
+              
+              // Final fallback
+              if (!displayName) {
+                displayName = `Exercise ${index + 1}`;
+              }
+              
+              return (
+                <Text key={index} className="text-sm">
+                  • {displayName}
+                </Text>
+              );
+            })}
             {template.exercises.length > 3 && (
               <Text className="text-xs text-muted-foreground mt-1">
                 +{template.exercises.length - 3} more exercises
@@ -504,16 +618,58 @@ function ArticleQuote({ article }: { article: ParsedLongformContent }) {
 // Simplified versions of content for quoted posts
 
 function WorkoutQuote({ workout }: { workout: ParsedWorkoutRecord }) {
+  // Use our hook for resolving exercise names
+  const { data: exerciseNames = {} } = useExerciseNames(workout);
+  
+  // Count properly named exercises for better display
+  const namedExerciseCount = workout.exercises.slice(0, 2).map(ex => {
+    const exerciseId = ex.id;
+    
+    // Enhanced name resolution with multiple strategies
+    let displayName;
+    
+    // Strategy 1: Check exerciseNames from hook
+    if (exerciseNames[exerciseId]) {
+      displayName = exerciseNames[exerciseId];
+    }
+    // Strategy 2: Check existing name if it's meaningful
+    else if (ex.name && ex.name !== 'Exercise' && ex.name !== 'Unknown Exercise') {
+      displayName = ex.name;
+    }
+    // Strategy 3: Format POWR-specific IDs nicely
+    else if (exerciseId && exerciseId.match(/^m[a-z0-9]{7}-[a-z0-9]{10}$/i)) {
+      displayName = `Exercise ${exerciseId.substring(1, 5).toUpperCase()}`;
+    }
+    // Strategy 4: Handle "local:" prefix
+    else if (exerciseId && exerciseId.startsWith('local:')) {
+      const localId = exerciseId.substring(6);
+      if (localId.match(/^m[a-z0-9]{7}-[a-z0-9]{10}$/i)) {
+        displayName = `Exercise ${localId.substring(1, 5).toUpperCase()}`;
+      } else {
+        displayName = `Exercise`;
+      }
+    }
+    // Final fallback
+    else {
+      displayName = `Exercise`;
+    }
+    
+    return displayName;
+  });
+  
   return (
     <View>
       <Text className="font-medium">{workout.title}</Text>
       <Text className="text-sm text-muted-foreground">
         {workout.exercises.length} exercises • {
-          workout.startTime && workout.endTime ? 
-          formatDuration(workout.endTime - workout.startTime) : 
-          'Duration N/A'
-        }
+          namedExerciseCount.length > 0 ? namedExerciseCount.join(', ') : ''
+        } {namedExerciseCount.length < workout.exercises.length && workout.exercises.length > 2 ? '...' : ''}
       </Text>
+      {workout.startTime && workout.endTime && (
+        <Text className="text-xs text-muted-foreground">
+          Duration: {formatDuration(workout.endTime - workout.startTime)}
+        </Text>
+      )}
     </View>
   );
 }

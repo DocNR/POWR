@@ -249,7 +249,7 @@ export default function WorkoutScreen() {
           Begin a new workout or choose from one of your templates.
         </Text>
         
-        {/* Buttons from HomeWorkout but directly here */}
+        {/* Quick Start button */}
         <View className="gap-4">
           <Button 
             variant="default"  // This ensures it uses the primary purple color
@@ -258,14 +258,6 @@ export default function WorkoutScreen() {
             style={{ backgroundColor: purpleColor }}
           >
             <Text className="text-white font-medium">Quick Start</Text>
-          </Button>
-          
-          <Button 
-            variant="outline"
-            className="w-full"
-            onPress={handleSelectTemplate}
-          >
-            <Text>Use Template</Text>
           </Button>
         </View>
       </View>

@@ -13,6 +13,7 @@ import { logDatabaseInfo } from '@/lib/db/debug';
 import { useNDKStore } from '@/lib/stores/ndk';
 import { useLibraryStore } from '@/lib/stores/libraryStore';
 import { createLogger, setQuietMode } from '@/lib/utils/logger';
+import { setDatabaseConnection } from '@/types/nostr-workout';
 
 // Create database-specific logger
 const logger = createLogger('DatabaseProvider');
@@ -107,6 +108,14 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   React.useEffect(() => {
     if (isReady && services.db) {
       console.log('[DB] Database ready - triggering initial library refresh');
+      // Set database for exercise title lookups
+      try {
+        const { setDatabaseConnection } = require('@/types/nostr-workout');
+        setDatabaseConnection(services.db);
+        console.log('[DB] Database connection set for exercise title lookups');
+      } catch (error) {
+        console.error('[DB] Failed to set database for exercise title lookups:', error);
+      }
       // Refresh all library data
       useLibraryStore.getState().refreshAll();
     }
@@ -233,6 +242,10 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
           powrPackService,
           db,
         });
+        
+        // Set database connection for exercise title lookups
+        setDatabaseConnection(db);
+        console.log('[DB] Database connection set for exercise title lookups');
         
         // Display database info in development mode
         if (__DEV__) {

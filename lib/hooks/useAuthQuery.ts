@@ -202,7 +202,7 @@ export function useAuthQuery() {
         case 'ephemeral':
           return authService.createEphemeralKey();
         default:
-          logger.error("Invalid login method:", params.method);
+          logger.error("Invalid login method:", (params as any).method);
           throw new Error('Invalid login method');
       }
     },

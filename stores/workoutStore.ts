@@ -44,7 +44,6 @@ import { ExerciseService } from '@/lib/db/services/ExerciseService';
  * even when accounting for time spent in completion flow.
  */
 
-
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
 // Define a module-level timer reference for the workout timer
@@ -62,6 +61,9 @@ interface ExtendedWorkoutState extends WorkoutState {
   isMinimized: boolean;
   favoriteIds: string[]; // Only store IDs in memory
   favoritesLoaded: boolean;
+  isPublishing: boolean;
+  publishingStatus?: 'saving' | 'publishing-workout' | 'publishing-social' | 'error';
+  publishError?: string;
 }
 
 interface WorkoutActions {
@@ -121,7 +123,7 @@ interface ExtendedWorkoutActions extends WorkoutActions {
   loadFavorites: () => Promise<void>;
 
   // New template management
-  startWorkoutFromTemplate: (templateId: string) => Promise<void>;
+  startWorkoutFromTemplate: (templateId: string, templateData?: WorkoutTemplate) => Promise<void>;
   
   // Additional workout actions
   endWorkout: () => Promise<void>;
@@ -151,13 +153,16 @@ const initialState: ExtendedWorkoutState = {
   isActive: false,
   isMinimized: false,
   favoriteIds: [],
-  favoritesLoaded: false
+  favoritesLoaded: false,
+  isPublishing: false,
+  publishingStatus: undefined,
+  publishError: undefined
 };
 
 const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions>()((set, get) => ({
   ...initialState,  
 
-  // Core Workout Flow
+  // Core Workflow Flow
   startWorkout: (workoutData: Partial<Workout> = {}) => {
     // First stop any existing timer to avoid duplicate timers
     get().stopWorkoutTimer();
@@ -225,10 +230,18 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       router.push('/(workout)/complete');
       return;
     }
+    
+    // Set publishing state
+    set({
+      isPublishing: true,
+      publishingStatus: 'saving',
+      publishError: undefined
+    });
   
     const completedWorkout = {
       ...activeWorkout,
       isCompleted: true,
+      notes: options.workoutDescription || activeWorkout.notes, // Use workoutDescription for notes
       lastUpdated: Date.now()
     };  
 
@@ -246,6 +259,11 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
           const { ndk, isAuthenticated } = useNDKStore.getState();
           
           if (ndk && isAuthenticated) {
+            // Update publishing status
+            set({
+              publishingStatus: 'publishing-workout'
+            });
+            
             // Create appropriate Nostr event data
             const eventData = options.storageType === 'publish_complete'
               ? NostrWorkoutService.createCompleteWorkoutEvent(completedWorkout)
@@ -288,6 +306,11 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
                   // Handle social share if selected
                   if (options.shareOnSocial && options.socialMessage) {
                     try {
+                      // Update publishing status for social
+                      set({
+                        publishingStatus: 'publishing-social'
+                      });
+                      
                       const socialEventData = NostrWorkoutService.createSocialShareEvent(
                         event.id,
                         options.socialMessage
@@ -316,8 +339,13 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
                       
                       await Promise.race([socialPublishPromise, socialPublishTimeout]);
                       console.log('Successfully published social share');
-                    } catch (socialError) {
+                    } catch (error) {
+                      const socialError = error as Error;
                       console.error('Error publishing social share:', socialError);
+                      // Update error status but still continue
+                      set({
+                        publishError: `Error sharing to Nostr: ${socialError.message || 'Unknown error'}`
+                      });
                       // Continue with workout completion even if social sharing fails
                     }
                   }
@@ -325,24 +353,48 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
                   const signError = error as Error;
                   console.error('Error signing or publishing event:', signError);
                   
+                  // Update error state
+                  set({
+                    publishError: `Error publishing: ${signError.message || 'Unknown error'}`
+                  });
+                  
                   // Specific handling for timeout errors to give user better feedback
                   if (signError.message?.includes('timeout')) {
                     console.warn('The signing operation timed out. This may be due to an issue with the external signer.');
+                    set({
+                      publishError: 'The signing operation timed out. Please try again or check your signer app.'
+                    });
                   }
                   
                   // Continue with workout completion even though publishing failed
                 }
-              } catch (eventCreationError) {
+              } catch (error) {
+                const eventCreationError = error as Error;
                 console.error('Error creating event:', eventCreationError);
-                // Continue with workout completion, but log the error
+                // Update error state
+                set({
+                  publishError: `Error creating event: ${eventCreationError.message || 'Unknown error'}`,
+                  publishingStatus: 'error'
+                });
               }
-            } catch (publishError) {
+            } catch (error) {
+              const publishError = error as Error;
               console.error('Error publishing to Nostr:', publishError);
+              // Update error state
+              set({
+                publishError: `Error publishing to Nostr: ${publishError.message || 'Unknown error'}`,
+                publishingStatus: 'error'
+              });
             }
           }
         } catch (error) {
-          console.error('Error preparing Nostr events:', error);
+          const prepError = error as Error;
+          console.error('Error preparing Nostr events:', prepError);
           // Continue anyway to preserve local data
+          set({
+            publishError: `Error preparing events: ${prepError.message || 'Unknown error'}`,
+            publishingStatus: 'error'
+          });
         }
       }
       
@@ -358,7 +410,8 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
             );
           }
         } catch (error) {
-          console.error('Error updating template:', error);
+          const templateError = error as Error;
+          console.error('Error updating template:', templateError);
           // Continue anyway to preserve workout data
         }
       }
@@ -371,15 +424,24 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
         status: 'completed',
         activeWorkout: null, // Set to null to fully clear the workout
         isActive: false,
-        isMinimized: false
+        isMinimized: false,
+        isPublishing: false, // Reset publishing state
+        publishingStatus: undefined
       });
       
       // Ensure we fully reset the state
       get().reset();
       
     } catch (error) {
-      console.error('Error completing workout:', error);
-      // Consider showing an error message to the user
+      const completeError = error as Error;
+      console.error('Error completing workout:', completeError);
+      
+      // Update error state
+      set({
+        publishError: `Error completing workout: ${completeError.message || 'Unknown error'}`,
+        publishingStatus: 'error',
+        isPublishing: false
+      });
     }
   },
 
@@ -406,8 +468,9 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
       
       return ndkEvent;
     } catch (error) {
-      console.error('Failed to publish event:', error);
-      throw error;
+      const publishError = error as Error;
+      console.error('Failed to publish event:', publishError);
+      throw publishError;
     }
   },
 
@@ -659,7 +722,7 @@ const useWorkoutStoreBase = create<ExtendedWorkoutState & ExtendedWorkoutActions
     if (!template) return;
   
     // Convert template exercises to workout exercises
-    const exercises: WorkoutExercise[] = template.exercises.map(templateExercise => ({
+    const exercises: WorkoutExercise[] = template.exercises.map((templateExercise: any) => ({
       id: generateId('local'),
       title: templateExercise.exercise.title,
       type: templateExercise.exercise.type,
@@ -868,7 +931,6 @@ async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> 
     const favoritesService = new FavoritesService(db);
     const exerciseService = new ExerciseService(db);
     const templateService = new TemplateService(db, new ExerciseService(db));
-
     
     // First try to get from favorites
     const favoriteResult = await favoritesService.getContentById<WorkoutTemplate>('template', templateId);
@@ -885,89 +947,112 @@ async function getTemplate(templateId: string): Promise<WorkoutTemplate | null> 
   }
 }
 
+/**
+ * Save a workout to the database
+ */
 async function saveWorkout(workout: Workout): Promise<void> {
   try {
-    console.log('Saving workout with endTime:', workout.endTime);
-    
-    // Use the workout service to save the workout
     const db = openDatabaseSync('powr.db');
     const workoutService = new WorkoutService(db);
-    
     await workoutService.saveWorkout(workout);
   } catch (error) {
     console.error('Error saving workout:', error);
+    throw error;
   }
 }
 
-async function saveSummary(summary: WorkoutSummary) {
-  try {
-    // Use the workout service to save summary metrics
-    const db = openDatabaseSync('powr.db');
-    const workoutService = new WorkoutService(db);
-    
-    await workoutService.saveWorkoutSummary(summary.id, summary);
-    console.log('Workout summary saved successfully:', summary.id);
-  } catch (error) {
-    console.error('Error saving workout summary:', error);
-  }
-}
-
+/**
+ * Calculate summary statistics for a workout
+ */
 function calculateWorkoutSummary(workout: Workout): WorkoutSummary {
+  const startTime = workout.startTime;
+  const endTime = workout.endTime || Date.now();
+  const duration = endTime - startTime;
+  
+  let totalVolume = 0;
+  let totalReps = 0;
+  let averageRpe = 0;
+  let rpeCount = 0;
+  
+  const exerciseSummaries = workout.exercises.map(exercise => {
+    let exerciseVolume = 0;
+    let exerciseReps = 0;
+    let exerciseRpe = 0;
+    let rpeCount = 0;
+    let peakWeight = 0;
+    
+    const completedSets = exercise.sets.filter(set => set.isCompleted).length;
+    
+    exercise.sets.forEach(set => {
+      if (set.isCompleted) {
+        const weight = set.weight || 0;
+        const reps = set.reps || 0;
+        
+        exerciseVolume += weight * reps;
+        exerciseReps += reps;
+        
+        if (weight > peakWeight) {
+          peakWeight = weight;
+        }
+        
+        if (set.rpe) {
+          exerciseRpe += set.rpe;
+          rpeCount++;
+        }
+      }
+    });
+    
+    totalVolume += exerciseVolume;
+    totalReps += exerciseReps;
+    
+    if (rpeCount > 0) {
+      const avgRpe = exerciseRpe / rpeCount;
+      averageRpe += avgRpe;
+      rpeCount++;
+    }
+    
+    return {
+      exerciseId: exercise.id,
+      title: exercise.title,
+      setCount: exercise.sets.length,
+      completedSets,
+      volume: exerciseVolume,
+      peakWeight: peakWeight > 0 ? peakWeight : undefined,
+      totalReps: exerciseReps,
+      averageRpe: rpeCount > 0 ? exerciseRpe / rpeCount : undefined
+    };
+  });
+  
   return {
-    id: generateId('local'),
+    id: workout.id,
     title: workout.title,
     type: workout.type,
-    duration: workout.endTime ? workout.endTime - workout.startTime : 0,
-    startTime: workout.startTime,
-    endTime: workout.endTime || Date.now(),
+    duration,
+    startTime,
+    endTime,
     exerciseCount: workout.exercises.length,
-    completedExercises: workout.exercises.filter(e => e.isCompleted).length,
-    totalVolume: calculateTotalVolume(workout),
-    totalReps: calculateTotalReps(workout),
-    averageRpe: calculateAverageRpe(workout),
-    exerciseSummaries: [],
-    personalRecords: []
+    completedExercises: workout.exercises.filter(ex => ex.isCompleted).length,
+    totalVolume,
+    totalReps,
+    averageRpe: rpeCount > 0 ? averageRpe / rpeCount : undefined,
+    exerciseSummaries,
+    personalRecords: [] // Personal records would be calculated separately
   };
 }
 
-function calculateTotalVolume(workout: Workout): number {
-  return workout.exercises.reduce((total, exercise) => {
-    return total + exercise.sets.reduce((setTotal, set) => {
-      return setTotal + (set.weight || 0) * (set.reps || 0);
-    }, 0);
-  }, 0);
+/**
+ * Save workout summary to the database
+ */
+async function saveSummary(summary: WorkoutSummary): Promise<void> {
+  try {
+    const db = openDatabaseSync('powr.db');
+    const workoutService = new WorkoutService(db);
+    await workoutService.saveWorkoutSummary(summary.id, summary);
+  } catch (error) {
+    console.error('Error saving workout summary:', error);
+    // Non-fatal error, can continue
+  }
 }
 
-function calculateTotalReps(workout: Workout): number {
-  return workout.exercises.reduce((total, exercise) => {
-    return total + exercise.sets.reduce((setTotal, set) => {
-      return setTotal + (set.reps || 0);
-    }, 0);
-  }, 0);
-}
-
-function calculateAverageRpe(workout: Workout): number {
-  const rpeSets = workout.exercises.reduce((sets, exercise) => {
-    return sets.concat(exercise.sets.filter(set => set.rpe !== undefined));
-  }, [] as WorkoutSet[]);
-
-  if (rpeSets.length === 0) return 0;
-
-  const totalRpe = rpeSets.reduce((total, set) => total + (set.rpe || 0), 0);
-  return totalRpe / rpeSets.length;
-}
-
-// Create auto-generated selectors
+// Create a version with selectors for easier state access
 export const useWorkoutStore = createSelectors(useWorkoutStoreBase);
-
-// Clean up interval on hot reload in development
-if (typeof module !== 'undefined' && 'hot' in module) {
-  // @ts-ignore - 'hot' exists at runtime but TypeScript doesn't know about it
-  module.hot?.dispose(() => {
-    if (workoutTimerInterval) {
-      clearInterval(workoutTimerInterval);
-      workoutTimerInterval = null;
-      console.log('Workout timer cleared on hot reload');
-    }
-  });
-}

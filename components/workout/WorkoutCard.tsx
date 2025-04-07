@@ -215,11 +215,16 @@ export const WorkoutCard: React.FC<EnhancedWorkoutCardProps> = ({
             <Text className="text-foreground font-semibold mb-1">Exercise</Text>
             {/* In a real implementation, you would map through actual exercises */}
             {workout.exercises && workout.exercises.length > 0 ? (
-              workout.exercises.slice(0, 3).map((exercise, idx) => (
-                <Text key={idx} className="text-foreground mb-1">
-                  {exercise.title}
-                </Text>
-              ))
+              workout.exercises.slice(0, 3).map((exercise, idx) => {
+                // Use the exercise title directly
+                const exerciseTitle = exercise.title || 'Exercise';
+                
+                return (
+                  <Text key={idx} className="text-foreground mb-1">
+                    {exerciseTitle}
+                  </Text>
+                );
+              })
             ) : (
               <Text className="text-muted-foreground">No exercises recorded</Text>
             )}

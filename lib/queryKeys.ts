@@ -50,6 +50,8 @@ export const QUERY_KEYS = {
     all: ['exercises'] as const,
     detail: (id: string) => [...QUERY_KEYS.exercises.all, 'detail', id] as const,
     list: (filters?: any) => [...QUERY_KEYS.exercises.all, 'list', filters] as const,
+    namesByEvent: (eventId: string) => [...QUERY_KEYS.exercises.all, 'namesByEvent', eventId] as const,
+    namesByWorkout: (workoutId: string) => [...QUERY_KEYS.exercises.all, 'namesByWorkout', workoutId] as const,
   },
   
   // Social feed related queries

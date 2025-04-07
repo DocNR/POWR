@@ -1,6 +1,6 @@
 // app/(workout)/complete.tsx
 import React, { useEffect } from 'react';
-import { View, Modal, TouchableOpacity } from 'react-native';
+import { View, Modal, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Text } from '@/components/ui/text';
 import { X } from 'lucide-react-native';
@@ -25,7 +25,7 @@ import { useColorScheme } from '@/lib/theme/useColorScheme';
  * was set when the user confirmed finishing in the create screen.
  */
 export default function CompleteWorkoutScreen() {
-  const { resumeWorkout, activeWorkout } = useWorkoutStore();
+  const { resumeWorkout, activeWorkout, isPublishing, publishingStatus } = useWorkoutStore();
   const { isDarkColorScheme } = useColorScheme();
   
   // Check if we have a workout to complete
@@ -44,8 +44,21 @@ export default function CompleteWorkoutScreen() {
     await completeWorkout(options);
   };
   
-  // Handle cancellation (go back to workout)
+  // Check if we can safely close the modal
+  const canClose = !isPublishing;
+  
+  // Handle cancellation (go back to workout) with safety check
   const handleCancel = () => {
+    if (!canClose) {
+      // Show alert about publishing in progress
+      Alert.alert(
+        "Publishing in Progress",
+        "Please wait for publishing to complete before going back.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    
     // Go back to the workout screen
     router.back();
   };
@@ -65,7 +78,12 @@ export default function CompleteWorkoutScreen() {
           {/* Header */}
           <View className="flex-row justify-between items-center p-4 border-b border-border">
             <Text className="text-xl font-bold text-foreground">Complete Workout</Text>
-            <TouchableOpacity onPress={handleCancel} className="p-1">
+            <TouchableOpacity 
+              onPress={handleCancel}
+              className="p-1"
+              disabled={!canClose}
+              style={{ opacity: canClose ? 1 : 0.5 }}
+            >
               <X size={24} />
             </TouchableOpacity>
           </View>
