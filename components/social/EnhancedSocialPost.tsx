@@ -1,6 +1,6 @@
 // components/social/EnhancedSocialPost.tsx
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { View, TouchableOpacity, Image, ScrollView, Linking } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Badge } from '@/components/ui/badge';
 import { Heart, MessageCircle, Repeat, Share, Clock, Dumbbell, CheckCircle, FileText, User } from 'lucide-react-native';
@@ -16,6 +16,7 @@ import {
   ParsedWorkoutTemplate,
   ParsedLongformContent 
 } from '@/types/nostr-workout';
+import { parseContent } from '@/utils/contentParser';
 import { formatDistance } from 'date-fns';
 import Markdown from 'react-native-markdown-display';
 import { useExerciseNames, useTemplateExerciseNames } from '@/lib/hooks/useExerciseNames';
@@ -511,9 +512,46 @@ function TemplateContent({ template }: { template: ParsedWorkoutTemplate }) {
 
 // Component for social posts
 function SocialContent({ post }: { post: ParsedSocialPost }) {
-  // Render the social post content
+  // Parse content to identify URLs and images
+  const contentSegments = useMemo(() => {
+    return parseContent(post.content);
+  }, [post.content]);
+
+  // Render the social post content with links and images
   const renderMainContent = () => (
-    <Text className="mb-2">{post.content}</Text>
+    <View className="mb-2">
+      {contentSegments.map((segment, index) => {
+        switch (segment.type) {
+          case 'text':
+            return <Text key={index}>{segment.content}</Text>;
+          
+          case 'image':
+            return (
+              <View key={index} className="my-2">
+                <Image 
+                  source={{ uri: segment.content }} 
+                  className="w-full h-48 rounded-md"
+                  resizeMode="cover"
+                />
+              </View>
+            );
+          
+          case 'url':
+            return (
+              <TouchableOpacity 
+                key={index} 
+                onPress={() => Linking.openURL(segment.content)}
+                activeOpacity={0.7}
+              >
+                <Text className="text-primary underline">{segment.content}</Text>
+              </TouchableOpacity>
+            );
+            
+          default:
+            return null;
+        }
+      })}
+    </View>
   );
   
   // Render quoted content if available

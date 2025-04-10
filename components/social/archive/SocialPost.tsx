@@ -1,4 +1,9 @@
-// components/social/SocialPost.tsx
+// components/social/archive/SocialPost.tsx
+// ARCHIVED: April 9, 2025
+// This component was archived because it is no longer used in the application.
+// The app exclusively uses EnhancedSocialPost for rendering social feed content.
+// This file is kept for historical reference only.
+
 import React from 'react';
 import { View, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/ui/text';

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserved underlying functionality for future re-implementation
 
 ### Fixed
+- Link and image rendering in social feeds
+  - Added URL detection and rendering in social post content
+  - Implemented image URL detection and automatic embedding in posts
+  - Created contentParser utility for parsing text content with links
+  - Enhanced EnhancedSocialPost component to properly render links and images
+  - Archived unused SocialPost component following the project's archiving pattern
+  
 - UI issues in workout completion flow
   - Fixed weird line across input box in the 1301 event content box by adding subtle border styling
   - Removed template options section that was causing bugs with workout templates
